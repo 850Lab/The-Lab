@@ -1,0 +1,221 @@
+YOU ARE THE REPLIT AI AGENT. STREAMLIT APP (app.py).
+
+MISSION:
+Strategically optimize the entire app UI/UX funnel for exploration-first navigation.
+
+This is NOT a redesign.
+This is NOT a feature expansion.
+This is a structural optimization pass.
+
+We are keeping:
+- Existing backend logic
+- Existing dispute engine
+- Existing letter generation
+- Existing mission engine
+- Existing War Room system
+- Existing panels and routes
+
+We are optimizing:
+- Flow
+- Click mapping
+- Visual hierarchy
+- Sizing
+- Density
+- Navigation integrity
+
+PRIMARY DESIGN PRINCIPLE:
+Click to explore.
+Never scroll to find.
+
+Optimization Definition:
+- Every screen should have a clear primary action.
+- Every section should be entered by click, not revealed by scrolling.
+- No long stacked content walls.
+- No duplicated navigation.
+- No dead ends.
+- Every page must have a clear “Back” mapping.
+- Every action must route somewhere meaningful.
+
+We are optimizing for:
+1. Exploration
+2. Psychological clarity
+3. Visual hierarchy
+4. Flow without friction
+5. Depth over length
+
+—————————————————————
+
+GLOBAL RULES:
+
+1) Remove all scroll walls.
+If content exceeds viewport, break it into click-through panels.
+Use:
+- Expanders sparingly
+- Panel routing instead of stacking
+- Sub-screens instead of long pages
+
+2) One Primary Action Per Screen.
+Each screen must answer:
+“What is the next move?”
+
+3) Remove duplicate navigation.
+If a 2x2 grid navigates, remove stacked buttons.
+If a CTA exists, remove redundant ones.
+
+4) Visual Density Optimization:
+- Reduce vertical padding by 20–30%
+- Reduce unnecessary whitespace
+- Tighten cards
+- Ensure mobile viewport fits critical content without scroll when possible
+
+5) Hierarchy:
+- Primary CTA must visually dominate.
+- Secondary actions muted.
+- Informational text compact.
+
+—————————————————————
+
+STEP 1: MAP CURRENT FLOW
+
+Create an internal map of:
+Landing
+Mission Setup
+Upload
+Results Workspace
+Command
+Tracker
+Documents
+Strategy
+Send Mail
+Escalation
+Admin
+
+Ensure:
+Each screen routes intentionally.
+No screen contains more than 2–3 core decisions.
+
+—————————————————————
+
+STEP 2: OPTIMIZE RESULTS WORKSPACE (“OCEAN ARRIVAL”)
+
+Goal:
+This must feel like control center.
+
+Rules:
+- Top section = Current Phase Status (compact)
+- One “Next Action” card
+- 2x2 portal grid only
+- No stacked duplicate buttons
+- No scroll below fold unless entering a sub-panel
+
+If more content exists, move it into its own panel.
+
+—————————————————————
+
+STEP 3: WAR ROOM PANEL
+
+War Room must:
+- Show Top 3 actions only initially
+- Phases collapsed
+- Each action clickable
+- Clicking action opens micro-panel
+- Back always returns to War Room
+- No long bullet paragraphs
+
+—————————————————————
+
+STEP 4: DOCUMENTS PANEL
+
+Documents must:
+- Show summary
+- Buttons for:
+  View Letters
+  Upload Proof
+  Log Tracking
+- No long instructions
+- Each opens a sub-panel
+
+—————————————————————
+
+STEP 5: TRACKER PANEL
+
+Tracker must:
+- Show Day X / 30
+- Escalation readiness
+- Countdown
+- One action button
+- No instructional walls
+
+—————————————————————
+
+STEP 6: REMOVE SCROLL-DEPENDENT INTERACTION
+
+Audit every screen:
+If user must scroll to reach CTA, restructure.
+
+Prefer:
+Panel drill-down
+Collapsible micro sections
+Modal-like flows (simulated via routing)
+
+—————————————————————
+
+STEP 7: VISUAL PSYCHOLOGY OPTIMIZATION
+
+Appealing to the mind means:
+- Clear contrast
+- Intentional spacing
+- Calm surfaces
+- Subtle glow for focus
+- No clutter
+
+Remove:
+- Redundant subtitles
+- Repeated instructions
+- Excess helper text
+
+Replace with:
+- Status indicators
+- Compact cues
+- Directional prompts
+
+—————————————————————
+
+STEP 8: DEAD-END ELIMINATION
+
+Every panel must include:
+[← Back to Workspace]
+
+Every CTA must route somewhere meaningful.
+
+No orphan screens.
+
+—————————————————————
+
+STEP 9: DO NOT OVERHAUL
+
+Do NOT:
+- Rebuild architecture
+- Add new systems
+- Rewrite backend
+- Change dispute logic
+- Add new features
+
+This is alignment, sizing, mapping, and density optimization only.
+
+—————————————————————
+
+DELIVERABLE:
+
+1. Updated flow structure explanation.
+2. Screens optimized to exploration-first.
+3. Confirmation that:
+   - No scroll walls remain.
+   - Each screen has one dominant action.
+   - No duplicate navigation exists.
+   - Flow is mapped without dead ends.
+4. Updated CSS density improvements.
+5. No core logic altered.
+
+Begin by auditing current screen structure and listing friction points.
+Then optimize systematically screen by screen.

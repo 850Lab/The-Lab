@@ -1,0 +1,133 @@
+GOAL:
+Reposition pricing visually and structurally for a 14-Day Sprint push WITHOUT breaking existing Stripe logic or removing any current products.
+
+DO NOT:
+- Delete any existing packs
+- Change existing Stripe price IDs
+- Refactor checkout logic
+- Modify create_checkout_session()
+- Modify entitlement logic
+
+ONLY adjust UI presentation + add Sprint pack (if not already added).
+
+--------------------------------------------------
+
+1) REORDER PRICING CARDS (Top to Bottom)
+
+New order:
+
+1. 30-Day Deletion Sprint — $199 (Primary)
+2. Full Round — $24.99 (DIY Special)
+3. Digital Only — $4.99
+4. Free
+
+Sprint must appear FIRST.
+
+--------------------------------------------------
+
+2) SPRINT CARD (Primary Offer)
+
+Title:
+30-Day Deletion Sprint
+
+Badge:
+"2-Round Guarantee"
+
+Badge color:
+GOLD (use same gold color currently used in UI accents)
+
+Card styling:
+Premium emphasis (slightly elevated or shadowed if applicable)
+
+Content:
+
+- Round 1 — all 3 bureaus
+- Certified mailing included
+- Round 2 — all 3 bureaus
+- Certified mailing included
+- Escalation structure
+- If no disputed item is deleted or updated after 2 rounds → Round 3 free
+
+Button:
+"Start the 30-Day Sprint — $199"
+
+Button color:
+GOLD
+
+--------------------------------------------------
+
+3) FULL ROUND ($24.99)
+
+Remove "Best Value" label.
+
+Add new label:
+"DIY Special"
+
+Badge color:
+BLACK background with white text.
+
+Update copy:
+
+- 1 full dispute round (all 3 bureaus)
+- Certified mail included
+- You manage follow-up
+- No guarantee
+
+Keep existing Stripe flow unchanged.
+
+--------------------------------------------------
+
+4) DIGITAL ONLY ($4.99)
+
+Remove "Most Popular" badge styling if it differs.
+
+Set badge styling to match the FREE badge styling exactly.
+
+Same background color.
+Same text style.
+Same visual weight.
+
+Keep button + flow unchanged.
+
+--------------------------------------------------
+
+5) FREE PLAN
+
+No changes except ensure styling consistency with Digital Only badge.
+
+--------------------------------------------------
+
+6) GUARANTEE CLARITY (Important)
+
+Guarantee language must read:
+
+"If no disputed item is deleted or updated after completing 2 rounds, Round 3 is on us."
+
+Do NOT mention score changes.
+Do NOT imply guaranteed deletions.
+Keep language factual and objective.
+
+--------------------------------------------------
+
+7) STRIPE / PAYMENT LOGIC
+
+No changes to:
+- create_checkout_session()
+- _open_checkout()
+- success_url handling
+- cancellation flow
+
+Sprint must use a dedicated Stripe price ID if already created.
+If not created yet, leave placeholder for sprint_price_id and do not remove existing price mappings.
+
+--------------------------------------------------
+
+OUTPUT EXPECTATION
+
+- Visual hierarchy clearly pushes Sprint as primary.
+- $24.99 clearly framed as DIY.
+- $4.99 clearly entry-level.
+- No backend logic disruption.
+- No refactor of payment architecture.
+
+End.

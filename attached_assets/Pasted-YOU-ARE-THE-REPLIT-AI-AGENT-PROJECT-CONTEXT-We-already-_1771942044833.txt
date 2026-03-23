@@ -1,0 +1,174 @@
+YOU ARE THE REPLIT AI AGENT.
+
+PROJECT CONTEXT
+We already have a working flow leading to the “final / results / letters / tracker” page:
+Landing → Upload → Analysis → Violations → Selection → Letters → Certified Mail.
+That entire journey should feel like a stream/river flowing forward.
+
+REQUEST
+Convert the CURRENT final page into a TRUE APP-LIKE WORKSPACE:
+- Single-screen experience
+- Bottom tab navigation (fixed)
+- Each tab is focused (no noisy vertical stacking)
+- This page should feel like the “ocean” moment: arrival, clarity, control.
+
+CRITICAL IMPLEMENTATION RULES (MUST FOLLOW)
+1) DO NOT rewrite or disrupt existing backend logic, routes, API calls, or payment flow.
+2) Keep Certified Mail as the ONLY paid step. Everything else remains free.
+3) Changes MUST be additive + modular: new components + minimal edits to existing page.
+4) Preserve existing data/state objects; only reorganize the UI presentation.
+5) Keep styling consistent with current Tailwind/UI (rounded cards, clean spacing).
+
+HIGH-LEVEL UX GOAL
+When users land on this workspace, everything should immediately make sense:
+- where they are (Round status)
+- what matters now (Next Action)
+- what to do next (tasks)
+- how to track it (timer/response)
+- where documents live (letters, ID, proof, responses)
+
+NEW UI ARCHITECTURE
+Replace the current scroll page with:
+A) A fixed “Arrival Header”
+B) A fixed bottom tab bar
+C) A content area that swaps between tabs WITHOUT leaving the route
+
+────────────────────────────────────────────
+A) ARRIVAL HEADER (ALWAYS VISIBLE)
+At the top of the workspace, render a clean “Ocean Arrival” header:
+
+Title:
+  “Round 1 Workspace”
+Subtitle (small):
+  “You’ve arrived. Everything below is your command center.”
+
+Status strip (3 compact pills):
+  - Letters: NOT SENT / SENT
+  - Clock: NOT STARTED / Day X of 30 / EXPIRED (31+)
+  - Proof: MISSING / READY
+
+Primary “NEXT ACTION” card (most important):
+  This is a single compact card that shows exactly ONE next action, based on state:
+  - If letters not generated yet: “Generate Letters”
+  - If letters generated but not mailed: “Send Certified Mail”
+  - If mailed but clock not started: “Start 30-day countdown”
+  - If clock running: “Await response / Upload response when received”
+  - If day >= 31: “Escalation ready (generate packet)”
+
+This Next Action card must include ONE prominent button that calls the existing handler(s).
+No new logic—use current actions.
+
+────────────────────────────────────────────
+B) BOTTOM TAB BAR (FIXED)
+Add a fixed bottom navigation with 4 tabs:
+
+1) Command
+2) Tracker
+3) Documents
+4) Strategy
+
+Requirements:
+- Fixed at bottom on mobile and desktop
+- Highlight active tab
+- Use icons + labels
+- Use local state to switch tabs (no route changes required)
+- Content area scroll should be minimal; avoid long vertical content by collapsing sections.
+
+────────────────────────────────────────────
+C) TAB CONTENT (FOCUSED + FUNCTIONAL)
+Each tab MUST feel like a workspace, not text.
+
+TAB 1: COMMAND (do work here)
+This tab contains:
+1) “Today’s Checklist” (task board, compact)
+   - 5–7 tasks max, each is a row with:
+     checkbox (persist in localStorage), label, and ONE action button.
+   - Examples:
+     - Mail letters (Certified) → button: “Send Certified”
+     - Save tracking number → button: “Add tracking”
+     - Start 30-day countdown → button: “Start Clock”
+     - Download copies → button: “Download PDFs”
+     - Freeze new applications (optional) → button: “Add reminder”
+2) “Round Progress”
+   - Show “0/7 complete” and a small progress indicator
+3) “Quick Actions” (small buttons)
+   - View Letters
+   - Upload Proof
+   - View Tracker
+
+Everything should be compact, minimal copy.
+
+TAB 2: TRACKER (no clutter)
+Only the Bureau Investigation Tracker here.
+Render each bureau as a row/card with:
+- Bureau name
+- Status pill (READY TO SEND / CLOCK RUNNING / RESPONSE RECEIVED / ESCALATION READY)
+- Countdown bar (only when clock started)
+- Days remaining text
+- ONE primary action button based on state:
+   READY TO SEND → “Send Certified”
+   CLOCK RUNNING → “Mark response received”
+   RESPONSE RECEIVED → “Upload response”
+   ESCALATION READY (31+) → “Generate escalation packet”
+
+Also add a compact “Clock Control” at top:
+- “Date letters were mailed” field (existing input if present)
+- “Start My 30-day Countdown” button (existing handler)
+
+TAB 3: DOCUMENTS (all files + paperwork)
+This tab contains:
+- Letters generated (download buttons)
+- Proof of Identity upload
+- Proof of Address upload
+- Upload bureau response letter(s)
+- Tracking number input (optional)
+Everything should be grouped as small cards with clear actions.
+
+TAB 4: STRATEGY (72-hour plan as interactive)
+Move the 72-hour plan here and convert it from advice into “action tasks”.
+Format:
+- “72-hour plan” progress (0/7)
+- Sections: Today / Next / Later (stacked)
+- Each item row has:
+  checkbox + short label + a button (copy script / add reminder / open template)
+- Scripts must be in collapsible accordions with “Copy” button.
+Keep text minimal.
+
+────────────────────────────────────────────
+FUNCTIONALITY REQUIREMENTS (IMPORTANT)
+1) Add task completion persistence using localStorage (MVP):
+   key includes user id if available; otherwise session-based.
+2) Ensure the page feels “one screen”:
+   - Tabs swap content
+   - Each tab uses collapsibles to prevent long scroll
+3) DO NOT add more paragraphs. Replace paragraphs with:
+   - short labels
+   - tooltips (“Why?”)
+   - accordions
+
+────────────────────────────────────────────
+DEV REQUIREMENTS
+1) Create new components in /src/components/workspace (or similar):
+   - WorkspaceShell (header + tab bar + content)
+   - WorkspaceHeader (status + next action)
+   - WorkspaceTabs (bottom nav)
+   - CommandTab
+   - TrackerTab
+   - DocumentsTab
+   - StrategyTab
+   - TaskRow (checkbox + button)
+   - CountdownBar
+2) Modify only the final page file to wrap existing content into the workspace tabs.
+   - Reuse existing components where possible
+   - Don’t delete old logic; migrate UI into tabs cleanly
+3) Return a list of all files changed and created and confirm payment flow unchanged.
+
+DESIGN NOTES
+- This is the “ocean arrival” moment: clean, calm, controlled.
+- Use white space and compact cards.
+- Reduce cognitive load: one primary button per tab section.
+- Keep the certified mail buttons in COMMAND and DOCUMENTS (not everywhere).
+
+NOW IMPLEMENT THIS.
+First inspect the current final page component and identify its data sources and actions.
+Then build WorkspaceShell and move the UI into tabs, preserving existing handlers.

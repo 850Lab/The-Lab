@@ -1,0 +1,141 @@
+YOU ARE THE REPLIT AI AGENT. APP IS STREAMLIT (app.py). BACKEND USES SUPABASE.
+
+GOAL
+Add a new MVP step called “Voice Profile” so each user can set writing preferences that:
+- are stored with the user (Supabase)
+- are applied to EVERY generated dispute letter
+- DO NOT change legal claims or add facts
+- only change style/tone/wording choices (safe uniqueness)
+
+CRITICAL RULES (MUST FOLLOW)
+1) Do NOT alter dispute logic, violation detection, Metro-2/FCRA citations, or any factual assertions.
+2) Voice Profile may ONLY affect: tone, sentence length, phrasing, formatting, politeness markers.
+3) Do NOT encourage emotional hardship claims. Keep context options neutral and optional.
+4) Must be additive: do not break current flow. If Voice Profile missing, use defaults.
+
+WHERE IT LIVES IN FLOW
+Add a lightweight “Voice Profile” step immediately BEFORE letter generation (Generate Letters / Create PDFs):
+- If Voice Profile exists for user: skip step
+- If missing: show Voice Profile card with 30–60 second setup + Save button
+- After save, proceed to existing letter generation
+
+DATA MODEL (SUPABASE)
+Create/Use a table: voice_profiles
+Fields:
+- id (uuid, primary key)
+- user_id (uuid, references auth.users.id, unique)
+- tone (text)  # "Calm & Professional" | "Firm & Direct" | "Short & Concise"
+- detail_level (text)  # "Minimal" | "Standard" | "Detailed"
+- reading_level (text)  # "Plain" | "Standard"  (optional)
+- closing (text)  # "Sincerely," | "Respectfully," | "Thank you,"
+- preferred_phrases (jsonb)  # { "dispute": "...", "request": "...", "verify": "..." }
+- punctuation_style (text)  # "Standard" | "No exclamation" (optional)
+- created_at (timestamptz default now())
+- updated_at (timestamptz default now())
+
+Add RLS:
+- Users can select/insert/update only rows where user_id = auth.uid()
+
+If a profile exists, UPDATE it. If not, INSERT it.
+
+UI REQUIREMENTS (STREAMLIT)
+Create a compact card titled:
+“Your Letter Voice (30 seconds)”
+Subtitle:
+“Sets the tone and phrasing of your letters. Facts and legal claims stay the same.”
+
+Inputs (3–5 total max):
+1) Tone (radio):
+- Calm & Professional (default)
+- Firm & Direct
+- Short & Concise
+
+2) Detail level (radio):
+- Minimal
+- Standard (default)
+- Detailed
+
+3) Closing sign-off (select):
+- Sincerely, (default)
+- Respectfully,
+- Thank you,
+
+4) Preferred phrases (optional quick picks):
+Provide 3 short pickers (selectbox) that map to safe alternate phrasings:
+- Dispute verb:
+  “I dispute the accuracy of…” (default)
+  “I am challenging the accuracy of…”
+  “This information is inaccurate and must be corrected…”
+
+- Request verb:
+  “Please investigate and correct or delete…” (default)
+  “I request reinvestigation and correction/removal…”
+  “Please verify, update, or remove…”
+
+- Verification phrase:
+  “Provide the method of verification…” (default)
+  “Provide how this was verified…”
+  “Provide verification procedures used…”
+
+Buttons:
+- Save Voice Profile (primary)
+- Skip for now (secondary) -> uses defaults and continues
+
+Persist the selection in st.session_state so it flows directly into generation.
+
+DEFAULTS (IF USER SKIPS)
+tone="Calm & Professional"
+detail_level="Standard"
+closing="Sincerely,"
+preferred_phrases = defaults listed above
+
+LETTER GENERATION INTEGRATION (MOST IMPORTANT)
+Find the function(s) that produce the dispute letter text (the final letter string).
+Add a “voice_profile” argument (dict) and apply style transforms ONLY in these areas:
+- Greeting line variants (still professional)
+- Transition sentences (shorter/longer depending on detail_level)
+- Synonym swaps based on preferred_phrases
+- Closing sign-off
+- Optional paragraph spacing/formatting
+
+DO NOT modify:
+- account lists
+- dates
+- amounts
+- bureau addresses
+- citations (FCRA sections)
+- dispute reasons/claims content
+- requested actions (delete/correct) beyond synonym form
+
+IMPLEMENTATION DETAILS
+1) Add helper:
+   def load_voice_profile(user_id) -> dict|None
+2) Add helper:
+   def save_voice_profile(user_id, profile_dict) -> None  (upsert)
+3) Add helper:
+   def get_effective_voice_profile(user_id) -> dict
+   (loads profile; if none return defaults)
+4) Add UI component:
+   render_voice_profile_step(user_id) -> returns (profile_dict, did_save_or_skip: bool)
+
+GATING LOGIC
+At the moment user clicks “Generate Letters”:
+- call get_effective_voice_profile(user_id)
+- pass it to letter generator
+- also store a snapshot of the voice profile used with the generated letter metadata (optional but preferred)
+
+OPTIONAL: STORE SNAPSHOT WITH LETTERS
+If you store generated letters in DB, add:
+letters.voice_profile_snapshot jsonb
+so we can prove wording came from user settings.
+
+DELIVERABLES
+- Supabase migration SQL (table + RLS policies)
+- Updated app.py with Voice Profile UI step
+- Updated letter generation function signature to accept voice_profile
+- Confirm: no backend logic changes beyond safe style layer
+- Confirm: existing users can skip and still generate letters
+
+NOW IMPLEMENT.
+Start by locating letter generation code and the “Generate Letters” button handler.
+Then add the Voice Profile gating step and Supabase persistence.

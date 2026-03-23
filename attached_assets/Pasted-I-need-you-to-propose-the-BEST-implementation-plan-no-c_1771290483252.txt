@@ -1,0 +1,50 @@
+I need you to propose the BEST implementation plan (no code yet) for a landing-page + routing change in our Streamlit app.
+
+CONTEXT
+- Current landing page drives everyone into the same flow: Upload → Analyze → Dispute → Paywall / entitlements.
+- I’m launching a 12-day outbound sprint. I need ONE offer (“30-Day Deletion Sprint — $199”) to feel psychologically different and route into a different journey (Lane A) while keeping the DIY journey intact (Lane B).
+- IMPORTANT: the app currently has startup delay (Streamlit boot/reruns). This change must NOT worsen startup latency.
+
+GOAL
+Create two distinct journeys from the landing page:
+
+LANE A (Assisted / Sprint)
+- For “30-Day Deletion Sprint — $199”
+- The first click MUST NOT send them into the same upload/analyze path as DIY.
+- Instead, Sprint CTA should go to a short “Request Sprint Call” / “Start Sprint Intake” page that captures contact info (name, phone, email + goal + timeline).
+- After submission, show a confirmation screen and a clear next step: “Jaylan will contact you within 24 hours” (or similar).
+- This lane is designed for assisted onboarding and fast conversion, NOT exploration.
+
+LANE B (DIY)
+- Keep existing flow unchanged (Upload → Analyze → Dispute → purchase options).
+- The primary DIY CTA can remain “Scan My Report Free”.
+
+LANDING PAGE PSYCHOLOGY REQUIREMENTS
+- The page should immediately present two options with different psychology:
+  1) “Work with me directly” (Sprint) = premium + guided + time-boxed + structured process.
+  2) “DIY” = self-serve + free scan + pay when ready.
+- Sprint must not feel like “just another package in the pricing stack.”
+- The Sprint offer should be placed ABOVE the pricing grid and presented as a separate section (hero-style).
+- Sprint CTA label should not be “Buy $199” — it should initiate assisted intake (e.g., “Request Sprint Call” / “Start Sprint Intake”).
+- Keep the pricing grid below for DIY options ($24.99 / $4.99 / Free).
+
+PERFORMANCE CONSTRAINTS (non-negotiable)
+- Do not add heavy imports at top-level.
+- Do not initialize DB/storage/email clients at app startup unless absolutely required.
+- Any Sprint lead storage should be lazy-loaded only when Sprint form is submitted.
+- Prefer a lightweight first version: append to a local CSV/JSON file, OR use an existing lightweight storage method already in the app.
+- If Supabase is used, it must be initialized lazily (on submit) and cached appropriately.
+- Avoid rerun loops; keep session_state usage minimal and deterministic.
+
+WHAT I NEED FROM YOU (PLAN ONLY)
+1) Recommended approach for routing in Streamlit:
+   - multipage vs session_state router vs query params
+   - explain which is best for minimal latency + minimal risk
+2) Exactly what new pages/components you will add (names, responsibilities)
+3) The minimal modifications needed to existing landing page + existing DIY flow
+4) Lead capture storage recommendation with a low-latency fallback
+5) Risk analysis: what could break, what could slow down, how you’ll prevent it
+6) Step-by-step implementation order (small commits)
+
+DO NOT write the full code yet.
+Return the plan first. I will approve the plan, then you will implement.

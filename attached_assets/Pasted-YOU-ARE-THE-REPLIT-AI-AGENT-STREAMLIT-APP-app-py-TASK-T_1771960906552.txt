@@ -1,0 +1,97 @@
+YOU ARE THE REPLIT AI AGENT. STREAMLIT APP (app.py). 
+TASK: The Mission selection UI is currently bad (scroll wall + separate Select buttons per card). 
+REPLACE it with a compact premium “golden glass” mission picker that fits in 1 screen on mobile as much as possible.
+
+NON-NEGOTIABLES
+- Do NOT change backend logic or flow; only update mission selection UI and CSS.
+- Remove the “Select” button under each card. The card itself must be the button.
+- Use a 2×2 grid for mission goals + a single segmented control row for timeline.
+- Only ONE primary CTA: “Continue →” (disabled until mission + timeline selected), plus a subtle “Skip for now”.
+
+DESIGN TARGET (PREMIUM)
+- Apple-like warm golden glass cards
+- tighter spacing (reduce Streamlit padding/gaps)
+- selected state = gold outline + subtle glow + tiny checkmark top-right
+- dark background gradient
+
+IMPLEMENTATION DETAILS
+
+1) CSS: Add/adjust styles in ui/css.py (or wherever ws styles live)
+Add:
+- .ws-wrap (tight width and padding)
+- .ws-grid (2-col grid on mobile, 3-col on desktop optional)
+- .ws-card-btn (button that looks like a glass card)
+- .ws-card-btn.selected (gold outline + glow)
+- .ws-pill-row and .ws-pill for timeline segmented control
+- Hide Streamlit default button chrome for mission/timeline buttons and make them full-width in their containers.
+
+Suggested CSS (use this exact direction, tweak values if needed):
+- Reduce main container top padding
+- Set max width ~ 680px and center
+- Make cards ~90–110px tall on mobile
+- Make icons + title compact
+- Remove the huge grey button look
+
+2) UI Layout: Replace mission selection rendering code with this structure:
+
+A) Header (compact):
+“What’s your Mission?” + one-line subtitle
+
+B) Mission grid (2×2):
+Auto Purchase | Apartment
+Credit Card   | Bank Account
+Then one full-width row card: General Rebuild (optional) OR place it as 5th card below in a single row but still compact.
+
+Each mission card is a st.button with a unique key:
+if clicked: st.session_state["mission_goal"]=<goal>
+
+C) Timeline segmented row (3 pills, single row):
+ASAP (7 days) | 30 days | 90+ days
+Each is a small st.button pill:
+if clicked: st.session_state["mission_timeline"]=<timeline>
+
+D) Footer CTAs:
+- Primary: Continue → (only enabled if both selected; routes to upload panel)
+- Secondary: Skip for now (sets defaults goal="General Rebuild", timeline="30 days", then continues)
+
+IMPORTANT: Streamlit doesn’t allow true disabled buttons everywhere; implement disable by:
+- If not selected, show Continue but clicking shows a warning toast
+OR
+- Render Continue only when both selected
+
+3) Visual selection state:
+When mission card == selected:
+- apply selected CSS class
+- show small “✓” in corner (can be via CSS pseudo element or render a tiny mark)
+
+HOW TO MAKE CARD CLICKABLE IN STREAMLIT
+Use st.columns to create the grid.
+Inside each column:
+- wrap st.button in a container with custom CSS class so the button looks like a card.
+- Use CSS to make the button fill the container and style it (background blur, border, glow).
+
+EXACT DATA MODEL
+Goals:
+- "Auto Purchase"
+- "Apartment"
+- "Credit Card"
+- "Bank Account"
+- "General Rebuild"
+
+Timelines:
+- "ASAP (7 days)"
+- "30 days"
+- "90+ days"
+
+SESSION STATE
+- st.session_state["mission_goal"]
+- st.session_state["mission_timeline"]
+
+ROUTING
+On Continue:
+- go("upload") (or the correct next panel in this app)
+Do not break existing routing logic.
+
+DELIVERABLE
+- Show me the updated mission screen: compact, premium, minimal scrolling, tap-to-select cards, segmented timeline, one Continue CTA.
+- Confirm the old stacked Select buttons are removed.

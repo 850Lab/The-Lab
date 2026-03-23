@@ -1,0 +1,510 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "850 Lab Truth Sheet",
+  "description": "Strict template for credit report scanning. No guessing. Every value has receipts.",
+  "type": "object",
+  "required": [
+    "meta",
+    "consumer_identity",
+    "employment",
+    "credit_scores",
+    "accounts",
+    "inquiries",
+    "public_records",
+    "collections",
+    "consumer_statements",
+    "alerts"
+  ],
+  "additionalProperties": false,
+  "definitions": {
+    "truth_field": {
+      "type": "object",
+      "required": ["value", "how_sure_we_are", "receipt"],
+      "additionalProperties": false,
+      "properties": {
+        "value": {
+          "description": "The exact value from the report, or NOT_FOUND if missing"
+        },
+        "how_sure_we_are": {
+          "type": "string",
+          "enum": ["LOW", "MED", "HIGH", "NOT_FOUND"],
+          "description": "LOW = found but unclear, MED = found with some ambiguity, HIGH = crystal clear on the report, NOT_FOUND = not on the report"
+        },
+        "receipt": {
+          "type": ["object", "null"],
+          "description": "Where we found this on the report. Null only if NOT_FOUND.",
+          "additionalProperties": false,
+          "properties": {
+            "page": {
+              "type": ["string", "integer", "null"],
+              "description": "Page number or section identifier"
+            },
+            "section": {
+              "type": ["string", "null"],
+              "description": "Section name on the report"
+            },
+            "snippet": {
+              "type": ["string", "null"],
+              "description": "Exact text copied from the report"
+            }
+          }
+        }
+      }
+    },
+    "section_marker": {
+      "type": "object",
+      "required": ["section_found", "item_count"],
+      "additionalProperties": false,
+      "description": "Marks whether a section exists on the report and how many items were found",
+      "properties": {
+        "section_found": {
+          "type": "boolean",
+          "description": "True if this section exists on the report"
+        },
+        "item_count": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of items found in this section"
+        },
+        "receipt": {
+          "type": ["object", "null"],
+          "description": "Where this section was found (or null if section not on report)",
+          "additionalProperties": false,
+          "properties": {
+            "page": { "type": ["string", "integer", "null"] },
+            "section": { "type": ["string", "null"] }
+          }
+        }
+      }
+    }
+  },
+  "properties": {
+    "meta": {
+      "type": "object",
+      "required": ["bureau", "report_date", "file_id", "scanned_at", "report_type"],
+      "additionalProperties": false,
+      "properties": {
+        "bureau": {
+          "$ref": "#/definitions/truth_field",
+          "description": "Which bureau: Equifax, Experian, or TransUnion"
+        },
+        "report_date": {
+          "$ref": "#/definitions/truth_field",
+          "description": "Date the report was generated"
+        },
+        "file_id": {
+          "$ref": "#/definitions/truth_field",
+          "description": "Bureau's file or confirmation number"
+        },
+        "report_type": {
+          "$ref": "#/definitions/truth_field",
+          "description": "Type of report (Consumer Disclosure, Credit Report, etc.)"
+        },
+        "scanned_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When our scanner processed this report"
+        }
+      }
+    },
+    "consumer_identity": {
+      "type": "object",
+      "required": ["full_name", "ssn_last_four", "date_of_birth", "current_address", "previous_addresses", "phone_numbers", "aka_names"],
+      "additionalProperties": false,
+      "properties": {
+        "full_name": {
+          "$ref": "#/definitions/truth_field"
+        },
+        "ssn_last_four": {
+          "$ref": "#/definitions/truth_field"
+        },
+        "date_of_birth": {
+          "$ref": "#/definitions/truth_field"
+        },
+        "current_address": {
+          "$ref": "#/definitions/truth_field"
+        },
+        "previous_addresses": {
+          "type": "object",
+          "required": ["_marker", "items"],
+          "additionalProperties": false,
+          "properties": {
+            "_marker": { "$ref": "#/definitions/section_marker" },
+            "items": {
+              "type": "array",
+              "items": { "$ref": "#/definitions/truth_field" }
+            }
+          }
+        },
+        "phone_numbers": {
+          "type": "object",
+          "required": ["_marker", "items"],
+          "additionalProperties": false,
+          "properties": {
+            "_marker": { "$ref": "#/definitions/section_marker" },
+            "items": {
+              "type": "array",
+              "items": { "$ref": "#/definitions/truth_field" }
+            }
+          }
+        },
+        "aka_names": {
+          "type": "object",
+          "required": ["_marker", "items"],
+          "additionalProperties": false,
+          "description": "Also Known As names",
+          "properties": {
+            "_marker": { "$ref": "#/definitions/section_marker" },
+            "items": {
+              "type": "array",
+              "items": { "$ref": "#/definitions/truth_field" }
+            }
+          }
+        }
+      }
+    },
+    "employment": {
+      "type": "object",
+      "required": ["_marker", "items"],
+      "additionalProperties": false,
+      "properties": {
+        "_marker": { "$ref": "#/definitions/section_marker" },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["employer_name", "position", "date_reported", "date_hired"],
+            "additionalProperties": false,
+            "properties": {
+              "employer_name": { "$ref": "#/definitions/truth_field" },
+              "position": { "$ref": "#/definitions/truth_field" },
+              "date_reported": { "$ref": "#/definitions/truth_field" },
+              "date_hired": { "$ref": "#/definitions/truth_field" }
+            }
+          }
+        }
+      }
+    },
+    "credit_scores": {
+      "type": "object",
+      "required": ["score", "score_model", "score_range", "score_factors"],
+      "additionalProperties": false,
+      "properties": {
+        "score": {
+          "$ref": "#/definitions/truth_field"
+        },
+        "score_model": {
+          "$ref": "#/definitions/truth_field",
+          "description": "FICO, VantageScore, etc."
+        },
+        "score_range": {
+          "$ref": "#/definitions/truth_field",
+          "description": "Min-Max range (e.g., 300-850)"
+        },
+        "score_factors": {
+          "type": "object",
+          "required": ["_marker", "items"],
+          "additionalProperties": false,
+          "properties": {
+            "_marker": { "$ref": "#/definitions/section_marker" },
+            "items": {
+              "type": "array",
+              "items": { "$ref": "#/definitions/truth_field" }
+            }
+          }
+        }
+      }
+    },
+    "accounts": {
+      "type": "object",
+      "required": ["_marker", "items"],
+      "additionalProperties": false,
+      "properties": {
+        "_marker": { "$ref": "#/definitions/section_marker" },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "creditor_name",
+              "account_number",
+              "account_type",
+              "account_status",
+              "responsibility",
+              "date_opened",
+              "date_closed",
+              "date_last_active",
+              "date_first_delinquency",
+              "credit_limit",
+              "high_balance",
+              "current_balance",
+              "payment_status",
+              "past_due_amount",
+              "monthly_payment",
+              "terms",
+              "last_payment_date",
+              "last_reported_date",
+              "dispute_status",
+              "payment_history",
+              "remarks"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "creditor_name": { "$ref": "#/definitions/truth_field" },
+              "account_number": {
+                "$ref": "#/definitions/truth_field",
+                "description": "Usually partial/masked"
+              },
+              "account_type": {
+                "$ref": "#/definitions/truth_field",
+                "description": "Revolving, Installment, Mortgage, Auto, Student Loan, etc."
+              },
+              "account_status": {
+                "$ref": "#/definitions/truth_field",
+                "description": "Open, Closed, Paid, ChargeOff, etc."
+              },
+              "responsibility": {
+                "$ref": "#/definitions/truth_field",
+                "description": "Individual, Joint, Authorized User, Cosigner"
+              },
+              "date_opened": { "$ref": "#/definitions/truth_field" },
+              "date_closed": { "$ref": "#/definitions/truth_field" },
+              "date_last_active": { "$ref": "#/definitions/truth_field" },
+              "date_first_delinquency": {
+                "$ref": "#/definitions/truth_field",
+                "description": "Original delinquency date for 7-year calculation"
+              },
+              "credit_limit": { "$ref": "#/definitions/truth_field" },
+              "high_balance": { "$ref": "#/definitions/truth_field" },
+              "current_balance": { "$ref": "#/definitions/truth_field" },
+              "payment_status": {
+                "$ref": "#/definitions/truth_field",
+                "description": "Current, 30 days, 60 days, 90 days, 120 days, etc."
+              },
+              "past_due_amount": { "$ref": "#/definitions/truth_field" },
+              "monthly_payment": { "$ref": "#/definitions/truth_field" },
+              "terms": {
+                "$ref": "#/definitions/truth_field",
+                "description": "Loan term (e.g., 60 months, Revolving)"
+              },
+              "last_payment_date": { "$ref": "#/definitions/truth_field" },
+              "last_reported_date": { "$ref": "#/definitions/truth_field" },
+              "dispute_status": {
+                "$ref": "#/definitions/truth_field",
+                "description": "Whether account is currently disputed"
+              },
+              "payment_history": {
+                "type": "object",
+                "required": ["_marker", "items"],
+                "additionalProperties": false,
+                "properties": {
+                  "_marker": { "$ref": "#/definitions/section_marker" },
+                  "items": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": ["month", "status"],
+                      "additionalProperties": false,
+                      "properties": {
+                        "month": { "$ref": "#/definitions/truth_field" },
+                        "status": {
+                          "$ref": "#/definitions/truth_field",
+                          "description": "OK, 30, 60, 90, 120, CO, etc."
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              "remarks": {
+                "type": "object",
+                "required": ["_marker", "items"],
+                "additionalProperties": false,
+                "properties": {
+                  "_marker": { "$ref": "#/definitions/section_marker" },
+                  "items": {
+                    "type": "array",
+                    "items": { "$ref": "#/definitions/truth_field" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "inquiries": {
+      "type": "object",
+      "required": ["_marker", "hard_inquiries", "soft_inquiries"],
+      "additionalProperties": false,
+      "properties": {
+        "_marker": { "$ref": "#/definitions/section_marker" },
+        "hard_inquiries": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["inquiry_date", "creditor_name", "inquiry_type"],
+            "additionalProperties": false,
+            "properties": {
+              "inquiry_date": { "$ref": "#/definitions/truth_field" },
+              "creditor_name": { "$ref": "#/definitions/truth_field" },
+              "inquiry_type": { "$ref": "#/definitions/truth_field" }
+            }
+          }
+        },
+        "soft_inquiries": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["inquiry_date", "creditor_name", "inquiry_type"],
+            "additionalProperties": false,
+            "properties": {
+              "inquiry_date": { "$ref": "#/definitions/truth_field" },
+              "creditor_name": { "$ref": "#/definitions/truth_field" },
+              "inquiry_type": { "$ref": "#/definitions/truth_field" }
+            }
+          }
+        }
+      }
+    },
+    "public_records": {
+      "type": "object",
+      "required": ["_marker", "items"],
+      "additionalProperties": false,
+      "properties": {
+        "_marker": { "$ref": "#/definitions/section_marker" },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["record_type", "court_name", "case_number", "filed_date", "resolved_date", "status", "amount", "responsibility"],
+            "additionalProperties": false,
+            "properties": {
+              "record_type": {
+                "$ref": "#/definitions/truth_field",
+                "description": "Bankruptcy Ch 7, Bankruptcy Ch 13, Judgment, Tax Lien, Civil Judgment"
+              },
+              "court_name": { "$ref": "#/definitions/truth_field" },
+              "case_number": { "$ref": "#/definitions/truth_field" },
+              "filed_date": { "$ref": "#/definitions/truth_field" },
+              "resolved_date": { "$ref": "#/definitions/truth_field" },
+              "status": { "$ref": "#/definitions/truth_field" },
+              "amount": { "$ref": "#/definitions/truth_field" },
+              "responsibility": { "$ref": "#/definitions/truth_field" }
+            }
+          }
+        }
+      }
+    },
+    "collections": {
+      "type": "object",
+      "required": ["_marker", "items"],
+      "additionalProperties": false,
+      "properties": {
+        "_marker": { "$ref": "#/definitions/section_marker" },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "collection_agency",
+              "original_creditor",
+              "account_number",
+              "date_opened",
+              "date_first_delinquency",
+              "balance",
+              "original_amount",
+              "status",
+              "dispute_status",
+              "last_reported_date"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "collection_agency": { "$ref": "#/definitions/truth_field" },
+              "original_creditor": { "$ref": "#/definitions/truth_field" },
+              "account_number": { "$ref": "#/definitions/truth_field" },
+              "date_opened": { "$ref": "#/definitions/truth_field" },
+              "date_first_delinquency": { "$ref": "#/definitions/truth_field" },
+              "balance": { "$ref": "#/definitions/truth_field" },
+              "original_amount": { "$ref": "#/definitions/truth_field" },
+              "status": { "$ref": "#/definitions/truth_field" },
+              "dispute_status": { "$ref": "#/definitions/truth_field" },
+              "last_reported_date": { "$ref": "#/definitions/truth_field" }
+            }
+          }
+        }
+      }
+    },
+    "consumer_statements": {
+      "type": "object",
+      "required": ["_marker", "items"],
+      "additionalProperties": false,
+      "description": "Consumer-added statements on the credit report",
+      "properties": {
+        "_marker": { "$ref": "#/definitions/section_marker" },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["statement_text", "date_added"],
+            "additionalProperties": false,
+            "properties": {
+              "statement_text": { "$ref": "#/definitions/truth_field" },
+              "date_added": { "$ref": "#/definitions/truth_field" }
+            }
+          }
+        }
+      }
+    },
+    "alerts": {
+      "type": "object",
+      "required": ["fraud_alerts", "active_duty_alerts", "freeze_status"],
+      "additionalProperties": false,
+      "description": "Security alerts and freezes on the credit file",
+      "properties": {
+        "fraud_alerts": {
+          "type": "object",
+          "required": ["_marker", "items"],
+          "additionalProperties": false,
+          "properties": {
+            "_marker": { "$ref": "#/definitions/section_marker" },
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["alert_type", "date_placed", "expiration_date"],
+                "additionalProperties": false,
+                "properties": {
+                  "alert_type": { "$ref": "#/definitions/truth_field" },
+                  "date_placed": { "$ref": "#/definitions/truth_field" },
+                  "expiration_date": { "$ref": "#/definitions/truth_field" }
+                }
+              }
+            }
+          }
+        },
+        "active_duty_alerts": {
+          "type": "object",
+          "required": ["_marker", "items"],
+          "additionalProperties": false,
+          "properties": {
+            "_marker": { "$ref": "#/definitions/section_marker" },
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["date_placed", "expiration_date"],
+                "additionalProperties": false,
+                "properties": {
+                  "date_placed": { "$ref": "#/definitions/truth_field" },
+                  "expiration_date": { "$ref": "#/definitions/truth_field" }
+                }
+              }
+            }
+          }
+        },
+        "freeze_status": { "$ref": "#/definitions/truth_field" }
+      }
+    }
+  }
+}

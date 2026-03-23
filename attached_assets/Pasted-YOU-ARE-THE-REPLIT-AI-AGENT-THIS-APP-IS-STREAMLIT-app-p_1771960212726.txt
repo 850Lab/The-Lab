@@ -1,0 +1,300 @@
+YOU ARE THE REPLIT AI AGENT. THIS APP IS STREAMLIT (app.py). BACKEND USES SUPABASE.
+
+META-GOAL
+Build a cohesive MVP “Credit Command Center” experience for 850 Lab inside Streamlit that is:
+- compact (no scroll-wall pages)
+- click-through (panel routing) instead of click+scroll
+- premium “golden liquid glass” aesthetic (Apple-like warm translucent glass)
+- mission-driven (user selects goal + timeline BEFORE upload)
+- voice-personalized (Voice Profile stored per user and applied to letters safely)
+- dynamic War Room 72-hour plan (generated from metrics + mission + violations)
+- hybrid tone by phase (War Room → Monitoring → Escalation)
+- admin observable (admin can click a user and see individual mission + metrics + actions)
+- nudges-ready (rule-based triggers; show in admin and optional in-app later)
+
+CRITICAL RULES (NON-NEGOTIABLE)
+1) DO NOT disrupt or refactor existing backend logic, payment flow (Certified Mail paywall), dispute engine, letter generation core facts/claims, uploads, or existing routes.
+2) All additions must be modular + additive. Minimal edits to existing code paths.
+3) Certified Mail remains the ONLY paid step. Everything else is free.
+4) Safety/Compliance: no advising deception, no false identity theft, no disputing accurate items, no premature CFPB filing. Voice Profile changes style only, never substance.
+
+────────────────────────────────────────────────────────
+PART 1 — UI ARCHITECTURE: CLICK-THROUGH “PANELS” (NO TABS / NO BOTTOM NAV)
+Implement a panel-based UI state machine using session_state.
+
+STATE
+st.session_state["panel"] default = "home"
+Allowed panels:
+- home
+- mission_setup (pre-upload)
+- upload
+- results_home (the “ocean arrival” workspace after analysis)
+- command
+- tracker
+- documents
+- strategy (war room)
+- send_mail
+- upload_proof
+- escalation
+- admin_users (admin only)
+- admin_user_detail (admin only)
+
+Routing helper:
+def go(panel): st.session_state["panel"]=panel; st.rerun()
+
+RENDER RULE
+Home/workspace screens must be compact. Each non-home panel must include:
+[← Back] button always routes to results_home or prior panel.
+No dead ends. Every action leads somewhere and back.
+
+────────────────────────────────────────────────────────
+PART 2 — GOLDEN LIQUID GLASS THEME (APPLE-LIKE)
+Update ONLY CSS/styling. No logic changes.
+
+- Dark background gradient for contrast
+- Warm translucent amber glass cards
+- Subtle glow border + inner highlight
+- Tight spacing (reduce Streamlit whitespace)
+- Primary CTA has elegant gold gradient + soft glow (not neon)
+
+Create reusable CSS classes:
+.glass-card, .glass-grid, .status-pill, .cta-gold, .muted-text
+
+Ensure workspace cards feel like portals (Open →) rather than long content blocks.
+
+────────────────────────────────────────────────────────
+PART 3 — MISSION MODE (BEFORE UPLOAD) + ARCHIVE
+Add a Mission Setup step BEFORE upload.
+
+Mission Goal options (cards or compact selection):
+- Auto Purchase
+- Apartment Approval
+- Credit Card
+- Bank Account
+- General Rebuild
+
+Timeline options:
+- ASAP (7 days)
+- 30 days
+- 90+ days
+
+Store as:
+st.session_state["mission_goal"]
+st.session_state["mission_timeline"]
+
+Allow user to switch mission later. When switched:
+- archive previous mission instance (do not overwrite)
+- create new mission instance snapshot
+- recalc plan + priorities
+- keep user confidence + transparency; do not block mission changes
+
+Supabase table: missions
+Fields:
+- id uuid pk
+- user_id uuid (auth.users.id)
+- goal text
+- timeline text
+- status text (active/archived)
+- risk_level text
+- primary_lever text
+- strike_metrics_snapshot jsonb
+- war_plan_snapshot jsonb
+- created_at timestamptz default now()
+- archived_at timestamptz nullable
+
+RLS:
+Users can only read/write their own missions.
+
+Only 1 active mission at a time.
+
+────────────────────────────────────────────────────────
+PART 4 — VOICE PROFILE (STORED PER USER, APPLIED TO EVERY LETTER)
+Add “Voice Profile” step before generating letters, with skip defaults.
+This must NOT alter legal facts/claims—style only.
+
+Supabase table: voice_profiles
+- user_id unique
+- tone, detail_level, closing, preferred_phrases jsonb, created_at, updated_at
+RLS by auth.uid()
+
+UI (compact card):
+Tone: Calm/Professional (default), Firm/Direct, Short/Concise
+Detail: Minimal, Standard (default), Detailed
+Closing: Sincerely (default), Respectfully, Thank you
+Preferred phrases: safe selectable phrasings (dispute/request/verify)
+Buttons: Save + Continue, Skip (use defaults)
+
+Integration:
+- Add get_effective_voice_profile(user_id) returning defaults if none
+- Pass voice_profile into letter renderer
+- Only style-level transformations:
+  greeting variants, transition sentences, synonym swaps from preferred_phrases, closing/sign-off, paragraph spacing
+- DO NOT change account lists, dates, amounts, addresses, legal citations, dispute reasons, requested remedies.
+
+Optionally store snapshot on letters metadata:
+letters.voice_profile_snapshot jsonb (if letters table exists)
+
+────────────────────────────────────────────────────────
+PART 5 — STRIKE METRICS LAYER (LIGHTWEIGHT CALCULATION)
+Add compute_strike_metrics(parsed_report) layer (already started; refine if needed).
+Store:
+st.session_state["strike_metrics"]
+
+Compute where possible:
+- total_accounts
+- revolving/installment counts
+- revolving balances/limits + utilization %
+- max single-card utilization %
+- negative account counts (collections/charge-offs)
+- inquiry counts (12mo if dates exist)
+- thin_file flag
+- data_quality flags
+- derived: risk_level + primary_lever candidate
+
+Gracefully degrade if data missing.
+
+────────────────────────────────────────────────────────
+PART 6 — DYNAMIC 72-HOUR WAR ROOM PLAN (THE ROCKET)
+Create /src/war_room_plan.py:
+build_war_room_plan(strike_metrics, violations, tradelines, mission_goal, mission_timeline, tracker_state) -> plan
+
+Plan must be:
+- dynamic (only include actions that apply)
+- war-room tone (decisive, tactical)
+- action-based (buttons route to panels)
+- compact (top 3 visible, phases collapsed)
+- compliant (no deception, no premature CFPB)
+
+Phases:
+0–6 LOCK FIELD:
+- Freeze bureaus (links)
+- Freeze ChexSystems (if bank goal OR generally beneficial)
+- Baseline snapshot saved
+- Proof readiness (if certified mail requires)
+
+6–24 DEPLOY STRIKE:
+- Generate letters (if not done)
+- Send Certified Mail (if not done) (routes to send_mail)
+- Log tracking # (routes to documents)
+- Start 30-day clock (routes to tracker)
+
+24–48 OPTIMIZE:
+- Utilization assault if high/critical (routes to documents or “balance update” input)
+- Inquiry discipline + rate-shop window guidance (auto mission)
+- Targeted goodwill / executive call scripts ONLY when appropriate (paid collections/goodwill-eligible); scripts must be factual and polite.
+
+48–72 LOAD ESCALATION WEAPONS:
+- Prepare MOV + CFPB draft + exec escalation templates (PREP ONLY)
+- Day 28 alert setup
+- Day 31 escalation authorization (only when clock >=31)
+
+Output:
+- risk_level (HIGH/MOD/CONTROLLED)
+- primary_lever (UTILIZATION/DELETION/STABILITY/OPTIMIZATION)
+- top3_actions
+- phases dict
+- notes + transparency line (e.g., “Disputes rarely resolve in 72 hours; fastest lever is utilization & pull timing.”)
+
+Completion:
+st.session_state["war_room_done"][action_id] = bool
+Show progress X/Y.
+
+Hybrid tone:
+- If within 72h: War Room language
+- If day 1–30 clock running: Monitoring tone on workspace
+- If day >=31: Escalation tone + “Authorized” label
+
+────────────────────────────────────────────────────────
+PART 7 — RESULTS WORKSPACE (“OCEAN ARRIVAL”) COMPACT HOME
+After analysis, user lands on results_home which must feel calm + powerful.
+
+results_home layout (NO SCROLL WALL):
+- Header: Round 1 Workspace
+- Status strip pills: Letters / Clock / Proof
+- Next Action hero card (ONE CTA) that routes to correct panel based on state priority:
+  1) proof missing -> upload_proof/documents
+  2) letters ready not mailed -> send_mail
+  3) mailed not started clock -> tracker
+  4) clock running -> documents (response upload focus)
+  5) day>=31 -> escalation
+- 2x2 portal grid (glass cards) with compact summaries + [Open →] routing:
+  Command, Tracker, Documents, Strategy (War Room)
+
+No duplicate stacked nav below grid. The grid is the navigation.
+
+────────────────────────────────────────────────────────
+PART 8 — ADMIN DASHBOARD (INTERNAL) + USER DRILL-DOWN
+Create Admin panel(s) restricted by role.
+Add a Supabase role check (e.g., profiles.is_admin = true) or allowlist.
+
+Admin Users List (admin_users):
+Table columns:
+- email
+- active_mission_goal
+- active_timeline
+- risk_level
+- primary_lever
+- strike completion %
+- investigation day
+- stability status
+- last activity
+
+Click user -> admin_user_detail:
+Show:
+- Active Mission Snapshot (goal/timeline/risk/lever/progress/day)
+- Strike Metrics snapshot (utilization, negatives, inquiries, thin file)
+- War Room progress (actions completed)
+- Mission history (archived missions list)
+- Latest report timestamp
+- Voice profile snapshot (tone/detail/closing)
+
+Admin should be able to quickly understand “why user is stuck” without reading paragraphs.
+
+────────────────────────────────────────────────────────
+PART 9 — NUDGE + INSIGHTS INFRA (RULE-BASED, ADMIN-VISIBLE)
+Implement a lightweight rules engine (no ML) that evaluates user state and produces “insights” for admin + future nudges.
+
+Create:
+- /src/nudge_rules.py with evaluate_rules(user_state) -> list of nudges
+Nudge fields:
+- id
+- trigger_name
+- severity (info/warn/critical)
+- message
+- recommended_action_route (panel)
+- cooldown_days
+
+MVP rules (start with 5):
+1) letters_generated but not mailed after 48h
+2) clock not started after mailing
+3) high/critical utilization and no balance update logged in 72h
+4) approaching day 28
+5) day 31+ escalation ready but not opened
+
+Store nudge events in Supabase:
+table: nudge_log (user_id, nudge_id, created_at)
+Admin view shows active nudges per user.
+User-facing nudges optional later (do not overbuild now).
+
+────────────────────────────────────────────────────────
+DELIVERABLES REQUIRED
+- List of files created/changed
+- Supabase SQL migrations (missions, voice_profiles, nudge_log) + RLS policies
+- Confirmation:
+  * certified mail paywall unchanged
+  * dispute/letter engine substance unchanged
+  * UI is compact + click-through (no scroll walls)
+  * results_home is the “ocean arrival” workspace
+  * admin can click a user and see their active mission + individual data
+  * mission switching archives prior missions
+
+IMPLEMENTATION ORDER (DO IN THIS ORDER)
+1) Panel routing skeleton + results_home workspace portals (compact)
+2) Mission setup pre-upload + missions table (active/archive)
+3) Voice Profile storage + safe style application in letter renderer
+4) Strike metrics compute + store
+5) War Room plan generator + UI + completion tracking
+6) Admin users list + user detail drilldown
+7) Nudge rules + admin visibility
+
+Now implement with minimal disruption and keep the UI compact, premium, and looped without dead ends.

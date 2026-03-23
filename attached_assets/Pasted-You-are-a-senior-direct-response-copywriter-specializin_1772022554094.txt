@@ -1,0 +1,104 @@
+You are a senior direct-response copywriter specializing in fintech, SaaS, and high-trust consumer products.
+
+I am building a credit report analysis platform called 850 Lab.
+
+We are transitioning from “First 100 Free Users” positioning to a new framework:
+
+Private Beta Access — Free While We Finalize The Experience
+
+Your task:
+
+Rewrite my entire website copy to align with this new framework.
+
+This is NOT a hype brand.
+This is NOT loud credit repair marketing.
+This is calm, intelligent, trustworthy positioning.
+
+Tone requirements:
+	•	Calm authority
+	•	Clean, modern, confident
+	•	No gimmicky scarcity
+	•	No overpromising
+	•	No emotional manipulation
+	•	No “fix your credit overnight”
+	•	No fake urgency
+	•	No aggressive claims
+
+The brand should feel:
+	•	Analytical
+	•	Secure
+	•	Intelligent
+	•	Controlled
+	•	Professional
+	•	Built by someone who understands the system
+
+We are positioning 850 Lab as:
+AI-powered credit report analysis + structured dispute guidance.
+
+We are NOT claiming to remove accurate items.
+We are NOT guaranteeing deletions.
+We are NOT acting as a law firm.
+
+We are offering:
+• AI analysis of credit reports
+• Identification of potential reporting inconsistencies
+• Structured dispute letter generation
+• Educational guidance
+
+The goal of this rewrite:
+	1.	Remove “First 100 Free” language.
+	2.	Replace it with Private Beta positioning.
+	3.	Improve clarity around:
+	•	What this is
+	•	Who it’s for
+	•	What happens after upload
+	•	What users receive
+	4.	Reduce friction.
+	5.	Increase trust.
+	6.	Make the user feel safe uploading their report.
+	7.	Prepare psychologically for eventual paid launch.
+
+Structure the output as:
+	1.	Hero Section
+	2.	Subheadline
+	3.	CTA buttons
+	4.	How It Works Section
+	5.	What You Receive Section
+	6.	Who It’s For
+	7.	Why 850 Lab Is Different
+	8.	Beta Access Section
+	9.	FAQ Section
+	10.	Trust / Security Section
+	11.	Final Call To Action
+
+In the Beta Section:
+Position it as:
+
+“Private Beta Access — Free While We Finalize UX and Performance”
+
+Explain:
+• We are refining the experience.
+• Beta access will close once finalized.
+• No payment required during beta.
+• Feedback helps improve the platform.
+
+Make sure the copy:
+	•	Feels premium
+	•	Feels structured
+	•	Avoids fluff
+	•	Avoids buzzwords
+	•	Avoids dramatic language
+	•	Avoids unrealistic promises
+	•	Avoids industry clichés
+
+Important:
+Do not use aggressive credit repair language.
+Do not use emotional fear-based hooks.
+Do not overuse exclamation points.
+Do not mention competitors.
+Do not compare to other services.
+
+This should feel like:
+A precision tool — not a hustle.
+
+Now rewrite the entire website accordingly.

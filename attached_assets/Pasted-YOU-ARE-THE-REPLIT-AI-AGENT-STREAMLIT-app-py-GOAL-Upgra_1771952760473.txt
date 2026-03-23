@@ -1,0 +1,140 @@
+YOU ARE THE REPLIT AI AGENT. STREAMLIT app.py.
+
+GOAL
+Upgrade the current workspace UI to a premium “Golden Liquid Glass” design inspired by the latest Apple translucent UI style.
+
+CRITICAL RULES
+1) DO NOT modify backend logic.
+2) DO NOT modify dispute engine, letter generation, payment, uploads, or routing.
+3) DO NOT restructure the panel system.
+4) Only update CSS and visual styling.
+5) Preserve current layout and navigation behavior.
+6) Remove any duplicated stacked navigation below the 2x2 grid if still present.
+
+DESIGN OBJECTIVE
+The workspace should feel:
+- Warm
+- Premium
+- Soft depth
+- Subtle gold translucency
+- Controlled and calm
+- Minimal and modern
+
+This is NOT bright yellow.
+This is NOT flat gold.
+This is translucent amber glass with depth.
+
+IMPLEMENTATION STEPS
+
+1) DARKEN BACKGROUND FOR CONTRAST
+
+Inject CSS:
+
+.stApp {
+  background: linear-gradient(
+    180deg,
+    #0f0f12 0%,
+    #1a1a1f 100%
+  );
+  color: #f5f5f5;
+}
+
+Reduce default Streamlit padding slightly so the workspace feels tighter.
+
+2) CREATE GOLDEN LIQUID GLASS CARD STYLE
+
+Replace existing .glass-card with:
+
+.glass-card {
+  background: linear-gradient(
+    145deg,
+    rgba(255, 215, 120, 0.22),
+    rgba(255, 190, 80, 0.12)
+  );
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+
+  border: 1px solid rgba(255, 215, 140, 0.35);
+  border-radius: 20px;
+
+  box-shadow:
+    0 8px 30px rgba(212, 160, 23, 0.18),
+    inset 0 1px 1px rgba(255, 240, 200, 0.4);
+
+  padding: 16px 18px;
+  transition: all 0.25s ease;
+}
+
+3) ADD SUBTLE HOVER/TAP DEPTH
+
+.glass-card:hover {
+  transform: translateY(-2px);
+  box-shadow:
+    0 14px 40px rgba(212, 160, 23, 0.25),
+    inset 0 1px 1px rgba(255, 240, 200, 0.5);
+}
+
+4) STYLE STATUS PILLS
+
+.status-pill {
+  background: rgba(255, 215, 120, 0.18);
+  border: 1px solid rgba(255, 215, 120, 0.35);
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-weight: 600;
+  font-size: 13px;
+  letter-spacing: 0.4px;
+}
+
+5) REFINE 2x2 GRID CONTAINER
+
+Wrap the 2x2 grid inside ONE parent golden glass container.
+Inside it:
+- Reduce spacing between cards.
+- Reduce vertical padding ~25%.
+- Ensure full grid fits within one mobile viewport when possible.
+
+6) NEXT ACTION BUTTON REFINEMENT
+
+Primary CTA should be:
+
+background: linear-gradient(
+  90deg,
+  #d4a017,
+  #f2c94c
+);
+color: #1a1a1f;
+font-weight: 600;
+border-radius: 14px;
+
+Add soft glow:
+box-shadow: 0 6px 20px rgba(212,160,23,0.4);
+
+Do NOT oversaturate.
+Do NOT make neon.
+Keep elegant.
+
+7) REMOVE VISUAL CLUTTER
+
+- Remove duplicated navigation blocks under the grid.
+- Remove unnecessary headings.
+- Remove excess margins.
+- Tighten layout so it feels like a unified premium module.
+
+IMPORTANT
+
+This is a visual refinement only.
+No new routing.
+No new logic.
+No structural rewrite.
+No expanding functionality.
+
+DELIVERABLES
+
+- Updated CSS block
+- Confirmed layout still functional
+- Confirmed no backend changes
+- Confirmed grid is primary navigation
+- Confirmed no duplicate nav sections remain
+
+Now implement the golden liquid glass visual upgrade.

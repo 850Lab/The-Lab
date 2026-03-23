@@ -1,0 +1,113 @@
+YOU ARE THE REPLIT AI AGENT. APP IS STREAMLIT (app.py).
+
+GOAL
+Add a lightweight “Strike Metrics” calculation layer to support a dynamic 72-hour War Room plan.
+This is an MVP calculation layer ONLY:
+- compute a small set of key metrics from existing parsed report data
+- store results in session_state and (optionally) Supabase
+- do NOT change dispute logic, letter logic, payment flow, or existing outputs
+
+NON-NEGOTIABLE RULES
+1) Do NOT alter any letter wording, legal claims, violation detection, or selection logic.
+2) Do NOT restructure existing data ingestion. Only read existing parsed objects.
+3) If data is missing (limits, balances, dates), gracefully degrade and compute what you can.
+4) Keep it additive and non-disruptive.
+
+WHAT TO BUILD
+A) A new module/file (preferred):
+   /src/strike_metrics.py  (or a similar utilities folder you already use)
+   containing:
+   - dataclass StrikeMetrics
+   - function compute_strike_metrics(parsed_report: dict) -> StrikeMetrics
+   - helper functions for safe parsing
+
+B) Store results in:
+   st.session_state["strike_metrics"] = metrics.as_dict()
+
+C) Add a small “Strike Metrics” debug view (collapsed expander) on the workspace page for now:
+   st.expander("Strike Metrics (debug)", expanded=False)
+
+METRICS TO COMPUTE (LIGHTWEIGHT, HIGH-VALUE)
+Compute these if possible:
+
+1) total_accounts
+2) revolving_accounts_count
+3) installment_accounts_count
+4) total_revolving_balance (sum)
+5) total_revolving_limit (sum)  (if limits available)
+6) overall_utilization_pct = total_revolving_balance / total_revolving_limit * 100 (if both available)
+7) max_single_card_utilization_pct (if per-card limit/balance available)
+8) negative_accounts_count (charge-off, collection, repo, foreclosure, etc.)
+9) collections_count (active)
+10) paid_collections_count (if detectable)
+11) charge_off_count
+12) late_payment_indicators_count (if present; otherwise leave None)
+13) inquiries_12mo_count (if inquiry dates available; otherwise count inquiries total)
+14) oldest_account_age_months (if open_date available)
+15) newest_account_age_months (if open_date available)
+16) thin_file_flag = total_accounts < 5
+17) high_utilization_flag = overall_utilization_pct >= 50 (if available)
+18) critical_utilization_flag = overall_utilization_pct >= 70 (if available)
+19) inquiry_heavy_flag = inquiries_12mo_count >= 6 (if available)
+20) “primary_lever” classification:
+   - if critical_utilization_flag -> "UTILIZATION"
+   - elif negative_accounts_count >= 1 -> "DELETION"
+   - elif inquiry_heavy_flag -> "STABILITY"
+   - else -> "OPTIMIZATION"
+
+IMPORTANT: Keep the logic deterministic and explainable.
+
+INPUT ASSUMPTIONS (HANDLE FLEXIBLY)
+Your parsed_report may have varying shapes. Implement robust getters:
+- accounts list might be at parsed_report["accounts"] or parsed_report["tradelines"]
+- balance might be "balance", "current_balance", "amount"
+- limit might be "limit", "credit_limit"
+- type might be "account_type" or "type" (revolving/installment)
+- status might be "status", "payment_status", "account_status"
+- open_date might be "open_date", "date_opened"
+- inquiries might be parsed_report["inquiries"] (list)
+
+Add a mapping layer:
+- normalize account types: revolving vs installment
+- normalize negative statuses: collection/chargeoff/late etc.
+
+GRACEFUL DEGRADATION
+If limits missing:
+- utilization metrics become None
+- still compute counts and flags based on what exists
+If dates missing:
+- age metrics become None
+If inquiry dates missing:
+- use total inquiry count as a rough proxy and set inquiries_12mo_count=None
+
+OUTPUT FORMAT
+Create:
+StrikeMetrics.as_dict() returning keys above + a “data_quality” section:
+- has_limits: bool
+- has_balances: bool
+- has_dates: bool
+- has_inquiry_dates: bool
+- notes: list of strings about missing fields
+
+INTEGRATION POINT
+Find where the app currently finishes parsing/analyzing the uploaded report and builds the results/workspace page.
+Right after parsing is complete and before rendering the workspace:
+- compute_strike_metrics(parsed_report)
+- store in st.session_state
+- (optional) persist in Supabase under a “user_metrics” table OR store in a JSON column on an existing user/profile record.
+For MVP, session_state is sufficient; persistence is optional.
+
+DELIVERABLES
+1) New file: strike_metrics.py (or similar)
+2) Updated app.py to compute and store metrics once per report upload
+3) Debug expander showing:
+   - primary_lever
+   - utilization pct (if available)
+   - negative_accounts_count
+   - inquiries count
+   - thin_file_flag
+   - data_quality summary
+4) Confirm no changes to letters/disputes/payment.
+
+NOW IMPLEMENT IT.
+Start by inspecting parsed_report structure in current app and add safe normalization so it won’t crash on missing fields.

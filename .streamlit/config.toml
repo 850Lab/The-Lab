@@ -1,0 +1,27 @@
+[server]
+headless = true
+address = "0.0.0.0"
+port = 5000
+runOnSave = false
+enableXsrfProtection = false
+enableCORS = false
+enableWebsocketCompression = true
+maxUploadSize = 500
+enableStaticServing = true
+
+[browser]
+gatherUsageStats = false
+
+[runner]
+fastReruns = true
+
+[client]
+toolbarMode = "minimal"
+
+[theme]
+base = "light"
+primaryColor = "#D4A017"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F7F7F8"
+textColor = "#1A1A1A"
+font = "sans serif"

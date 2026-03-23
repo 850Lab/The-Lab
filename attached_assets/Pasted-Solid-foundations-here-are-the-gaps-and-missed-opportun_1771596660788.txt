@@ -1,0 +1,20 @@
+Solid foundations — here are the gaps and missed opportunities I see:
+
+Security / Correctness
+
+No founder welcome email. When someone becomes a founding member, there's no email confirming it. They might not even realize it happened. A "Welcome, Founding Member" email with what they got (9 rounds, 9 letters, transfer ability) would reinforce the value and reduce support questions.
+Transfer system has no recipient notification. When a founder transfers rounds to someone, the recipient has no idea — they'd only notice if they happened to check their balance. A "You received a gift" email would make transfers feel meaningful and drive the viral loop you're going for.
+Growth / Conversion
+3. No referral program tie-in with founders. You have a referral system and you have a transfer system, but they're separate. Founders who transfer rounds to friends could automatically generate a referral link — that's your strongest viral channel and it's not connected.
+
+No urgency trigger when spots get low. The landing page shows "X of 100 spots remaining" but there's no behavior change as spots get scarce. When it drops below 10-20 spots, the messaging could shift to more urgent language ("Only 7 spots left — claimed 3 today") to accelerate signups.
+Testimonials are static/hardcoded. The landing page has testimonials but they're baked in. As real users get results, there's no mechanism to collect or display actual outcomes (e.g., "2 accounts removed" after Round 1).
+Product / Retention
+6. No "what happened" flow for Round 2. The 30-Day Dashboard tells users to upload their updated report, but there's no guided re-upload experience that compares before/after — showing which items were removed and which still need fighting. That comparison is the most motivating moment in the product.
+
+Drip emails exist but no founder-specific sequence. The 3-email drip is generic. Founders should get a tailored sequence: "Here's your 9 rounds," then "Have you uploaded your first report?" then "Transfer a round to a friend and help them too."
+AI analysis runs for everyone but isn't promoted in purchase UX. Free users get the AI analysis, which is great, but the purchase screens don't highlight what paid AI strategy adds on top of the free analysis. The gap between free AI insights and paid AI strategy rounds could be made clearer.
+Technical
+9. No admin visibility into founder program health. The admin dashboard tracks funnels and activity but doesn't show: how many founders are active, how many have used their rounds, transfer velocity, or founder-to-paid conversion. These are your key leading indicators.
+
+Sprint intake isn't connected to the founder flow. A founder who's already getting 9 free rounds might still see the $199 Sprint offer prominently. The landing page could be smarter about showing the Sprint only to non-founders or as a "when you're ready to go all-in" upgrade.

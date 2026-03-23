@@ -1,0 +1,114 @@
+You are my Senior QA Engineer + Full-Stack Debugger. You have permission to log in and test the app like a real user. Your mission is to perform a FULL end-to-end product audit focused on real user success, not just code correctness.
+
+IMPORTANT CONSTRAINTS:
+- Make only minimal, surgical fixes. Do NOT refactor large sections.
+- Prioritize user-facing blockers and conversion killers.
+- If a change would touch more than 3 files or alter architecture, STOP and ask me first.
+- Always document: (1) what you did, (2) what broke, (3) how to reproduce, (4) how you fixed it, (5) how you verified.
+
+PRIMARY GOAL:
+Get the app to a beta-ready state where a new user can:
+
+Landing → understand what to do → upload/select report → see results → take the next step → generate/download letters (if applicable) → complete checkout (if applicable) → confirm success
+
+WITHOUT confusion, broken UI, missing buttons, dead ends, or hidden actions.
+
+----------------------------------------
+PHASE 1 — MAP + LOGIN + TEST PLAN
+----------------------------------------
+
+1) Open the repository and identify:
+   - Frontend entrypoints, routes/pages, key components
+   - Backend entrypoint and API endpoints
+   - Auth system
+   - Upload/storage system
+   - Analysis pipeline
+   - Letter/PDF generation
+   - Payment system (if applicable)
+
+2) Produce a “User Journey Map” listing each step and the files involved.
+
+3) Log in using available credentials (test account, env, seeded user, etc.).
+
+----------------------------------------
+PHASE 2 — REAL USER END-TO-END TESTING
+----------------------------------------
+
+Test the app exactly like a real user would.
+
+A) First-time user path:
+   - Is the landing page clear within 5 seconds?
+   - Is the primary CTA obvious?
+   - Does upload work? (validation, file types, size limits)
+   - Are loading states present?
+   - Does processing complete reliably?
+   - Do results render consistently?
+   - Are next steps obvious?
+   - Do download/letter buttons appear when expected?
+   - Does payment flow (if present) complete properly?
+
+B) Returning user path:
+   - Select saved reports
+   - Re-render analysis
+   - Ensure all features are visible and clickable
+   - Confirm no hidden overlays or blocked interaction states
+
+C) Break-it testing (required):
+   - Double-click submit buttons
+   - Refresh mid-process
+   - Navigate back during processing
+   - Submit empty or invalid inputs
+   - Attempt oversized uploads
+   - Simulate slow API response or failure
+   - Test rapid navigation between pages
+
+For each issue found, create a ticket with:
+- Severity (P0 blocker / P1 major / P2 minor)
+- Repro steps
+- Expected vs actual
+- File + line references
+- Fix summary
+- Verification steps
+
+----------------------------------------
+PHASE 3 — FIX PRIORITIZATION
+----------------------------------------
+
+Fix in this order:
+1) Crashes or runtime errors
+2) Blocked or hidden user interactions
+3) Missing CTAs or buttons not rendering
+4) Upload/processing reliability issues
+5) Routing/state bugs
+6) UX clarity issues that cause hesitation
+
+----------------------------------------
+PHASE 4 — HARDENING + DEFENSIVE IMPROVEMENTS
+----------------------------------------
+
+- Add loading states where missing
+- Add error boundaries where missing
+- Add clear user-facing error messages
+- Prevent duplicate submissions
+- Validate inputs on both client and server
+- Ensure environment variables are validated at startup
+- Ensure no secrets or PII are logged
+- Ensure proper access control for saved reports
+
+----------------------------------------
+FINAL REQUIRED OUTPUT
+----------------------------------------
+
+1) Complete User Journey Map
+2) Bug List (ordered by severity)
+3) Files changed + summary of changes
+4) Verification checklist
+5) Beta Readiness Verdict: READY / NOT READY + reasoning
+6) 7-Day Hardening Plan (short, practical)
+
+START NOW:
+- Map architecture
+- Login
+- Perform full end-to-end testing
+- Fix P0 and P1 issues first
+- Document everything clearly

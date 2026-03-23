@@ -1,0 +1,106 @@
+YOU ARE THE REPLIT AI AGENT.
+TASK: Redesign the “Errors Found / Dispute Letters” page UI to be a strategic, scan-friendly “Game Card” dashboard. Users do NOT read long lists. Replace the current long creditor lists with impact-based cards, clear hierarchy, and optional drill-down.
+
+GOALS (MUST-HAVES)
+1) Users can understand in 5 seconds:
+   - How many total issues were found
+   - What categories exist
+   - What is “high impact”
+   - What action is next
+2) Reduce visible text by ~70% vs current page.
+3) Replace “nutrition label” lists with “Game Cards” grouped by Impact Type.
+4) Keep existing data + backend logic intact; only refactor UI/UX and component structure.
+5) Provide drill-down (expand/collapse) to see the creditor list ONLY when user clicks “View Accounts”.
+
+PAGE INFORMATION (CURRENT)
+- Headline: “We found 29 errors.”
+- Subline: “2 letters to Experian & TransUnion”
+- Note: “They have 30 days to respond or delete.”
+- Categories currently shown:
+  - Negative Mark (count 6) with long list of creditors
+  - Wrong Details (count 19) with long list of creditors
+  - Duplicate (count 4) with list
+- CTA button: “Generate My Dispute Letters”
+- A note: “22 high-impact items selected for dispute”
+
+NEW UX SPEC (BUILD THIS)
+A) TOP SUMMARY HEADER (above cards)
+- Title: “29 Reporting Errors Found”
+- 3 quick stats chips:
+  - “22 High Impact”
+  - “6 Score-Damaging”
+  - “4 Duplicates”
+- Add a “Damage Meter” progress bar:
+  - Label: “Credit File Health”
+  - Show a percent (if no real model yet, compute a placeholder derived from counts; e.g., 100 - min(80, totalErrors*2))
+  - Text below: “Fixing these can improve approval odds and reduce risk.”
+- Add a small “What happens next” row with 3 steps:
+  1) Review categories
+  2) Generate letters
+  3) Track bureau response (30 days)
+
+B) GAME CARDS (replace long lists)
+Render one card per category. Each card shows ONLY:
+- Icon + Category name
+- Impact label (Major/Medium/Low)
+- One-line “Why it hurts”
+- Count of accounts
+- Status pill (e.g. “Ready to dispute” / “Selected: X”)
+- Button: “View Accounts” (expand/collapse section within card)
+Expanded view shows:
+- A clean bulleted list of creditor names (max 6 visible then “+ N more”)
+- Optional: a secondary action “Edit selection” (if selection logic exists; otherwise leave disabled)
+
+CARD CONTENT RULES
+- Negative Marks -> Impact: “Major” / Why: “These can suppress your score and approvals.”
+- Wrong Details -> Impact: “Medium” / Why: “Inconsistent data can trigger verification penalties.”
+- Duplicates -> Impact: “Medium” / Why: “Double-reporting can cause double damage.”
+- Always show: “Accounts: {count}”
+- Always show: “Selected: {selectedCount}” if available, else omit.
+
+C) CTA SECTION (sticky)
+At bottom (and sticky on mobile):
+- Primary CTA: “Generate Dispute Letters”
+- Supporting text: “Letters will be generated for Experian & TransUnion. They have 30 days to respond.”
+- A small confirmation line: “Selected: 22 high-impact items”
+- Disable CTA if selectedCount === 0.
+
+D) MICROCOPY / POSITIONING
+Replace “They have 30 days to respond or delete.” with:
+- “Bureaus must investigate within ~30 days.”
+
+E) VISUAL STYLE
+- Modern SaaS / “mission control” feel
+- Cards with subtle shadow, rounded corners, strong spacing
+- Make hierarchy obvious: big number, chips, progress bar, then cards
+- No dense paragraphs; use short lines, chips, pills
+- Mobile-first: cards stack, CTA sticky, expand/collapse smooth
+
+IMPLEMENTATION REQUIREMENTS
+1) Create components (or refactor into):
+   - <ErrorsSummaryHeader />
+   - <DamageMeter value={number} />
+   - <ErrorCategoryCard category={...} />
+   - <StickyFooterCTA />
+2) Use existing state/data objects. If data is currently a flat list, transform into:
+   categories = [
+     { key: "negative", title:"Negative Marks", count, impact:"Major", why:"...", creditors:[...], selectedCount }
+     { key: "wrong_details", ... }
+     { key: "duplicates", ... }
+   ]
+3) Ensure “View Accounts” uses local state to expand/collapse per card.
+4) Keep “Generate Dispute Letters” handler unchanged; only move the button into the new CTA section.
+5) Keep current routing and any API calls unchanged.
+6) Provide the FULL code changes needed in the relevant files and note which files you modified.
+
+ACCEPTANCE CHECKLIST (MUST PASS)
+- Page is scannable in 5 seconds.
+- Creditor lists are hidden behind “View Accounts”.
+- Counts are accurate and visible.
+- CTA is prominent and sticky on mobile.
+- No long text blocks.
+- Looks like a strategy dashboard, not a report.
+
+NOW DO THE WORK:
+- Update the page component and add the new components.
+- Return the updated code with file paths and brief notes.

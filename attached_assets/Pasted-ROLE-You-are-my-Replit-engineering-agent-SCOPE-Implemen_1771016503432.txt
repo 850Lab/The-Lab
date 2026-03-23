@@ -1,0 +1,88 @@
+ROLE: You are my Replit engineering agent.
+SCOPE: Implement ONLY a Round 1 “No-Proof” dispute letter generator (1 letter per bureau) that is deletion-optimized, non-aggressive, and field-specific. Do NOT implement pricing tiers, dashboards, escalation rounds, new database schemas, or big UI rebuilds. Keep changes minimal and additive.
+
+OBJECTIVE:
+Users can launch Round 1 immediately (no proof uploads required) while still avoiding “vague dispute” failure modes. Each disputed item must include at least 1–3 specific “accuracy/completeness concerns” derived from what we already extracted from the report (or from missing/unclear fields), without accusing fraud or demanding discovery.
+
+INPUT ASSUMPTIONS (minimal):
+We already have extracted report data per bureau and a list of user-selected dispute items. Each item has at least:
+- bureau (TU/EX/EF)
+- furnisher_name
+- account_identifier (masked/partial if available)
+- some extracted fields OR at minimum a raw text snippet for that account section
+
+DELIVERABLE:
+A function that generates a Round 1 letter per bureau:
+generate_round1_letter(bureau, user_profile, selected_items) -> letter_text
+and integrates it into the existing “Generate Letter / Download / Send” flow you already built.
+
+HARD RULES (Round 1 must follow):
+1) Tone: calm, procedural, short. No threats. No statutory damages. No litigation talk.
+2) No “e-OSCAR” mention. No “Metro 2” mention. No demands for signed contracts/applications. No verifier names/phone numbers.
+3) Do NOT say “failure to respond in 30 days = deletion.” Instead: “If you cannot verify as accurate and complete, please delete…”
+4) Each selected item MUST include at least one specific concern line. Never output “I dispute this account” with no basis.
+5) If extracted confidence is low OR fields are missing, use safe language: “unclear / incomplete / inconsistent / unable to confirm accuracy” (do not assert facts you can’t support).
+
+LETTER TEMPLATE (Round 1 — No Proof)
+- Date
+- CRA name + address (from bureau)
+- User identity block (name, address, DOB, last4 SSN if available)
+- Subject: “Reinvestigation Request (FCRA §611)”
+
+OPENING (choose 1 of these 3 variants at random per letter to reduce patterning):
+A) “I am disputing specific information on my [BUREAU] credit file. The items below appear inaccurate, incomplete, or cannot be verified as accurate and complete. Please reinvestigate and correct or delete any information that cannot be verified as accurate and complete.”
+B) “This letter is a request for reinvestigation of the items listed below on my [BUREAU] report. The reporting appears inaccurate and/or incomplete. Please conduct a reinvestigation and update or delete any item that cannot be verified as accurate and complete.”
+C) “I am requesting a reinvestigation of the accounts listed below. I am disputing the accuracy and completeness of the reporting. If the information cannot be verified as accurate and complete, please delete it.”
+
+ITEM BLOCK (repeat per item, numbered):
+“#) [FURNISHER] — Account ending [XXXX]
+- Concern: [auto-generated concern 1]
+- Concern: [auto-generated concern 2] (optional)
+- Concern: [auto-generated concern 3] (optional)
+Request: Please reinvestigate this item and correct the reporting to be accurate and complete. If you are unable to verify the information as accurate and complete, please delete it. Please provide a brief description of the method used to verify this information.”
+
+CLOSING:
+“Please send me an updated copy of my credit report upon completion of the reinvestigation. Thank you.”
+Signature
+
+AUTO-GENERATING “CONCERNS” (the key to success without proof)
+Implement: build_round1_concerns(item) -> list[str] returning 1–3 concerns.
+
+Priority order:
+1) If we have structured extracted fields, detect contradictions/missingness:
+   - Missing delinquency dates (DOFD or similar) -> “Key delinquency/date fields appear incomplete or not shown, making accuracy difficult to confirm.”
+   - Status vs balance inconsistency -> “The balance/amounts being reported appear inconsistent with the account status shown.”
+   - Closed vs updating/last reported -> “The account appears closed, yet reporting updates suggest ongoing activity; the accuracy/completeness is unclear.”
+   - Payment history missing/partial -> “The payment history appears incomplete/unclear for the reported timeframe.”
+   - Duplicate/possible duplicate -> “This item appears duplicated or overlapping with similar reporting, creating potential inaccuracy.”
+   - Identity association unclear (if any identifiers differ) -> “The association of this account to my file is unclear based on the identifying information shown.”
+2) If we do NOT have structured fields, but we have a raw text/snippet:
+   - Use safe, non-accusatory generic concerns anchored to “completeness”:
+     a) “The reporting lacks sufficient detail to confirm accuracy and completeness (e.g., key dates/amounts/status fields are unclear).”
+     b) “The status and amounts being reported are unclear from the report presentation, and I cannot confirm they are accurate and complete.”
+     c) “The account details shown appear incomplete, and I am disputing the accuracy and completeness of the reporting.”
+3) Always return at least 1 concern. Cap at 3.
+
+ANTI-FRIVOLOUS GUARDRAILS:
+- Concerns must never claim: “this is not my account” unless user explicitly selected that reason.
+- Avoid absolutes like “false/fraudulent” unless user explicitly selected fraud/identity.
+- Keep each concern <= 1 sentence.
+
+QUALITY CHECKS (must pass before allowing letter generation):
+1) Letter must NOT contain banned terms:
+   “e-OSCAR”, “Metro 2”, “signed agreement”, “application”, “statutory damages”, “$100”, “$1,000”, “names of each person who verified”, “failure to respond in 30 days”
+2) Each item must have “Concern:” at least once.
+3) Letter must include: “reinvestigate” AND “accurate and complete” AND “method used to verify” (or the exact request sentence).
+
+IMPLEMENTATION NOTE:
+Keep the change small:
+- Add a “Round 1 (No Proof)” mode to your existing letter generator.
+- Use existing item selection + extracted data. Do not redesign screens.
+- Output one letter per bureau with grouped items.
+- Ensure preview shows the exact concerns per item.
+
+OUTPUT REQUIRED FROM YOU (the agent):
+1) The function(s) added/modified
+2) Where in the code they’re called
+3) A quick test run example showing 2–3 items and the generated concern lines
+4) Confirmation that banned strings cannot appear (unit test or simple assert)

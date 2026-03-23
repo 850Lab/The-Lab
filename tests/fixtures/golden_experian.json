@@ -1,0 +1,140 @@
+{
+  "description": "Golden truth fixture for Experian ACR classification and parsing",
+  "source": "tests/golden/experian_golden.txt",
+  "bureau": "experian",
+  "expected_account_count": 21,
+  "expected_hard_inquiry_count": 2,
+  "expected_public_records_count": 0,
+  "accounts": [
+    {
+      "account_name": "CAPITAL ONE",
+      "account_number": "517805XXXXXXXXXX",
+      "status": "Paid, Closed/Never late.",
+      "loan_type": "Credit card",
+      "potentially_negative": false,
+      "expected_classification": "GOOD_STANDING",
+      "expected_source": "PAY_STATUS_TOKEN",
+      "expected_rule": "CLS-05"
+    },
+    {
+      "account_name": "CLEO/WEBBANK",
+      "account_number": "436067XXXXXX",
+      "status": "Paid, Closed/Never late.",
+      "loan_type": "Secured Card",
+      "potentially_negative": false,
+      "expected_classification": "GOOD_STANDING",
+      "expected_source": "PAY_STATUS_TOKEN",
+      "expected_rule": "CLS-05"
+    },
+    {
+      "account_name": "DEPT OF EDUCATION/NELNET",
+      "account_number": "900000XXXXXXXXX",
+      "potentially_negative": true,
+      "has_delinquency_flags": true,
+      "expected_classification": "ADVERSE",
+      "expected_source": "BUREAU_LABEL",
+      "expected_rule": "CLS-09",
+      "notes": "9 student loan accounts with POTENTIALLY NEGATIVE label, all same creditor"
+    },
+    {
+      "account_name": "EDUCATIONFIRST FCU",
+      "account_number": "12333XXXX",
+      "potentially_negative": true,
+      "has_delinquency_flags": true,
+      "expected_classification": "ADVERSE",
+      "expected_source": "BUREAU_LABEL",
+      "expected_rule": "CLS-09"
+    },
+    {
+      "account_name": "EMPOWER FINANCE/FINWISE",
+      "account_number": "LN6R9OXXXX",
+      "potentially_negative": true,
+      "has_delinquency_flags": true,
+      "expected_classification": "ADVERSE",
+      "expected_source": "BUREAU_LABEL",
+      "expected_rule": "CLS-09"
+    },
+    {
+      "account_name": "IDAHO HOUSING AND FINANC",
+      "account_number": "480075XXXX",
+      "status": "Open/Never late.",
+      "potentially_negative": false,
+      "expected_classification": "GOOD_STANDING",
+      "expected_source": "PAY_STATUS_TOKEN",
+      "expected_rule": "CLS-05"
+    },
+    {
+      "account_name": "IDAHO HOUSING AND FINANC",
+      "account_number": "485075XXXX",
+      "potentially_negative": true,
+      "has_delinquency_flags": true,
+      "expected_classification": "ADVERSE",
+      "expected_source": "BUREAU_LABEL",
+      "expected_rule": "CLS-09"
+    },
+    {
+      "account_name": "JEFFERSON CAPITAL SYSTEMS",
+      "account_number": "387151XXXXXXX",
+      "potentially_negative": true,
+      "has_delinquency_flags": true,
+      "expected_classification": "ADVERSE",
+      "expected_source": "BUREAU_LABEL",
+      "expected_rule": "CLS-09",
+      "notes": "Collection account"
+    },
+    {
+      "account_name": "NECHES FCU",
+      "account_number": "85390LXXXX",
+      "potentially_negative": true,
+      "has_delinquency_flags": true,
+      "expected_classification": "ADVERSE",
+      "expected_source": "BUREAU_LABEL",
+      "expected_rule": "CLS-09"
+    },
+    {
+      "account_name": "POSSIBLE FINANCIAL INC.",
+      "account_number_prefix": "A6FIMT",
+      "potentially_negative": false,
+      "expected_classification": "GOOD_STANDING",
+      "expected_source": "PAY_STATUS_TOKEN",
+      "expected_rule": "CLS-05",
+      "notes": "First of 4 POSSIBLE FINANCIAL accounts (good standing)"
+    },
+    {
+      "account_name": "POSSIBLE FINANCIAL INC.",
+      "account_number_prefix": "A78TXF",
+      "potentially_negative": true,
+      "has_delinquency_flags": true,
+      "expected_classification": "ADVERSE",
+      "expected_source": "BUREAU_LABEL",
+      "expected_rule": "CLS-09",
+      "notes": "Fourth POSSIBLE FINANCIAL account (charged off)"
+    }
+  ],
+  "expected_classification_counts": {
+    "ADVERSE": 15,
+    "GOOD_STANDING": 6,
+    "UNKNOWN": 0
+  },
+  "expected_negative_items_count": 15,
+  "expected_totals_mode": "EXPLICIT",
+  "expected_totals": {
+    "accounts": 21,
+    "inquiries": 2,
+    "public_records": 2
+  },
+  "hard_inquiries": [
+    {
+      "creditor": "CIC/NETWORK FUNDING LP",
+      "date": "04/16/2024"
+    },
+    {
+      "creditor": "CIC/NETWORK FUNDING LP",
+      "date": "03/29/2024"
+    }
+  ],
+  "personal_info": {
+    "name": "JAYLAN BROWN",
+    "dob": "1997"
+  }
+}

@@ -1,0 +1,22 @@
+--- Page 1 ---
+Personal Credit Report
+TransUnion Online Service Center
+Name: JOHN DOE
+--- Page 2 ---
+Accounts
+CHASE BANK 12345****
+Account Information
+Date Opened
+03/15/2018
+Balance
+$2,500
+Pay Status
+Current Account
+WELLS FARGO 67890****
+Account Information
+Date Opened
+06/22/2020
+Balance
+$15,234
+Pay Status
+Current Account

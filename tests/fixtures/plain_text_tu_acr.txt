@@ -1,0 +1,37 @@
+--- Page 1 ---
+Personal Credit Report for:
+JAYLAN BROWN
+https://annualcreditreport.transunion.com
+--- Page 2 ---
+Account Name
+CHASE BANK
+Account Information
+Account Number
+1234****5678
+Date Opened
+03/15/2018
+Balance
+$2,500
+Pay Status
+Current Account
+Date Reported
+12/01/2025
+Account Name
+WELLS FARGO
+Account Information
+Account Number
+67890****1234
+Date Opened
+06/22/2020
+Balance
+$15,234
+Pay Status
+Current Account
+--- Page 3 ---
+Account Name
+CAPITAL ONE
+Account Information
+Balance
+$800
+Pay Status
+Current Account

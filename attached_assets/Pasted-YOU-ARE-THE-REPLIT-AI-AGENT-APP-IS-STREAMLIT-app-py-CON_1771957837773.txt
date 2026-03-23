@@ -1,0 +1,178 @@
+YOU ARE THE REPLIT AI AGENT. APP IS STREAMLIT (app.py).
+
+CONTEXT
+We already added a lightweight Strike Metrics layer:
+- st.session_state["strike_metrics"] exists after report parsing
+- We have violations / dispute items already
+- We have the “workspace” experience (golden glass / panel routing) being built
+
+GOAL
+Implement a Dynamic 72-Hour “WAR ROOM” plan generator that:
+1) Uses strike_metrics + existing violations/tradelines to generate a personalized plan
+2) Feels like an operational command center (actionable tasks, not advice paragraphs)
+3) Has perfect click-through loops (every action goes somewhere meaningful, no dead ends)
+4) Is compact and MVP-friendly (home summary + drill into details)
+5) Stays compliant and safe: do NOT add facts, do NOT encourage disputing accurate items, do NOT suggest false identity theft, do NOT file complaints prematurely
+
+NON-NEGOTIABLE RULES
+- Do NOT change dispute engine, letter generation, payment, or upload logic
+- Only ADD: a plan generator module + UI panel that renders it + lightweight state for completion
+- If data is missing, plan should degrade gracefully (omit steps that require missing data)
+- Keep it “War Room” tone: concise, decisive, tactical — but not threatening
+
+FEATURE NAME
+“72-Hour Credit Strike Protocol (War Room)”
+
+WHERE IT LIVES
+- Integrate into the existing workspace under the Strategy panel OR a dedicated panel named “war_room”
+- Home/workspace should show a compact summary card: risk + primary lever + 3 top actions + “Open War Room →”
+- Full plan opens inside the panel (drawer) with Back button
+
+STEP 1: Add a simple user intent input (MVP)
+We need the plan to adapt to their goal/time urgency. Add a small “Mission” selector:
+- Mission Goal (selectbox): “Auto Purchase”, “Apartment”, “Credit Card”, “Bank Account”, “General Rebuild”
+- Timeline (selectbox): “ASAP (7 days)”, “30 days”, “90 days”
+Store:
+st.session_state["mission_goal"]
+st.session_state["mission_timeline"]
+Defaults: “Auto Purchase” + “ASAP (7 days)” for now (tax season use case)
+
+STEP 2: Create a plan generator module (new file)
+Create: /src/war_room_plan.py (or similar)
+Define:
+- dataclass PlanAction { id, phase, title, why, success_criteria, primary_button_label, primary_route, secondary_button_label?, secondary_route?, script?, requires? }
+- dataclass WarRoomPlan { risk_level, primary_lever, phases: { "0-6": [actions], "6-24": [...], "24-48": [...], "48-72": [...] }, top3_actions, notes }
+
+Function:
+build_war_room_plan(strike_metrics: dict, violations: list, tradelines: list, mission_goal: str, mission_timeline: str) -> WarRoomPlan
+
+IMPORTANT: Plan must be deterministic and explainable.
+
+STEP 3: Plan logic (dynamic decision rules)
+Use strike_metrics flags and counts to choose actions.
+
+Base phases (only include what applies):
+
+PHASE 0–6: LOCK THE FIELD
+Always include:
+- “Freeze bureaus (3)” (if user hasn’t done it; else mark as complete-ready)
+- “Freeze ChexSystems” (especially if mission_goal includes Bank Account or general)
+- “Save baseline report snapshot” (download/confirm)
+- “Confirm proof documents ready” (if certified mail requires it)
+
+PHASE 6–24: DEPLOY PRIMARY STRIKE
+If letters generated but not mailed:
+- “Send Certified Mail” (routes to certified mail workflow)
+If letters not generated:
+- “Generate letters” (routes to existing generation)
+Always:
+- “Log tracking #” (routes to documents/tracking input)
+- “Start the 30-day clock” (routes to tracker date start)
+
+PHASE 24–48: SCORE OPTIMIZATION ASSAULT
+If utilization metrics available:
+- If overall_utilization_pct >= 70 OR max_single_card_utilization_pct >= 80:
+  include “Utilization Assault (priority)” with paydown sequencing guidance
+- Else if overall_utilization_pct >= 50:
+  include “Utilization Drop to <29% (priority)”
+- Else:
+  omit utilization steps or include “Maintain utilization discipline” (optional)
+
+If inquiry_heavy_flag:
+- include “Application Freeze + Rate-Shop Window Plan” (especially for Auto Purchase ASAP)
+  (This is educational + safe, no deception)
+
+If negative_accounts_count >= 1:
+- include “Targeted Executive Call List” ONLY for goodwill-eligible or paid items
+  - action provides a call script template (neutral, factual)
+  - DO NOT instruct threats or false claims
+
+PHASE 48–72: ESCALATION WEAPONS (PREP ONLY)
+Always include:
+- “Prepare escalation packet (preloaded)” — MOV + CFPB draft + exec escalation templates
+BUT add warning:
+- “Do not file until the investigation window elapses (Day 31+) unless legally appropriate.”
+If user day>=28 (from tracker state) show:
+- “Escalation standby” (set reminders)
+If day>=31 show:
+- “Escalation authorized” and route to escalation tools (generate templates)
+
+RISK LEVEL (compute)
+- HIGH if negative_accounts_count >= 2 OR critical_utilization_flag OR collections_count >= 2
+- MODERATE if negative_accounts_count == 1 OR high_utilization_flag OR inquiry_heavy_flag
+- CONTROLLED otherwise
+
+PRIMARY LEVER
+Use strike_metrics["primary_lever"] plus mission_goal:
+- Auto Purchase ASAP -> prioritize utilization + inquiry strategy + certified mail timestamp
+- Bank Account -> prioritize Chex freeze + banking readiness + dispute timing
+- Apartment -> prioritize collections/chargeoffs cleanup + stability + documentation
+- Credit Card -> utilization + inquiries + revolving accounts
+
+STEP 4: Action Routing (no dead ends)
+Every action must have a primary button that routes to an existing place:
+Define a small routing map that matches your panel system:
+- go("documents") for downloads/uploads/tracking
+- go("tracker") for clock/date/countdown
+- go("send_mail") for certified mail step
+- go("strategy") for scripts/tools
+If you do not have these panels yet, use in-page anchors or set session_state flags to focus the relevant section.
+
+Each action also has:
+- success criteria line (what “done” means)
+- optional script accordion (with “Copy” button)
+
+STEP 5: Completion tracking (MVP)
+Add:
+st.session_state["war_room_done"] = dict(action_id -> bool)
+Persist to localStorage is optional; session_state is enough for MVP.
+Render progress:
+- “X / Y actions complete”
+- Phase progress bars optional (keep compact)
+
+STEP 6: UI Rendering (compact, war-room style)
+In Strategy/War Room panel:
+- Header: “72-Hour Credit Strike Protocol”
+- Subheader: “Risk: HIGH | Primary Lever: UTILIZATION” (dynamic)
+- Show top 3 actions (always visible)
+- Then phases with expanders (collapsed by default):
+  - 0–6 Hours
+  - 6–24 Hours
+  - 24–48 Hours
+  - 48–72 Hours
+Each action row:
+- checkbox (done)
+- title (short)
+- tiny “why” line
+- button(s): primary route / secondary route
+- “Script ▾” expander with copy button (if script exists)
+
+Tone must be decisive and concise:
+- avoid paragraphs
+- avoid “you should”
+- use “Do this now” style labels
+
+STEP 7: Add a “War Room Summary” card on Home (ocean arrival)
+On home/workspace render a compact card:
+- “War Room: Risk HIGH”
+- “Primary Lever: UTILIZATION”
+- show 3 top actions in one line each
+- button: “Open War Room →” routes to strategy panel
+This makes the feature visible without scrolling.
+
+COMPLIANCE / SAFETY GUARDRAILS (IMPORTANT)
+- Any “calls” or “goodwill” scripts must be factual and polite
+- Do NOT advise disputing accurate items
+- Do NOT advise filing CFPB immediately
+- Do NOT mention identity theft unless user explicitly selects “I’m a victim of identity theft” (not part of this MVP)
+
+DELIVERABLES
+1) New file: war_room_plan.py
+2) Integration in app.py:
+   - build plan after strike_metrics computed (store in st.session_state["war_room_plan"])
+   - render war room UI panel and summary card
+3) Confirm no changes to letters/disputes/payment/uploads beyond routing buttons
+
+NOW IMPLEMENT.
+Start by locating where strike_metrics + violations are available in app.py.
+Then implement war_room_plan.py and render it in the Strategy panel with progress tracking.

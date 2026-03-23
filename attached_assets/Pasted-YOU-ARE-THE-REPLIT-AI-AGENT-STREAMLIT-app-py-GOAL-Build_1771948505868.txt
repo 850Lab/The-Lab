@@ -1,0 +1,118 @@
+YOU ARE THE REPLIT AI AGENT. STREAMLIT app.py.
+
+GOAL
+Build a premium, compact “Round 1 Workspace” MVP in Streamlit with:
+- Glass cards (premium feel, tight spacing)
+- NO tabs, NO bottom nav, NO scrolling pages
+- Click-through experience using a single “Detail Drawer” controlled by session_state
+- Perfect loop mapping: every action leads somewhere and always has a Back button (no dead ends)
+
+NON-NEGOTIABLE
+1) Do NOT change backend logic, APIs, dispute engine, letter generation, or payment flow.
+2) Only reorganize UI + add session_state routing + CSS styling.
+3) The main Workspace screen must fit on mobile without scrolling (or near-zero).
+4) The detail views can scroll if needed, but should be tight and action-based.
+
+STATE MACHINE (IMPORTANT)
+Create:
+- st.session_state["panel"] default "home"
+Allowed panels:
+  home, command, tracker, documents, strategy,
+  send_mail, upload_proof, escalation
+
+Routing helper:
+  def go(panel): st.session_state["panel"]=panel; st.rerun()
+
+MAIN RENDER
+If panel == "home":
+  Render:
+  1) Glass header (Round 1 Workspace + subtitle)
+  2) Status pills row (Letters / Clock / Proof)
+  3) Next Action glass card with ONE CTA button that routes appropriately:
+     - if proof missing -> go("upload_proof")
+     - elif letters ready but not mailed -> go("send_mail")
+     - elif mail date not set -> go("tracker")
+     - elif clock running -> go("documents") (upload response focus)
+     - elif day>=31 -> go("escalation")
+  4) 2x2 glass card grid (Command / Tracker / Documents / Strategy)
+     Each card shows a tiny summary + one button: [Open →] that routes:
+       Command -> go("command")
+       Tracker -> go("tracker")
+       Documents -> go("documents")
+       Strategy -> go("strategy")
+
+DETAIL DRAWER VIEWS
+Each non-home panel renders:
+- A compact top bar with: [← Back to Workspace] button -> go("home")
+- A single focused card with the tools for that panel
+- Minimal text; emphasize actions
+
+PANEL SPECS (KEEP TIGHT)
+command:
+  - show 3 tasks max with checkbox + action buttons:
+    1) Send Certified Mail -> go("send_mail")
+    2) Save Tracking # -> go("documents") and focus tracking input
+    3) Start 30-day Clock -> go("tracker")
+  - show progress “X/3”
+
+tracker:
+  - mail date input + start countdown button (existing handler)
+  - two bureau rows with status + day X/30
+  - if day>=31: show “Escalation Ready” -> go("escalation")
+  - if response received: button -> go("documents") focus response upload
+
+documents:
+  - show “Letters” download buttons
+  - ID upload + Address upload (compact)
+  - Tracking # input (compact)
+  - Response upload (compact)
+  Use expanders INSIDE this drawer only if needed, not on home.
+
+strategy:
+  - show 3 actions max, each with a button:
+    - Freeze applications -> Add reminder (toast)
+    - Review letters -> go("documents")
+    - Setup escalation -> go("tracker")
+  - scripts behind small expander with Copy button
+
+send_mail:
+  - show certified mail CTAs (existing)
+  - show proof requirement status and route:
+    if missing -> go("upload_proof")
+  - include Back button
+
+upload_proof:
+  - show ID + Address upload tools
+  - show “Done” button returns to send_mail or home depending on state
+
+escalation:
+  - show escalation actions (only if day>=31):
+    Generate MOV, CFPB draft, Executive escalation template (can be placeholders)
+  - button to return to tracker/documents
+
+GLASS UI (CSS)
+Add a CSS block via st.markdown that:
+- creates .glass-card with:
+  background: rgba(255,255,255,0.55)
+  border: 1px solid rgba(255,255,255,0.55)
+  backdrop-filter: blur(10px)
+  border-radius: 18px
+  box-shadow: soft
+- tight spacing: reduce margins/padding
+- header typography: bold, clean
+- status pills style
+- ensure the home view fits the viewport:
+  reduce top blank space, compress containers
+
+IMPORTANT UX NOTES
+- No duplicate navigation lists.
+- Home screen should not contain the full checklist, full tracker, full docs. Only summaries + “Open”.
+- Detail Drawer always has a Back button.
+- Every primary action routes somewhere meaningful.
+
+DELIVERABLES
+- app.py updated with the panel routing state machine
+- CSS block added for glass UI
+- Confirm: home screen is compact, click-through works, no dead ends, payment flow unchanged.
+
+NOW IMPLEMENT.

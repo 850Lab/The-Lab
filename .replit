@@ -1,0 +1,45 @@
+modules = ["python-3.11", "postgresql-16"]
+
+[nix]
+channel = "stable-25_05"
+packages = ["freetype", "gitFull", "glib", "glibcLocales", "gumbo", "harfbuzz", "jbig2dec", "lcms2", "libiconv", "libimagequant", "libjpeg", "libjpeg_turbo", "libtiff", "libwebp", "mupdf", "openjpeg", "poppler-utils", "swig", "zlib", "tesseract5", "ghostscript"]
+
+[deployment]
+deploymentTarget = "autoscale"
+build = ["sh", "-c", "pip install bcrypt deepdiff openai openpyxl pandas pdf2image pdfplumber pillow psycopg2-binary pymupdf pytesseract reportlab requests resend streamlit stripe websocket-client websockets"]
+run = ["streamlit", "run", "app.py", "--server.port", "5000", "--server.address", "0.0.0.0", "--server.headless", "true"]
+[workflows]
+runButton = "Project"
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "streamlit_app"
+
+[[workflows.workflow]]
+name = "streamlit_app"
+author = "agent"
+
+[workflows.workflow.metadata]
+outputType = "webview"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "streamlit run app.py --server.port 5000 --server.address 0.0.0.0 --server.headless true"
+waitForPort = 5000
+
+[[ports]]
+localPort = 5000
+externalPort = 80
+
+[agent]
+integrations = ["python_openai_ai_integrations:1.0.0", "stripe:2.0.0", "resend:1.0.0"]
+
+[userenv]
+
+[userenv.shared]
+RESEND_FROM_EMAIL = "thelab@850.life"

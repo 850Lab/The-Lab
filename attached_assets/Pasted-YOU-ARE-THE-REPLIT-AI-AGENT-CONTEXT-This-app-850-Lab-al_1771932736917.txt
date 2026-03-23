@@ -1,0 +1,158 @@
+YOU ARE THE REPLIT AI AGENT.
+
+CONTEXT
+This app (850 Lab) already has an upload → analysis → violations → selection → letters flow. We are adding TWO new “premium-feeling” experiences that are FREE (everything free except Certified Mail). These additions MUST feel like a fluent extension of the current product—NOT a rewrite, NOT disruptive, NOT a refactor that breaks existing logic.
+
+HARD RULES (DO NOT VIOLATE)
+1) Do NOT break or change existing backend logic, routes, handlers, or API calls.
+2) Do NOT restructure the app in a way that causes regressions. Keep changes scoped.
+3) New code must be modular and additive:
+   - add new components
+   - add small helper functions
+   - minimal edits to existing page files
+4) Certified Mail remains the ONLY paid step. Everything else (including these new screens) is free.
+5) Keep UI consistent with current design system (Tailwind, existing components, spacing, typography).
+
+GOAL
+Add two features that create an “I’ve never experienced this” demo moment:
+A) 72-Hour Tactical Credit Command Plan (FREE)
+B) Bureau Investigation Tracker (FREE)
+
+────────────────────────────────────────────
+FEATURE A: 72-HOUR TACTICAL CREDIT COMMAND PLAN (FREE)
+PURPOSE
+Turn the analysis into an operational, time-sequenced plan based on the user’s report/violations. This is NOT generic advice. It’s a prioritized “what to do next” for 72 hours.
+
+WHERE IT LIVES (UI PLACEMENT)
+- Add a new section on the existing “Results / Errors Found” page (or wherever violations are shown), placed ABOVE the letters CTA.
+- It should be collapsed by default on mobile with a “View 72-Hour Plan” toggle (so it stays scannable).
+- It must be available without payment.
+
+WHAT IT SHOWS (STRUCTURE)
+1) “Situation Snapshot” (scan-friendly)
+   - Total issues found (already exists)
+   - 3 chips (computed):
+     • High Impact Items: X
+     • Score-Damaging Items: Y
+     • Quick Wins: Z
+   - One sentence: “This plan sequences your next 72 hours for maximum impact.”
+
+2) Timeline Cards (Day 1 / Day 2 / Day 3)
+Each day shows 2–4 action cards. Each action card must include:
+   - Action title (short)
+   - “Why this matters” (1 sentence)
+   - “Do this next” (1 sentence)
+   - OPTIONAL: “Call / Message Script” expandable (accordion)
+   - OPTIONAL: “Don’t do this” warning (only when relevant)
+
+HOW TO GENERATE THE PLAN (LOGIC)
+- Use existing parsed data: violations list, category counts, selected items.
+- Create deterministic rule-based mapping (no new external calls required):
+  Examples:
+  - If there are “Negative Marks”: include a goodwill/exec-office call script action (Day 1).
+  - If there are “Wrong Details” or “Inconsistencies”: include “Dispute under FCRA 611 for inaccurate/incomplete reporting” action (Day 1 or Day 2).
+  - If utilization appears high (if you have balance/limit info): include “pay down to under 30%” action (Day 1/2).
+  - Always include “Do NOT apply for new credit for 45 days” action (Day 1).
+- Keep it short. Users scan. Don’t exceed:
+  - Day 1: max 4 actions
+  - Day 2: max 3 actions
+  - Day 3: max 3 actions
+
+COPY REQUIREMENTS
+Use “mission control” language, not legal jargon:
+- Title: “Your 72-Hour Credit Command Plan”
+- Day headings: “Day 1 (Today)”, “Day 2”, “Day 3”
+- Short lines, not paragraphs.
+
+DELIVERABLES
+- New components:
+  - <CreditCommandPlan plan={plan} />
+  - <PlanDayCard day={...} />
+  - <PlanActionCard action={...} />
+- New helper:
+  - buildCreditCommandPlan(inputData) → plan object
+
+────────────────────────────────────────────
+FEATURE B: BUREAU INVESTIGATION TRACKER (FREE)
+PURPOSE
+Replace “send → wait → hope” with a clear dashboard:
+- countdown timers
+- dispute status
+- escalation triggers at day 31
+- lightweight expected-outcome labeling (rule-based)
+
+WHERE IT LIVES (UI PLACEMENT)
+- Add a new section below the Command Plan on the same page OR on the “Letters Generated / Confirmation” page.
+- It should show even if the user hasn’t mailed yet, but with “Not started” status.
+- It must be available without payment.
+
+DATA MODEL (LIGHTWEIGHT / ADDITIVE)
+We need a small persisted state to track disputes:
+- bureauDisputes: array of { bureau, dateSent, accountsCount, status, lastUpdated }
+Bureaus: Experian, TransUnion, Equifax (if applicable)
+Statuses:
+- Not started
+- Ready to send
+- Sent (Under Investigation)
+- Response received
+- Escalation recommended (Day 31+)
+
+IMPLEMENTATION NOTES
+- If you already store letter generation timestamps, reuse them.
+- If not, store dispute tracker state in existing user/session storage (Supabase user table, local storage, or current persistence method).
+- Do NOT introduce a heavy new DB schema unless the app already supports it—keep it minimal.
+
+WHAT IT SHOWS (UI)
+For each bureau card:
+- Bureau name + icon
+- Date Sent (or “Not sent yet”)
+- Days elapsed and days remaining (countdown)
+- Accounts included (count)
+- Status pill
+- “Expected outcome” label:
+   • High / Medium / Low probability (simple rule-based mapping based on violation category + count)
+- If day >= 31 and status is “Sent”: show an Escalation panel:
+   - “Investigation window elapsed — escalation recommended.”
+   - Buttons:
+     • “Generate Method of Verification Letter” (free)
+     • “Generate CFPB Complaint Draft” (free)
+     • “Generate Executive Escalation Letter” (free)
+  NOTE: These drafts can be simple templates with placeholders for now. Keep it additive.
+
+COUNTDOWN LOGIC
+- Use 30 days as the default investigation window.
+- Show progress bar Day 0 → Day 30.
+- On Day 31+, trigger escalation UI automatically.
+
+DELIVERABLES
+- New components:
+  - <BureauTracker disputes={...} onUpdate={...} />
+  - <BureauCard bureauDispute={...} />
+  - <CountdownBar startDate={...} windowDays={30} />
+  - <EscalationActions bureau={...} />
+- Minimal state management:
+  - add a small slice/store/hook: useDisputeTracker()
+
+────────────────────────────────────────────
+PAYWALL RULE (IMPORTANT)
+Everything above is FREE. The ONLY paid step remains Certified Mail.
+- Users can view the plan, tracker, scripts, and draft templates for free.
+- When a user clicks “Send Certified Mail” (existing step), keep paywall/checkout as-is.
+
+UI/UX REQUIREMENTS
+- Maintain the existing aesthetic. This should look like it always belonged.
+- Keep the page scannable.
+- Collapsible sections for long content.
+- Mobile-first: sticky CTA stays intact.
+
+OUTPUT REQUIREMENTS
+1) Implement the features with minimal disruption.
+2) Return:
+   - file paths changed
+   - new files created
+   - brief notes explaining where you plugged into existing flow
+3) Confirm the existing certified-mail payment flow was NOT altered.
+
+NOW BUILD IT.
+Start by scanning the current file structure and identifying the page where violations/results are displayed.
+Then add the new components and wire them to existing data.

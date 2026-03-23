@@ -1,0 +1,48 @@
+{
+  "description": "Golden truth fixture for TU ACR classification engine",
+  "source": "tests/fixtures/tu_acr_sample.txt",
+  "expected_boundaries": {
+    "adverse_start_present": true,
+    "satisfactory_start_present": true,
+    "adverse_before_satisfactory": true
+  },
+  "accounts": [
+    {
+      "account_name": "DEPT OF ED / NELNET",
+      "account_number": "90000049745****",
+      "status": ">Account 120 Days Past Due Date<",
+      "expected_classification": "ADVERSE",
+      "expected_source": "SECTION_HEADER",
+      "expected_rule": "CLS-01",
+      "section": "adverse",
+      "notes": "Located in Adverse section; pay status also has >brackets< confirming adverse"
+    },
+    {
+      "account_name": "CAPITAL ONE",
+      "account_number": "517805786462****",
+      "status": "Paid, Closed; was Paid as agreed",
+      "expected_classification": "GOOD_STANDING",
+      "expected_source": "SECTION_HEADER",
+      "expected_rule": "CLS-02",
+      "section": "satisfactory",
+      "notes": "Located in Satisfactory section; pay status confirms good standing"
+    },
+    {
+      "account_name": "CLEO AI, INC",
+      "account_number": "43606747****",
+      "status": "Paid, Closed; was Paid as agreed",
+      "expected_classification": "GOOD_STANDING",
+      "expected_source": "SECTION_HEADER",
+      "expected_rule": "CLS-02",
+      "section": "satisfactory",
+      "notes": "Located in Satisfactory section; pay status confirms good standing"
+    }
+  ],
+  "expected_classification_counts": {
+    "ADVERSE": 1,
+    "GOOD_STANDING": 2,
+    "UNKNOWN": 0
+  },
+  "expected_negative_items_count": 1,
+  "expected_totals_mode": "SECTION_DERIVED"
+}

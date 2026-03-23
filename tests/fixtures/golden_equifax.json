@@ -1,0 +1,83 @@
+{
+  "description": "Golden truth fixture for Equifax ACR classification and parsing",
+  "source": "tests/golden/equifax_golden.txt",
+  "bureau": "equifax",
+  "expected_account_count": 4,
+  "expected_hard_inquiry_count": 3,
+  "accounts": [
+    {
+      "account_name": "IDAHO HOUSING & FINANCE",
+      "account_number": "0953",
+      "status": "Pays As Agreed",
+      "balance": "268265",
+      "loan_type": "FHA Real Estate Mortgage",
+      "delinquency_flags_present": true,
+      "expected_classification": "ADVERSE",
+      "expected_source": "DELINQUENCY_FLAGS",
+      "expected_rule": "CLS-08",
+      "notes": "Status says Pays As Agreed but payment history shows 30, 60, 90 day late markers"
+    },
+    {
+      "account_name": "IDAHO HOUSING & FINANCE",
+      "account_number": "0954",
+      "status": "Pays As Agreed",
+      "balance": "8189",
+      "loan_type": "Real Estate",
+      "delinquency_flags_present": false,
+      "expected_classification": "GOOD_STANDING",
+      "expected_source": "PAY_STATUS_TOKEN",
+      "expected_rule": "CLS-05",
+      "notes": "Clean payment history, pays as agreed"
+    },
+    {
+      "account_name": "EDUCATION FIRST FCU",
+      "account_number": "0169",
+      "status": "Pays As Agreed",
+      "balance": "501",
+      "loan_type": "Credit Card",
+      "delinquency_flags_present": false,
+      "expected_classification": "GOOD_STANDING",
+      "expected_source": "PAY_STATUS_TOKEN",
+      "expected_rule": "CLS-05",
+      "notes": "Clean payment history, pays as agreed"
+    },
+    {
+      "account_name": "BESTBUY/CBNA",
+      "account_number": "9076",
+      "status": "Pays As Agreed",
+      "balance": "0",
+      "loan_type": "Credit Card",
+      "delinquency_flags_present": true,
+      "expected_classification": "ADVERSE",
+      "expected_source": "DELINQUENCY_FLAGS",
+      "expected_rule": "CLS-08",
+      "notes": "Closed account with 30, 60, 90 day late in payment history"
+    }
+  ],
+  "expected_classification_counts": {
+    "ADVERSE": 2,
+    "GOOD_STANDING": 2,
+    "UNKNOWN": 0
+  },
+  "expected_negative_items_count": 2,
+  "expected_totals_mode": "SECTION_DERIVED",
+  "hard_inquiries": [
+    {
+      "creditor": "CITIBANK NA., BEST BUY",
+      "date": "07/04/2024"
+    },
+    {
+      "creditor": "TOWER LOAN",
+      "date": "07/01/2024"
+    },
+    {
+      "creditor": "CIC MORTGAGE CREDIT",
+      "date": "03/29/2024"
+    }
+  ],
+  "personal_info": {
+    "name": "BRANDEE WILLIAMS",
+    "ssn": "XXX-XX-4551",
+    "dob": "06/17/1996"
+  }
+}
