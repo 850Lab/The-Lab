@@ -67,3 +67,39 @@ The application utilizes Streamlit with a wide layout and a **full-screen steppe
 - Resend API (for email services)
 - Stripe API (for payment processing)
 - Lob API (for Certified Mail integration)
+
+### Mission Control (React) + Workflow API on Replit
+- **Deployed Repl (Autoscale)** runs `scripts/replit_deployment_entry.sh`: FastAPI `api.workflow_app` on **port 8000** and Streamlit on **port 5000**. The published webview is still Streamlit; the React app is not part of that run command.
+- **Developing Mission Control**: use the **Project** Run button (parallel workflows) or start both manually: `streamlit …` on 5000 and `python -m uvicorn api.workflow_app:app --host 0.0.0.0 --port 8000` on 8000. From the Shell, run `cd web && npm install && npm run dev` so Vite serves the React app (default **5173**, bound to `0.0.0.0`). Mission Control uses `/workflow-api` → Vite proxy → `127.0.0.1:8000` unless overridden.
+- **Secrets / env**: set `WORKFLOW_ADMIN_API_SECRET` for admin routes; optional `WORKFLOW_INTERNAL_API_SECRET` for worker/internal endpoints. For Mission Control UI, operators paste the same value (or use `VITE_WORKFLOW_ADMIN_KEY` only for local convenience — prefer Secrets for real admin keys).
+- **Cross-origin**: if the browser origin is not the Vite dev server (e.g. `vite preview`), set `VITE_WORKFLOW_API_URL` to the full origin of the workflow API (Replit’s URL for port **8000**). Optional `WORKFLOW_API_PROXY_TARGET` adjusts the dev proxy target (default `http://127.0.0.1:8000`).
+
+## Replit handoff checklist
+
+### Runtime contract (verify after pull)
+| Service | Port | Bind | Notes |
+|---------|------|------|--------|
+| Streamlit (`app.py`) | **5000** | `0.0.0.0` | Primary webview; `.streamlit/config.toml` also sets 5000 |
+| Workflow API (`api.workflow_app`) | **8000** | `0.0.0.0` | Same Repl as Streamlit for dev proxy |
+| Vite (Mission Control / React) | **5173** | `0.0.0.0` | `web/vite.config.ts` proxies `/workflow-api` → `WORKFLOW_API_PROXY_TARGET` or `http://127.0.0.1:8000` |
+
+### Autoscale **Run** (production deploy)
+- Command: `scripts/replit_deployment_entry.sh` (starts uvicorn **8000** in background, then **exec** Streamlit **5000**).
+- Published site is **Streamlit** only; React Mission Control is not started by this script.
+
+### Dev: Mission Control (same Repl)
+1. Start API + Streamlit: use the **Project** workflow in `.replit` (parallel **streamlit_app** + **workflow_api**) *or* run the same two commands from the Shell.
+2. In another Shell: `cd web && npm install && npm run dev`
+3. Open the Replit preview URL for port **5173**, then navigate to **`/mission-control`** (e.g. `https://<your-5173-preview-host>/mission-control`).
+4. Paste **Workflow Admin** secret in the UI (or set `VITE_WORKFLOW_ADMIN_KEY` only for local convenience; prefer Replit **Secrets** for real keys).
+
+### Required / recommended Secrets (Streamlit + API)
+- **`DATABASE_URL`** — **required** (`app.py` stops without it). Use Replit PostgreSQL.
+- **`WORKFLOW_ADMIN_API_SECRET`** — required for `/internal/admin/...` and Mission Control actions.
+- **`WORKFLOW_INTERNAL_API_SECRET`** — optional but needed for internal/worker routes and some automation.
+- **Recommended:** `STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY`, `STRIPE_WEBHOOK_SECRET`, `LOB_API_KEY` (app warns if missing).
+- **Email:** `RESEND_API_KEY`; `RESEND_FROM_EMAIL` optional (`.replit` sets a shared default for userenv).
+- **AI:** `AI_INTEGRATIONS_OPENAI_API_KEY` (and optional `AI_INTEGRATIONS_OPENAI_BASE_URL`) for strategy / doc validation paths.
+
+### Build note
+- `.replit` **deployment** `build` uses an explicit `pip install …` list, not `requirements.txt`. Keep it in sync with imports or switch the build step to `pip install -r requirements.txt` (note: `requirements.txt` includes **playwright**, which is heavy on Repl builds).

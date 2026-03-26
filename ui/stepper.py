@@ -19,8 +19,10 @@ STEPPER_CSS = f"""
     background: {BG_0};
     padding: 12px 8px 10px 8px;
     border-bottom: 1px solid {BORDER};
-    margin: -1rem -1rem 16px -1rem;
-    width: calc(100% + 2rem);
+    margin: 0 0 16px 0;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
 }}
 .stepper-round {{
     text-align: center;

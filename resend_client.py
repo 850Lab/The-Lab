@@ -1,3 +1,4 @@
+import html
 import os
 import requests
 
@@ -9,6 +10,17 @@ def _get_resend():
         import resend
         _resend = resend
     return _resend
+
+
+def _resolve_resend_credentials():
+    """
+    Prefer explicit env (local / CI); fall back to Replit connector when configured.
+    """
+    api_key = (os.environ.get("RESEND_API_KEY") or "").strip()
+    from_email = (os.environ.get("RESEND_FROM_EMAIL") or "").strip()
+    if api_key and from_email:
+        return {"api_key": api_key, "from_email": from_email}
+    return _get_resend_credentials()
 
 
 def _get_resend_credentials():
@@ -40,6 +52,59 @@ def _get_resend_credentials():
         "api_key": item["settings"]["api_key"],
         "from_email": from_email,
     }
+
+
+def send_workflow_reminder_email(
+    to_email: str,
+    *,
+    reminder_type: str,
+    reason_plain: str,
+    display_name: str = None,
+) -> dict:
+    """
+    Lifecycle reminder (workflow worker). Raises on misconfiguration or send failure.
+    Returns a small dict safe to log (provider id only).
+    """
+    creds = _resolve_resend_credentials()
+    _get_resend().api_key = creds["api_key"]
+    from_email = creds["from_email"]
+
+    greeting = f"Hi {html.escape(display_name)}," if display_name else "Hi,"
+    rtype = html.escape((reminder_type or "reminder")[:80])
+    body = html.escape((reason_plain or "")[:2000])
+
+    html_body = f"""
+    <div style="font-family: 'Inter', Arial, sans-serif; max-width: 480px; margin: 0 auto; background: #121212; padding: 40px 32px; border-radius: 16px;">
+        <div style="text-align: center; margin-bottom: 32px;">
+            <h1 style="color: #F5C542; font-size: 28px; margin: 0; letter-spacing: -0.02em;">850 Lab</h1>
+        </div>
+        <p style="color: #E0E0E0; font-size: 15px; line-height: 1.6; margin-bottom: 8px;">{greeting}</p>
+        <p style="color: #999; font-size: 12px; line-height: 1.5; margin-bottom: 12px;">Reminder type: {rtype}</p>
+        <p style="color: #E0E0E0; font-size: 15px; line-height: 1.6; margin-bottom: 24px;">{body}</p>
+        <div style="text-align: center; margin-top: 24px;">
+            <a href="https://850.life" style="display: inline-block; background: linear-gradient(90deg, #D4A017, #f2c94c); color: #121212; font-weight: 700; font-size: 14px; padding: 12px 32px; border-radius: 8px; text-decoration: none;">Open 850 Lab</a>
+        </div>
+        <p style="color: #666; font-size: 12px; line-height: 1.5; text-align: center; margin-top: 24px;">
+            You are receiving this because you have an active dispute workflow.
+        </p>
+    </div>
+    """
+
+    resend_mod = _get_resend()
+    params: resend_mod.Emails.SendParams = {
+        "from": f"850 Lab <{from_email}>",
+        "to": [to_email],
+        "subject": f"850 Lab — Action needed ({reminder_type[:40]})",
+        "html": html_body,
+    }
+
+    raw = resend_mod.Emails.send(params)
+    mid = ""
+    if isinstance(raw, dict):
+        mid = str(raw.get("id") or "")[:120]
+    else:
+        mid = str(raw)[:120]
+    return {"provider": "resend", "message_id": mid or "sent"}
 
 
 def send_verification_email(to_email: str, code: str, display_name: str = None):

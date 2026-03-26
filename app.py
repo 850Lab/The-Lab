@@ -85,6 +85,7 @@ try:
     from aggregator import compute_unified_summary, get_multi_bureau_accounts, get_discrepant_accounts
     from classifier import classify_accounts, compute_negative_items, count_by_classification
     from stripe_client import create_checkout_session, verify_checkout_session, list_recent_paid_sessions
+    from services.workflow.repository import ensure_active_workflow_id
     from dispute_strategy import build_ai_strategy, build_deterministic_strategy
     from strike_metrics import compute_strike_metrics
     from war_room_plan import build_war_room_plan, PHASE_LABELS
@@ -773,6 +774,20 @@ if not _is_demo and qp.get('payment') == 'success' and qp.get('session_id'):
                     stripe_session_id=sid,
                     status='completed',
                 )
+                wf_meta = (meta.get("workflow_id") or "").strip()
+                if wf_meta:
+                    try:
+                        from services.workflow import hooks as _wf_hooks
+
+                        _wf_hooks.notify_payment_completed(
+                            user_id,
+                            sid,
+                            workflow_id=wf_meta,
+                            amount_cents=amount,
+                            audit_source="streamlit:payment_return",
+                        )
+                    except Exception as _wf_pay_exc:
+                        print(f"[WORKFLOW_PAYMENT] return-path notify failed: {_wf_pay_exc}")
                 st.success("Purchase complete! Your entitlements have been added.")
                 if product_id == 'deletion_sprint':
                     db.create_sprint_guarantee(user_id, stripe_session_id=sid)
@@ -826,6 +841,20 @@ def _run_background_tasks_once(_uid, _email, _display_name, _catalog, _session_i
                     note=f'Reconciled {catalog_entry["label"]} for ${amount/100:.2f}',
                 )
                 auth.record_payment(_uid, amount, stripe_session_id=sid, status='completed')
+                wf_meta = (meta.get("workflow_id") or "").strip()
+                if wf_meta:
+                    try:
+                        from services.workflow import hooks as _wf_hooks
+
+                        _wf_hooks.notify_payment_completed(
+                            _uid,
+                            sid,
+                            workflow_id=wf_meta,
+                            amount_cents=amount,
+                            audit_source="stripe_reconcile:list",
+                        )
+                    except Exception as _wf_rec_exc:
+                        print(f"[WORKFLOW_PAYMENT] reconcile notify failed: {_wf_rec_exc}")
                 if product_id == 'deletion_sprint':
                     db.create_sprint_guarantee(_uid, stripe_session_id=sid)
                 reconciled += 1
@@ -1136,6 +1165,7 @@ def render_purchase_options(context: str = "sidebar", needed_ai: int = 0, needed
                 result = create_checkout_session(
                     uid, email, pack_id, pack['label'], pack['price_cents'],
                     ai_rounds=pack['ai_rounds'], letters=pack['letters'], mailings=pack['mailings'],
+                    workflow_id=ensure_active_workflow_id(uid),
                 )
                 if result.get('url'):
                     _open_checkout(result['url'], product_id=pack_id)
@@ -1148,6 +1178,7 @@ def render_purchase_options(context: str = "sidebar", needed_ai: int = 0, needed
                 kw[item['type']] = item['qty']
                 result = create_checkout_session(
                     uid, email, item_id, item['label'], item['price_cents'], **kw,
+                    workflow_id=ensure_active_workflow_id(uid),
                 )
                 if result.get('url'):
                     _open_checkout(result['url'])
@@ -1240,6 +1271,7 @@ def render_purchase_options(context: str = "sidebar", needed_ai: int = 0, needed
         result = create_checkout_session(
             uid, email, rec_pack_id, rec_pack['label'], rec_pack['price_cents'],
             ai_rounds=rec_pack['ai_rounds'], letters=rec_pack['letters'], mailings=rec_pack['mailings'],
+            workflow_id=ensure_active_workflow_id(uid),
         )
         if result.get('url'):
             _open_checkout(result['url'], product_id=rec_pack_id)
@@ -1292,6 +1324,7 @@ def render_purchase_options(context: str = "sidebar", needed_ai: int = 0, needed
                         result = create_checkout_session(
                             uid, email, pack_id, pack['label'], pack['price_cents'],
                             ai_rounds=pack['ai_rounds'], letters=pack['letters'], mailings=pack['mailings'],
+                            workflow_id=ensure_active_workflow_id(uid),
                         )
                         if result.get('url'):
                             _open_checkout(result['url'], product_id=pack_id)
@@ -1305,6 +1338,7 @@ def render_purchase_options(context: str = "sidebar", needed_ai: int = 0, needed
                         kw[item['type']] = item['qty']
                         result = create_checkout_session(
                             uid, email, item_id, item['label'], item['price_cents'], **kw,
+                            workflow_id=ensure_active_workflow_id(uid),
                         )
                         if result.get('url'):
                             _open_checkout(result['url'])
@@ -1314,6 +1348,34 @@ def render_purchase_options(context: str = "sidebar", needed_ai: int = 0, needed
 
 
 VALID_CARDS = set(CARD_ORDER) | {"PREPARING", "GENERATING", "LETTERS_READY", "VOICE_PROFILE", "MISSION_SETUP"}
+
+def _report_has_extracted_items(uploaded_reports) -> bool:
+    """True when at least one report has accounts, negatives, inquiries, or classified account counts."""
+    if not uploaded_reports or not isinstance(uploaded_reports, dict):
+        return False
+    for _source_key, rr in uploaded_reports.items():
+        if not isinstance(rr, dict):
+            continue
+        pd = rr.get("parsed_data") or {}
+        if not isinstance(pd, dict):
+            continue
+        if pd.get("accounts"):
+            return True
+        if pd.get("negative_items"):
+            return True
+        if pd.get("inquiries"):
+            return True
+        counts = pd.get("classification_counts") or {}
+        if isinstance(counts, dict) and sum(int(v or 0) for v in counts.values()) > 0:
+            return True
+    return False
+
+def _step2_data_ready(uploaded_reports, is_admin: bool) -> bool:
+    if _report_has_extracted_items(uploaded_reports):
+        return True
+    if is_admin and st.session_state.get("_test_mode_initialized") and uploaded_reports:
+        return True
+    return False
 
 def advance_card(target_card):
     if target_card in VALID_CARDS:
@@ -2429,7 +2491,7 @@ if not _is_demo:
     st.markdown("**850 Lab** | Credit Report Intelligence")
 
 if st.session_state.ui_card not in VALID_CARDS:
-    st.session_state.ui_card = "SUMMARY" if st.session_state.uploaded_reports else "UPLOAD"
+    st.session_state.ui_card = "SUMMARY" if _step2_data_ready(st.session_state.get("uploaded_reports"), is_admin_user) else "UPLOAD"
 
 if not _is_demo and not st.session_state.uploaded_reports and st.session_state.ui_card == "UPLOAD":
     if '_mission_loaded' not in st.session_state:
@@ -2447,7 +2509,7 @@ if not _is_demo and not st.session_state.uploaded_reports and st.session_state.u
         st.session_state.ui_card = "MISSION_SETUP"
 
 if not st.session_state.get('_test_mode_initialized'):
-    if st.session_state.uploaded_reports and st.session_state.ui_card == "UPLOAD":
+    if _step2_data_ready(st.session_state.uploaded_reports, is_admin_user) and st.session_state.ui_card == "UPLOAD":
         advance_card("SUMMARY")
 
     if not _is_demo and st.session_state.generated_letters and st.session_state.ui_card in ("DISPUTES", "SUMMARY") and not st.session_state.get('manual_nav_back'):
@@ -3277,7 +3339,7 @@ elif st.session_state.ui_card == "UPLOAD":
 
 elif st.session_state.ui_card == "SUMMARY":
   try:
-    if st.session_state.uploaded_reports:
+    if _step2_data_ready(st.session_state.uploaded_reports, is_admin_user):
         log_ux("SUMMARY", "TAP", "summary_render", 4)
 
         if not is_admin_user:
@@ -3628,9 +3690,7 @@ elif st.session_state.ui_card == "SUMMARY":
                         st.markdown("---")
 
         review_claims_list = st.session_state.review_claims
-        has_eligible = False
-        if review_claims_list:
-            has_eligible = True
+        has_eligible = bool(review_claims_list) and _step2_data_ready(st.session_state.uploaded_reports, is_admin_user)
 
         if has_eligible:
             all_confirmed = True
@@ -3711,7 +3771,10 @@ elif st.session_state.ui_card == "SUMMARY":
                 advance_card("DONE")
                 st.rerun()
     else:
-        st.info("No report data available. Please upload a report first.")
+        st.info(
+            "We need a parsed credit report with accounts or inquiries. "
+            "Upload a full PDF from Equifax, Experian, or TransUnion."
+        )
         if st.button("Go to Upload", type="primary", use_container_width=True, key="summary_back_btn"):
             advance_card("UPLOAD")
             st.rerun()
@@ -3720,36 +3783,46 @@ elif st.session_state.ui_card == "SUMMARY":
     st.code(traceback.format_exc())
 
 elif st.session_state.ui_card == "PREPARING":
-    bureau_names = []
-    if st.session_state.uploaded_reports and isinstance(st.session_state.uploaded_reports, dict):
-        for key, val in st.session_state.uploaded_reports.items():
-            if isinstance(val, dict) and val.get('bureau'):
-                b = val['bureau'].title()
-            else:
-                b = key.title()
-            if b not in bureau_names:
-                bureau_names.append(b)
-    bureau_text = " and ".join(bureau_names) if bureau_names else "your bureaus"
+    if not _step2_data_ready(st.session_state.get("uploaded_reports"), is_admin_user):
+        st.info(
+            "Upload a full bureau credit report PDF first. "
+            "Once we extract accounts and inquiries, your dispute plan will appear here."
+        )
+        if st.button("Go to Upload", type="primary", use_container_width=True, key="preparing_need_upload_btn"):
+            advance_card("UPLOAD")
+            st.rerun()
+    else:
+        bureau_names = []
+        if st.session_state.uploaded_reports and isinstance(st.session_state.uploaded_reports, dict):
+            for key, val in st.session_state.uploaded_reports.items():
+                if isinstance(val, dict) and val.get('bureau'):
+                    b = val['bureau'].title()
+                else:
+                    b = key.title()
+                if b not in bureau_names:
+                    bureau_names.append(b)
+        bureau_text = " and ".join(bureau_names) if bureau_names else "your bureaus"
 
-    st.markdown(f"""
-    <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;
-                min-height:45vh;text-align:center;padding:2rem 1rem;">
-        <div style="font-size:3rem;">&#x1f4a1;</div>
-        <div style="font-size:1.5rem;font-weight:700;color:{TEXT_0};margin-top:0.75rem;">
-            Your dispute plan is ready
+        st.markdown(f"""
+        <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;
+                    min-height:45vh;text-align:center;padding:2rem 1rem;">
+            <div style="font-size:3rem;">&#x1f4a1;</div>
+            <div style="font-size:1.5rem;font-weight:700;color:{TEXT_0};margin-top:0.75rem;">
+                Your dispute plan is ready
+            </div>
+            <div style="font-size:0.95rem;color:{TEXT_1};max-width:340px;line-height:1.5;margin-top:0.5rem;">
+                We analyzed your {bureau_text} reports and found what to dispute.
+            </div>
         </div>
-        <div style="font-size:0.95rem;color:{TEXT_1};max-width:340px;line-height:1.5;margin-top:0.5rem;">
-            We analyzed your {bureau_text} reports and found what to dispute.
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
+        """, unsafe_allow_html=True)
 
-    if st.button("See Your Dispute Plan", type="primary", use_container_width=True, key="preparing_continue_btn"):
-        advance_card("DISPUTES")
-        st.rerun()
+        if st.button("See Your Dispute Plan", type="primary", use_container_width=True, key="preparing_continue_btn"):
+            advance_card("DISPUTES")
+            st.rerun()
 
 elif st.session_state.ui_card == "DISPUTES":
-    if st.session_state.uploaded_reports:
+    _disputes_ready = _step2_data_ready(st.session_state.get("uploaded_reports"), is_admin_user)
+    if _disputes_ready:
         if st.button("← Back", key="disputes_back_summary"):
             st.session_state.manual_nav_back = True
             advance_card("SUMMARY")
@@ -3757,9 +3830,15 @@ elif st.session_state.ui_card == "DISPUTES":
 
     _dispute_round_num = len(st.session_state.get('dispute_rounds', [])) + 1
 
-    if not st.session_state.uploaded_reports:
+    if not _disputes_ready:
         st.markdown('<div class="card-title">Your Dispute Plan</div>', unsafe_allow_html=True)
-        st.info("Upload and parse a credit report first.")
+        st.info(
+            "Upload a full credit report PDF so we can extract accounts and inquiries. "
+            "Personal information alone is not enough to build a dispute plan."
+        )
+        if st.button("Go to Upload", type="primary", use_container_width=True, key="disputes_go_upload_btn"):
+            advance_card("UPLOAD")
+            st.rerun()
     else:
         review_claims_list = st.session_state.review_claims
 
@@ -4176,6 +4255,20 @@ elif st.session_state.ui_card == "DISPUTES":
                         st.session_state._gen_free_max_capacity = (auth.FREE_PER_BUREAU_LIMIT * len(all_bureaus)) if is_free_generation else 0
                         st.session_state._gen_id = gen_id
                         st.session_state._gen_completed = False
+                        try:
+                            from services.workflow import hooks as workflow_hooks
+
+                            workflow_hooks.notify_review_claims_completed(
+                                user_id,
+                                item_count=len(review_claims_list),
+                            )
+                            workflow_hooks.notify_select_disputes_completed(
+                                user_id,
+                                selected_count=selected_count,
+                                bureaus=list(selected_bureaus),
+                            )
+                        except Exception:
+                            pass
                         _vp_exists = db.load_voice_profile(user_id) if user_id else None
                         if _vp_exists:
                             st.session_state._voice_profile = db.get_effective_voice_profile(user_id)
@@ -4709,6 +4802,16 @@ elif st.session_state.ui_card == "GENERATING":
                     st.session_state._gen_completed = True
                     st.session_state._letters_generated_at = datetime.now().isoformat()
                     db.log_activity(user_id, 'generate_letters', f"{len(letters_generated)} letter(s) for {', '.join(b.title() for b in letters_generated.keys())}", 'GENERATING')
+
+                    try:
+                        from services.workflow import hooks as workflow_hooks
+
+                        workflow_hooks.notify_letter_generation_completed(
+                            user_id,
+                            list(letters_generated.keys()),
+                        )
+                    except Exception:
+                        pass
 
                     try:
                         _ul_token = db.get_or_create_upload_token(user_id)
@@ -6337,6 +6440,7 @@ elif st.session_state.ui_card == "DONE":
                             user_id, current_user.get('email', ''),
                             'full_round', _fr_pack.get('label', 'Full Round'), _fr_pack.get('price_cents', 2499),
                             ai_rounds=_fr_pack.get('ai_rounds', 1), letters=_fr_pack.get('letters', 3), mailings=_fr_pack.get('mailings', 3),
+                            workflow_id=ensure_active_workflow_id(user_id),
                         )
                         if result.get('url'):
                             _open_checkout(result['url'])
@@ -6588,6 +6692,22 @@ elif st.session_state.ui_card == "DONE":
 
                                     st.session_state.lob_send_results[bureau_key_send] = result
 
+                                    if not result.get('success'):
+                                        try:
+                                            from services.workflow import hooks as workflow_hooks
+
+                                            workflow_hooks.notify_mail_send_failed(
+                                                user_id,
+                                                str(result.get('error') or 'MAIL_SEND_FAILED')[:64],
+                                                str(
+                                                    result.get('message')
+                                                    or result.get('error_message')
+                                                    or 'Certified mail could not be sent.',
+                                                )[:500],
+                                            )
+                                        except Exception:
+                                            pass
+
                                     if result.get('success'):
                                         db.log_activity(user_id, 'mail_sent', f"Certified mail to {bureau_title_send}", 'DONE')
                                         report_id = None
@@ -6607,6 +6727,7 @@ elif st.session_state.ui_card == "DONE":
                                             return_receipt=return_receipt,
                                             is_test=result.get('is_test', False),
                                             expected_delivery=result.get('expected_delivery', ''),
+                                            workflow_id=ensure_active_workflow_id(current_user.get('user_id')),
                                         )
 
                                     st.rerun()
@@ -7128,6 +7249,21 @@ elif st.session_state.ui_card == "DONE":
                                         description=f"850 Lab dispute - {bureau_title_send}", attachments=attachments,
                                     )
                                 st.session_state.lob_send_results[bureau_key_send] = result
+                                if not result.get('success'):
+                                    try:
+                                        from services.workflow import hooks as workflow_hooks
+
+                                        workflow_hooks.notify_mail_send_failed(
+                                            user_id,
+                                            str(result.get('error') or 'MAIL_SEND_FAILED')[:64],
+                                            str(
+                                                result.get('message')
+                                                or result.get('error_message')
+                                                or 'Certified mail could not be sent.',
+                                            )[:500],
+                                        )
+                                    except Exception:
+                                        pass
                                 if result.get('success'):
                                     db.log_activity(user_id, 'mail_sent', f"Certified mail to {bureau_title_send}", 'DONE')
                                     report_id = None
@@ -7140,6 +7276,7 @@ elif st.session_state.ui_card == "DONE":
                                         to_address=lob_client.get_bureau_address(bureau_key_send) or {},
                                         cost_cents=cost_info['total_cents'], return_receipt=return_receipt,
                                         is_test=result.get('is_test', False), expected_delivery=result.get('expected_delivery', ''),
+                                        workflow_id=ensure_active_workflow_id(current_user.get('user_id')),
                                     )
                                 st.rerun()
 

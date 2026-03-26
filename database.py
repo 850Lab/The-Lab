@@ -154,6 +154,14 @@ def init_database():
                 raise
 
 def _init_database_inner():
+    from services.workflow.workflow_db_config import should_use_workflow_sqlite
+
+    if should_use_workflow_sqlite():
+        from services.workflow import workflow_sqlite
+
+        workflow_sqlite.ensure_schema()
+        return
+
     pool = _get_pool()
     conn = pool.getconn()
     try:
@@ -161,6 +169,23 @@ def _init_database_inner():
         cur.execute("SELECT 1 FROM information_schema.tables WHERE table_name = 'users'")
         if cur.fetchone():
             cur.close()
+            try:
+                from workflow_schema import (
+                    ensure_operations_tables,
+                    ensure_response_intake_tables,
+                    ensure_workflow_tables,
+                )
+
+                ensure_workflow_tables(conn)
+                ensure_response_intake_tables(conn)
+                ensure_operations_tables(conn)
+                conn.commit()
+            except Exception as _wf_e:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+                _logger.warning("workflow schema ensure failed (non-fatal): %s", _wf_e)
             pool.putconn(conn)
             return
         cur.close()
@@ -561,6 +586,21 @@ def _init_database_ddl(pool, conn):
     ''')
     cur.execute('CREATE INDEX IF NOT EXISTS idx_user_signatures_user ON user_signatures(user_id)')
 
+    try:
+        from workflow_schema import (
+            ensure_operations_tables,
+            ensure_response_intake_tables,
+            ensure_workflow_tables,
+        )
+
+        ensure_workflow_tables(conn)
+        ensure_response_intake_tables(conn)
+        ensure_operations_tables(conn)
+    except Exception as _wf_e:
+        _logger.warning(
+            "workflow schema ensure after full DDL failed (non-fatal): %s", _wf_e
+        )
+
     conn.commit()
     cur.close()
     pool.putconn(conn)
@@ -865,7 +905,7 @@ def get_analytics_summary(days=30):
 
 def save_lob_send(user_id, report_id, bureau, lob_id, tracking_number, status,
                   from_address, to_address, cost_cents, return_receipt, is_test,
-                  expected_delivery=None, error_message=None):
+                  expected_delivery=None, error_message=None, workflow_id=None):
     try:
         with get_db() as (conn, cur):
             cur.execute('''
@@ -879,7 +919,22 @@ def save_lob_send(user_id, report_id, bureau, lob_id, tracking_number, status,
                   return_receipt, is_test, expected_delivery, error_message))
             result = cur.fetchone()
             conn.commit()
-            return result[0] if result else None
+            send_id = result[0] if result else None
+        if send_id and status == 'mailed' and user_id:
+            try:
+                from services.workflow import hooks as workflow_hooks
+
+                workflow_hooks.notify_certified_mail_sent(
+                    int(user_id),
+                    str(bureau or ''),
+                    str(tracking_number or ''),
+                    lob_id=str(lob_id or ''),
+                    report_id=int(report_id) if report_id is not None else None,
+                    workflow_id=str(workflow_id).strip() if workflow_id else None,
+                )
+            except Exception:
+                pass
+        return send_id
     except Exception:
         return None
 
@@ -963,7 +1018,15 @@ def save_proof_upload(user_id, round_number, bureau, file_name, file_type, notes
               psycopg2.Binary(file_data) if file_data else None, doc_type))
         result = cur.fetchone()
         conn.commit()
-        return result[0] if result else None
+        proof_id = result[0] if result else None
+        if proof_id and user_id:
+            try:
+                from services.workflow import hooks as workflow_hooks
+
+                workflow_hooks.maybe_notify_proof_attachment_completed(int(user_id))
+            except Exception:
+                pass
+        return proof_id
 
 
 def get_proof_docs_for_user(user_id, doc_types=None):
@@ -1974,6 +2037,12 @@ def save_user_signature(user_id, signature_bytes):
                           created_at = NOW()
         ''', (user_id, psycopg2.Binary(signature_bytes)))
         conn.commit()
+    try:
+        from services.workflow import hooks as workflow_hooks
+
+        workflow_hooks.maybe_notify_proof_attachment_completed(int(user_id))
+    except Exception:
+        pass
 
 
 def get_user_signature(user_id):

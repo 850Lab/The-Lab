@@ -6,8 +6,8 @@ packages = ["freetype", "gitFull", "glib", "glibcLocales", "gumbo", "harfbuzz", 
 
 [deployment]
 deploymentTarget = "autoscale"
-build = ["sh", "-c", "pip install bcrypt deepdiff openai openpyxl pandas pdf2image pdfplumber pillow psycopg2-binary pymupdf pytesseract reportlab requests resend streamlit stripe websocket-client websockets"]
-run = ["streamlit", "run", "app.py", "--server.port", "5000", "--server.address", "0.0.0.0", "--server.headless", "true"]
+build = ["sh", "-c", "pip install bcrypt deepdiff fastapi openai openpyxl pandas pdf2image pdfplumber pillow psycopg2-binary pymupdf pytesseract reportlab requests resend streamlit stripe uvicorn websocket-client websockets"]
+run = ["sh", "scripts/replit_deployment_entry.sh"]
 [workflows]
 runButton = "Project"
 
@@ -19,6 +19,10 @@ author = "agent"
 [[workflows.workflow.tasks]]
 task = "workflow.run"
 args = "streamlit_app"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "workflow_api"
 
 [[workflows.workflow]]
 name = "streamlit_app"
@@ -32,9 +36,21 @@ task = "shell.exec"
 args = "streamlit run app.py --server.port 5000 --server.address 0.0.0.0 --server.headless true"
 waitForPort = 5000
 
+[[workflows.workflow]]
+name = "workflow_api"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "python -m uvicorn api.workflow_app:app --host 0.0.0.0 --port 8000"
+waitForPort = 8000
+
 [[ports]]
 localPort = 5000
 externalPort = 80
+
+[[ports]]
+localPort = 8000
 
 [agent]
 integrations = ["python_openai_ai_integrations:1.0.0", "stripe:2.0.0", "resend:1.0.0"]

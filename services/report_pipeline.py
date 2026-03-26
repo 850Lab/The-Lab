@@ -205,6 +205,15 @@ def _process_single_pdf(
         parsed_data = parse_credit_report_data(full_text, bureau)
     except Exception as parse_err:
         diag_store.record_error("parse_credit_report_data", str(parse_err), parse_err)
+        try:
+            from services.workflow import hooks as workflow_hooks
+
+            workflow_hooks.notify_parse_failed(
+                ctx.user_id,
+                str(parse_err)[:500],
+            )
+        except Exception:
+            pass
         raise
 
     progress.update(label=f"Deep-reading {bureau_display} report layout...", state="running")
@@ -295,6 +304,12 @@ def _process_single_pdf(
             ctx.on_report_saved(bureau, filename)
     except Exception:
         report_id = None
+        try:
+            from services.workflow import hooks as workflow_hooks
+
+            workflow_hooks.notify_upload_storage_failed(ctx.user_id)
+        except Exception:
+            pass
 
     report_data = {
         "upload_id": upload_id,
@@ -385,6 +400,18 @@ def _process_single_pdf(
         label=f"{bureau_display} report analyzed — {accounts_count} accounts, {neg_count} negative items found",
         state="complete",
     )
+    if report_id:
+        try:
+            from services.workflow import hooks as workflow_hooks
+
+            workflow_hooks.notify_upload_and_parse_success(
+                ctx.user_id,
+                report_id,
+                bureau,
+                filename,
+            )
+        except Exception:
+            pass
     return None
 
 

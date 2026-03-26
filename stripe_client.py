@@ -106,10 +106,16 @@ def get_stripe_client():
 def create_checkout_session(user_id: int, user_email: str, product_id: str,
                             product_label: str, amount_cents: int,
                             ai_rounds: int = 0, letters: int = 0, mailings: int = 0,
-                            success_url: str = None, cancel_url: str = None):
+                            success_url: str = None, cancel_url: str = None,
+                            *,
+                            workflow_id: str):
     client = get_stripe_client()
     if not client:
         return {'error': 'Stripe is not configured'}
+
+    wf = (workflow_id or "").strip()
+    if not wf:
+        return {'error': 'workflow_id is required for Stripe checkout metadata'}
 
     domains = os.environ.get('REPLIT_DOMAINS', '')
     base_url = f'https://{domains.split(",")[0]}' if domains else 'http://localhost:5000'
@@ -143,6 +149,7 @@ def create_checkout_session(user_id: int, user_email: str, product_id: str,
                 'ai_rounds': str(ai_rounds),
                 'letters': str(letters),
                 'mailings': str(mailings),
+                'workflow_id': wf,
             },
         )
         return {'url': session.url, 'session_id': session.id}

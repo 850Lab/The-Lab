@@ -515,6 +515,13 @@ div[data-baseweb="checkbox"] input:checked + div {{
 
 .card-viewport {{
   animation: cardFadeIn 0.25s ease-out;
+  max-width: 640px;
+  margin-left: auto;
+  margin-right: auto;
+  width: 100%;
+  padding-left: 0.25rem;
+  padding-right: 0.25rem;
+  box-sizing: border-box;
 }}
 
 .card-title {{
@@ -813,6 +820,8 @@ section[data-testid="stSidebar"] .stMarkdown {{
 /* ── Main content max-width wrapper ── */
 .block-container {{
   max-width: 1100px !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
   padding-left: 2rem !important;
   padding-right: 2rem !important;
   padding-top: 1rem !important;

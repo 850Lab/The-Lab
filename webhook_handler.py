@@ -61,8 +61,9 @@ def _process_checkout_completed(session: dict) -> dict:
     if auth.entitlement_purchase_processed(session_id):
         return {"status": 200, "body": "Already processed"}
 
-    metadata = session.get("metadata", {})
+    metadata = session.get("metadata", {}) or {}
     user_id_str = metadata.get("user_id")
+    workflow_id = (metadata.get("workflow_id") or "").strip() or None
     product_id = metadata.get("product_id", "")
     amount = session.get("amount_total", 0)
 
@@ -132,4 +133,28 @@ def _process_checkout_completed(session: dict) -> dict:
             print(f"[WEBHOOK] Sprint guarantee creation failed: {e}")
 
     print(f"[WEBHOOK] Credited user {user_id}: {catalog_entry['label']}")
+
+    if not workflow_id:
+        print("[WEBHOOK] Missing workflow_id in Stripe metadata; skipping workflow payment step")
+    else:
+        try:
+            from services.workflow.repository import fetch_session
+            from services.workflow import hooks as workflow_hooks
+
+            wf_row = fetch_session(workflow_id)
+            if not wf_row or int(wf_row["user_id"]) != int(user_id):
+                print(
+                    f"[WEBHOOK] workflow_id {workflow_id} missing or not owned by user {user_id}; "
+                    "skipping workflow payment step"
+                )
+            else:
+                workflow_hooks.notify_payment_completed(
+                    user_id,
+                    session_id,
+                    workflow_id=workflow_id,
+                    amount_cents=amount,
+                )
+        except Exception as wf_exc:
+            print(f"[WEBHOOK] workflow payment hook: {wf_exc}")
+
     return {"status": 200, "body": "OK"}

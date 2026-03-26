@@ -54,6 +54,7 @@ from completeness import compute_completeness
 from aggregator import compute_unified_summary, get_multi_bureau_accounts, get_discrepant_accounts
 from classifier import classify_accounts, compute_negative_items, count_by_classification
 from stripe_client import create_checkout_session, verify_checkout_session, list_recent_paid_sessions
+from services.workflow.repository import ensure_active_workflow_id
 from dispute_strategy import build_ai_strategy, build_deterministic_strategy
 from ui.css import inject_css, GOLD, GOLD_DIM, BG_0, BG_1, BG_2, TEXT_0, TEXT_1, BORDER
 from ui.components import lab_system_error_banner, CARD_ORDER, render_card_progress
@@ -262,6 +263,20 @@ if qp.get('payment') == 'success' and qp.get('session_id'):
                     stripe_session_id=sid,
                     status='completed',
                 )
+                wf_meta = (meta.get("workflow_id") or "").strip()
+                if wf_meta:
+                    try:
+                        from services.workflow import hooks as _wf_hooks
+
+                        _wf_hooks.notify_payment_completed(
+                            current_user["user_id"],
+                            sid,
+                            workflow_id=wf_meta,
+                            amount_cents=amount,
+                            audit_source="streamlit:payment_return",
+                        )
+                    except Exception as _wf_pay_exc:
+                        print(f"[WORKFLOW_PAYMENT] return-path notify failed: {_wf_pay_exc}")
                 st.success("Purchase complete! Your entitlements have been added.")
                 if product_id == 'deletion_sprint':
                     db.create_sprint_guarantee(current_user['user_id'], stripe_session_id=sid)
@@ -313,6 +328,20 @@ if not st.session_state.get('_payment_reconciled'):
                     note=f'Reconciled {catalog_entry["label"]} for ${amount/100:.2f}',
                 )
                 auth.record_payment(current_user['user_id'], amount, stripe_session_id=sid, status='completed')
+                wf_meta = (meta.get("workflow_id") or "").strip()
+                if wf_meta:
+                    try:
+                        from services.workflow import hooks as _wf_hooks
+
+                        _wf_hooks.notify_payment_completed(
+                            current_user["user_id"],
+                            sid,
+                            workflow_id=wf_meta,
+                            amount_cents=amount,
+                            audit_source="stripe_reconcile:list",
+                        )
+                    except Exception as _wf_rec_exc:
+                        print(f"[WORKFLOW_PAYMENT] reconcile notify failed: {_wf_rec_exc}")
                 if product_id == 'deletion_sprint':
                     db.create_sprint_guarantee(current_user['user_id'], stripe_session_id=sid)
                 reconciled_count += 1
@@ -491,6 +520,7 @@ def render_purchase_options(context: str = "sidebar", needed_ai: int = 0, needed
                 result = create_checkout_session(
                     uid, email, pack_id, pack['label'], pack['price_cents'],
                     ai_rounds=pack['ai_rounds'], letters=pack['letters'], mailings=pack['mailings'],
+                    workflow_id=ensure_active_workflow_id(uid),
                 )
                 if result.get('url'):
                     _open_checkout(result['url'], product_id=pack_id)
@@ -503,6 +533,7 @@ def render_purchase_options(context: str = "sidebar", needed_ai: int = 0, needed
                 kw[item['type']] = item['qty']
                 result = create_checkout_session(
                     uid, email, item_id, item['label'], item['price_cents'], **kw,
+                    workflow_id=ensure_active_workflow_id(uid),
                 )
                 if result.get('url'):
                     _open_checkout(result['url'])
@@ -562,6 +593,7 @@ def render_purchase_options(context: str = "sidebar", needed_ai: int = 0, needed
         result = create_checkout_session(
             uid, email, rec_pack_id, rec_pack['label'], rec_pack['price_cents'],
             ai_rounds=rec_pack['ai_rounds'], letters=rec_pack['letters'], mailings=rec_pack['mailings'],
+            workflow_id=ensure_active_workflow_id(uid),
         )
         if result.get('url'):
             _open_checkout(result['url'], product_id=rec_pack_id)
@@ -603,6 +635,7 @@ def render_purchase_options(context: str = "sidebar", needed_ai: int = 0, needed
                         result = create_checkout_session(
                             uid, email, pack_id, pack['label'], pack['price_cents'],
                             ai_rounds=pack['ai_rounds'], letters=pack['letters'], mailings=pack['mailings'],
+                            workflow_id=ensure_active_workflow_id(uid),
                         )
                         if result.get('url'):
                             _open_checkout(result['url'], product_id=pack_id)
@@ -616,6 +649,7 @@ def render_purchase_options(context: str = "sidebar", needed_ai: int = 0, needed
                         kw[item['type']] = item['qty']
                         result = create_checkout_session(
                             uid, email, item_id, item['label'], item['price_cents'], **kw,
+                            workflow_id=ensure_active_workflow_id(uid),
                         )
                         if result.get('url'):
                             _open_checkout(result['url'])
@@ -3401,6 +3435,7 @@ elif st.session_state.ui_card == "DONE":
                     current_user['user_id'], current_user.get('email', ''),
                     'full_round', _fr_pack.get('label', 'Full Round'), _fr_pack.get('price_cents', 2499),
                     ai_rounds=_fr_pack.get('ai_rounds', 1), letters=_fr_pack.get('letters', 3), mailings=_fr_pack.get('mailings', 3),
+                    workflow_id=ensure_active_workflow_id(current_user['user_id']),
                 )
                 if result.get('url'):
                     _open_checkout(result['url'])
