@@ -1,8 +1,9 @@
 """
 Backend integration: connect domain events to WorkflowEngine.
 
-Never call these from the React app — only from trusted server code (Streamlit,
-webhooks, DB helpers, pipelines).
+Browser clients must not call these directly; use authenticated workflow HTTP routes
+instead. Streamlit, webhooks, DB helpers, and pipelines call into this module as
+trusted server code.
 """
 
 from __future__ import annotations
@@ -16,7 +17,12 @@ from services.workflow.mail_gating import (
     record_mail_attempt_failed,
     should_complete_mail_after_send,
 )
-from services.workflow.repository import ensure_active_workflow_id, fetch_session, update_session_fields
+from services.workflow.repository import (
+    ensure_active_workflow_id,
+    fetch_session,
+    merge_into_workflow_metadata,
+    update_session_fields,
+)
 
 _log = logging.getLogger(__name__)
 
@@ -131,6 +137,7 @@ def notify_review_claims_completed(
     *,
     workflow_id: Optional[str] = None,
     item_count: Optional[int] = None,
+    audit_source: str = "streamlit",
 ) -> None:
     def _go() -> None:
         wid = _resolve_wid(user_id, workflow_id)
@@ -143,11 +150,72 @@ def notify_review_claims_completed(
             wid,
             "review_claims",
             summary or {"confirmed": True},
-            audit_source="streamlit",
+            audit_source=audit_source,
             audit_user_id=user_id,
         )
 
     _safe_call(_go, "review_claims")
+
+
+def complete_select_disputes_step(
+    user_id: int,
+    workflow_id: Optional[str],
+    *,
+    selected_count: int,
+    bureaus: List[str],
+    selected_review_claim_ids: Optional[List[str]] = None,
+    audit_source: str = "api",
+) -> bool:
+    """
+    Complete workflow step ``select_disputes`` and persist mail + optional dispute_selection ids.
+    Returns False if the engine refused (wrong head / state).
+    """
+    wid = _resolve_wid(user_id, workflow_id)
+    if not wid:
+        return False
+    summary: Dict[str, Any] = {"selectedCount": int(selected_count)}
+    if bureaus:
+        summary["bureaus"] = bureaus[:12]
+    eng = _engine()
+    ok = eng.service_complete_step(
+        wid,
+        "select_disputes",
+        summary or {"confirmed": True},
+        audit_source=audit_source,
+        audit_user_id=user_id,
+    )
+    if not ok:
+        return False
+
+    uniq = len({(b or "").strip().lower() for b in (bureaus or []) if (b or "").strip()})
+    expected = max(1, min(uniq if uniq else 1, 12))
+    bureau_keys = sorted(
+        {(b or "").strip().lower() for b in (bureaus or []) if (b or "").strip()}
+    )[:12]
+    mail_block = {
+        "expected_unique_bureau_sends": expected,
+        "selected_bureau_keys": bureau_keys,
+        "confirmed_bureaus": [],
+        "successful_send_count": 0,
+        "failed_send_count": 0,
+        "completed_all_sends": False,
+    }
+
+    def _mut(meta: Dict[str, Any]) -> None:
+        meta["mail"] = mail_block
+        if selected_review_claim_ids is not None:
+            ids = [str(x) for x in selected_review_claim_ids[:500]]
+            ds = meta.get("dispute_selection")
+            if not isinstance(ds, dict):
+                ds = {}
+            else:
+                ds = dict(ds)
+            ds["selected_review_claim_ids"] = ids
+            ds["draft_selected_review_claim_ids"] = ids
+            meta["dispute_selection"] = ds
+
+    merge_into_workflow_metadata(wid, _mut)
+    return True
 
 
 def notify_select_disputes_completed(
@@ -156,48 +224,19 @@ def notify_select_disputes_completed(
     workflow_id: Optional[str] = None,
     selected_count: Optional[int] = None,
     bureaus: Optional[List[str]] = None,
+    audit_source: str = "streamlit",
+    selected_review_claim_ids: Optional[List[str]] = None,
 ) -> None:
     def _go() -> None:
-        wid = _resolve_wid(user_id, workflow_id)
-        if not wid:
-            return
-        summary: Dict[str, Any] = {}
-        if selected_count is not None:
-            summary["selectedCount"] = selected_count
-        if bureaus:
-            summary["bureaus"] = bureaus[:12]
-        eng = _engine()
-        eng.service_complete_step(
-            wid,
-            "select_disputes",
-            summary or {"confirmed": True},
-            audit_source="streamlit",
-            audit_user_id=user_id,
+        sc = int(selected_count) if selected_count is not None else 0
+        complete_select_disputes_step(
+            user_id,
+            workflow_id,
+            selected_count=sc,
+            bureaus=list(bureaus or []),
+            selected_review_claim_ids=selected_review_claim_ids,
+            audit_source=audit_source,
         )
-        from services.workflow.workflow_db import get_workflow_db
-
-        uniq = len({(b or "").strip().lower() for b in (bureaus or []) if (b or "").strip()})
-        expected = max(1, min(uniq if uniq else 1, 12))
-        bureau_keys = sorted(
-            {(b or "").strip().lower() for b in (bureaus or []) if (b or "").strip()}
-        )[:12]
-        with get_workflow_db() as (conn, cur):
-            update_session_fields(
-                conn,
-                cur,
-                wid,
-                metadata_patch={
-                    "mail": {
-                        "expected_unique_bureau_sends": expected,
-                        "selected_bureau_keys": bureau_keys,
-                        "confirmed_bureaus": [],
-                        "successful_send_count": 0,
-                        "failed_send_count": 0,
-                        "completed_all_sends": False,
-                    }
-                },
-            )
-            conn.commit()
 
     _safe_call(_go, "select_disputes")
 
@@ -213,32 +252,32 @@ def notify_payment_completed(
     amount_cents: Optional[int] = None,
     audit_source: str = "webhook:stripe",
 ) -> None:
-    """Requires workflow_id from Stripe metadata; validates session ownership."""
+    """Completes workflow ``payment`` step with retries (same integrity as API reconcile)."""
 
     def _go() -> None:
         if not workflow_id or not str(workflow_id).strip():
             _log.warning("payment_completed skipped: missing workflow_id")
             return
-        session = fetch_session(str(workflow_id).strip())
-        if not session or int(session["user_id"]) != int(user_id):
-            _log.warning(
-                "payment_completed skipped: workflow %s not found or wrong owner",
+        from services.workflow_payment_service import ensure_payment_step_after_purchase
+
+        ok = ensure_payment_step_after_purchase(
+            user_id=user_id,
+            workflow_id=str(workflow_id).strip(),
+            stripe_session_id=stripe_session_id,
+            amount_cents=amount_cents,
+            audit_source=audit_source or "webhook:stripe",
+        )
+        if not ok:
+            _log.error(
+                "notify_payment_completed: step not completed after retries (user=%s wf=%s)",
+                user_id,
                 workflow_id,
             )
-            return
-        wid = str(workflow_id).strip()
-        summary: Dict[str, Any] = {"stripeSessionId": stripe_session_id}
-        if amount_cents is not None:
-            summary["amountCents"] = amount_cents
-        _engine().service_complete_step(
-            wid,
-            "payment",
-            summary,
-            audit_source=(audit_source or "webhook:stripe")[:64],
-            audit_user_id=user_id,
-        )
 
-    _safe_call(_go, "payment_completed")
+    try:
+        _go()
+    except Exception as exc:
+        _log.error("notify_payment_completed failed: %s", exc, exc_info=True)
 
 
 def notify_payment_waived(
@@ -292,22 +331,38 @@ def notify_payment_waived(
 # --- Letter generation --------------------------------------------------------
 
 
+def complete_letter_generation_step(
+    user_id: int,
+    workflow_id: Optional[str],
+    bureaus: List[str],
+    *,
+    audit_source: str = "api",
+) -> bool:
+    wid = _resolve_wid(user_id, workflow_id)
+    if not wid:
+        return False
+    return _engine().service_complete_step(
+        wid,
+        "letter_generation",
+        {"bureaus": [b.lower() for b in bureaus[:12]], "count": len(bureaus)},
+        audit_source=(audit_source or "api")[:64],
+        audit_user_id=user_id,
+    )
+
+
 def notify_letter_generation_completed(
     user_id: int,
     bureaus: List[str],
     *,
     workflow_id: Optional[str] = None,
+    audit_source: str = "streamlit",
 ) -> None:
     def _go() -> None:
-        wid = _resolve_wid(user_id, workflow_id)
-        if not wid:
-            return
-        _engine().service_complete_step(
-            wid,
-            "letter_generation",
-            {"bureaus": [b.lower() for b in bureaus[:12]], "count": len(bureaus)},
-            audit_source="streamlit",
-            audit_user_id=user_id,
+        complete_letter_generation_step(
+            user_id,
+            workflow_id,
+            bureaus,
+            audit_source=audit_source,
         )
 
     _safe_call(_go, "letter_generation")

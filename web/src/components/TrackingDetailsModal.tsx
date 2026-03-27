@@ -1,12 +1,22 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect } from "react";
-import type { BureauTrackingInfo } from "@/lib/mockTrackingData";
+import type { TrackingModalBureau } from "@/lib/trackingTypes";
 
 type Props = {
   open: boolean;
   onClose: () => void;
-  bureau: BureauTrackingInfo | null;
+  bureau: TrackingModalBureau | null;
 };
+
+function formatWhen(iso: string): string {
+  if (!iso) return "";
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return iso;
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(t));
+}
 
 export function TrackingDetailsModal({ open, onClose, bureau }: Props) {
   useEffect(() => {
@@ -23,7 +33,8 @@ export function TrackingDetailsModal({ open, onClose, bureau }: Props) {
     };
   }, [open, onClose]);
 
-  const ready = bureau?.trackingReady && bureau.trackingNumber && bureau.events;
+  const hasUspsLink = Boolean(bureau?.trackingUrl?.trim());
+  const hasNumber = Boolean(bureau?.trackingNumber?.trim());
 
   return (
     <AnimatePresence>
@@ -59,7 +70,7 @@ export function TrackingDetailsModal({ open, onClose, bureau }: Props) {
                 id="tracking-modal-title"
                 className="text-[15px] font-semibold text-lab-text"
               >
-                {bureau.name} — tracking
+                {bureau.bureauDisplay} — mail status
               </h2>
               <button
                 type="button"
@@ -71,48 +82,106 @@ export function TrackingDetailsModal({ open, onClose, bureau }: Props) {
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-6 sm:py-6">
-              {!ready ? (
-                <div className="rounded-xl border border-white/[0.06] bg-lab-bg/80 px-4 py-10 text-center">
-                  <p className="text-sm font-medium text-lab-text">
-                    Tracking will appear shortly
+              <p className="text-xs font-medium uppercase tracking-wide text-lab-subtle">
+                Status
+              </p>
+              <p className="mt-2 text-sm text-lab-text">{bureau.displayStatus}</p>
+
+              {bureau.rowStatus === "mailed" && bureau.isTestSend ? (
+                <p className="mt-4 text-sm leading-relaxed text-amber-200/90">
+                  This row is a <span className="font-semibold">Lob test</span> send. No physical
+                  letter entered USPS; do not expect bureau delivery from this submission.
+                </p>
+              ) : null}
+
+              {bureau.rowStatus === "mailed" && !bureau.isTestSend ? (
+                <p className="mt-4 text-sm leading-relaxed text-lab-muted">
+                  Live submission: the processor accepted the piece for mailing. USPS tracking (if
+                  shown) reflects carrier scans — not proof the bureau processed your dispute.
+                </p>
+              ) : null}
+
+              {bureau.rowStatus === "error" && bureau.errorMessage ? (
+                <div className="mt-5 rounded-xl border border-amber-500/25 bg-amber-500/10 px-4 py-3">
+                  <p className="text-xs font-medium uppercase tracking-wide text-amber-200/90">
+                    Send issue
                   </p>
-                  <p className="mx-auto mt-2 max-w-xs text-sm leading-relaxed text-lab-muted">
-                    We’re finishing the handoff for this bureau. Check back soon
-                    — your letter is already on its way.
+                  <p className="mt-2 text-sm leading-relaxed text-lab-text">
+                    {bureau.errorMessage}
                   </p>
                 </div>
-              ) : (
-                <div className="space-y-6">
-                  <div className="rounded-xl border border-white/[0.08] bg-lab-bg/80 px-4 py-4">
-                    <p className="text-xs font-medium uppercase tracking-wide text-lab-subtle">
-                      Tracking number
-                    </p>
-                    <p className="mt-2 break-all font-mono text-sm text-lab-text">
-                      {bureau.trackingNumber}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-xs font-medium uppercase tracking-wide text-lab-subtle">
-                      Status updates
-                    </p>
-                    <ul className="mt-4 space-y-0">
-                      {bureau.events!.map((ev, i) => (
-                        <li
-                          key={`${ev.at}-${i}`}
-                          className="relative border-l border-white/[0.1] py-3 pl-5 first:pt-0 last:pb-0"
-                        >
-                          <span
-                            className="absolute -left-[5px] top-[1.15rem] h-2.5 w-2.5 rounded-full border-2 border-lab-bg bg-lab-accent first:top-3"
-                            aria-hidden
-                          />
-                          <p className="text-xs text-lab-subtle">{ev.at}</p>
-                          <p className="mt-1 text-sm text-lab-text">{ev.label}</p>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
+              ) : null}
+
+              {bureau.rowStatus === "not_mailed" ? (
+                <p className="mt-5 text-sm leading-relaxed text-lab-muted">
+                  No certified send is recorded for this bureau yet. Finish mailing from
+                  the send step, then refresh this page.
+                </p>
+              ) : null}
+
+              {bureau.rowStatus === "other" && bureau.lobDbStatus ? (
+                <p className="mt-5 text-sm leading-relaxed text-lab-muted">
+                  Last recorded Lob status:{" "}
+                  <span className="font-medium text-lab-text">{bureau.lobDbStatus}</span>
+                  . Tracking may appear once the piece is marked mailed.
+                </p>
+              ) : null}
+
+              {bureau.lobId?.trim() ? (
+                <div className="mt-5 rounded-xl border border-white/[0.08] bg-lab-bg/80 px-4 py-4">
+                  <p className="text-xs font-medium uppercase tracking-wide text-lab-subtle">
+                    Processor reference (Lob)
+                  </p>
+                  <p className="mt-2 break-all font-mono text-sm text-lab-text">{bureau.lobId}</p>
                 </div>
-              )}
+              ) : null}
+
+              {bureau.mailedAt ? (
+                <div className="mt-4 rounded-xl border border-white/[0.08] bg-lab-bg/80 px-4 py-4">
+                  <p className="text-xs font-medium uppercase tracking-wide text-lab-subtle">
+                    Submission recorded
+                  </p>
+                  <p className="mt-2 text-sm text-lab-text">{formatWhen(bureau.mailedAt)}</p>
+                </div>
+              ) : null}
+
+              {bureau.expectedDelivery ? (
+                <div className="mt-4 rounded-xl border border-white/[0.08] bg-lab-bg/80 px-4 py-4">
+                  <p className="text-xs font-medium uppercase tracking-wide text-lab-subtle">
+                    Expected delivery (from processor)
+                  </p>
+                  <p className="mt-2 text-sm text-lab-text">{bureau.expectedDelivery}</p>
+                </div>
+              ) : null}
+
+              {hasNumber ? (
+                <div className="mt-4 rounded-xl border border-white/[0.08] bg-lab-bg/80 px-4 py-4">
+                  <p className="text-xs font-medium uppercase tracking-wide text-lab-subtle">
+                    USPS tracking number
+                  </p>
+                  <p className="mt-2 break-all font-mono text-sm text-lab-text">
+                    {bureau.trackingNumber}
+                  </p>
+                </div>
+              ) : null}
+
+              {hasUspsLink ? (
+                <a
+                  href={bureau.trackingUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-6 flex w-full items-center justify-center rounded-lg bg-lab-accent/20 py-3 text-sm font-semibold text-lab-accent transition-colors hover:bg-lab-accent/28"
+                >
+                  Open USPS tracking
+                </a>
+              ) : null}
+
+              {!hasUspsLink && bureau.rowStatus === "mailed" && !hasNumber ? (
+                <p className="mt-5 text-sm text-lab-muted">
+                  A tracking number is not on file yet; check back after the send is fully
+                  processed.
+                </p>
+              ) : null}
             </div>
           </motion.div>
         </motion.div>

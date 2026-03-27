@@ -239,6 +239,37 @@ def update_session_fields(
     )
 
 
+def merge_into_workflow_metadata(
+    workflow_id: str,
+    mutator,
+) -> None:
+    """
+    Read current session metadata, apply ``mutator(meta_dict)`` in place, write back.
+    Safe for nested keys like ``dispute_selection`` when the mutator copies sub-dicts.
+    """
+    from services.workflow.workflow_db import get_workflow_db
+
+    sess = fetch_session(workflow_id)
+    if not sess:
+        return
+    meta = sess.get("metadata")
+    if not isinstance(meta, dict):
+        meta = {}
+    else:
+        meta = dict(meta)
+    mutator(meta)
+    with get_workflow_db() as (conn, cur):
+        cur.execute(
+            """
+            UPDATE workflow_sessions
+            SET metadata = %s, updated_at = CURRENT_TIMESTAMP
+            WHERE workflow_id = %s
+            """,
+            (json.dumps(meta), workflow_id),
+        )
+        conn.commit()
+
+
 def update_step_fields(
     conn,
     cur,

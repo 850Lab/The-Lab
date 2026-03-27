@@ -1,12 +1,6 @@
-import { useEffect } from "react";
 import { TopBarMinimal } from "@/components/TopBarMinimal";
-import { setWorkflowStep } from "@/lib/workflow";
 
 export function EscalationActionPage() {
-  useEffect(() => {
-    setWorkflowStep("escalation_action");
-  }, []);
-
   return (
     <div className="min-h-full bg-lab-bg">
       <TopBarMinimal />

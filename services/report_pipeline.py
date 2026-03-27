@@ -75,6 +75,8 @@ class _UploadPipelineContext:
     debug_mode: bool
     dev_mode: bool
     on_report_saved: Optional[Callable[[str, str], None]]
+    # When set (e.g. HTTP upload for a known session), workflow hooks target this id.
+    workflow_id: Optional[str] = None
 
     all_claims: List[Any] = field(default_factory=list)
     diagnostic_logs: List[Dict[str, Any]] = field(default_factory=list)
@@ -116,13 +118,34 @@ def _options_dict_to_context(options: Dict[str, Any]) -> _UploadPipelineContext:
     user_id = options.get("user_id")
     if user_id is None:
         raise ValueError("options['user_id'] is required for report persistence")
+    raw_wid = options.get("workflow_id")
+    wid: Optional[str] = None
+    if raw_wid is not None:
+        s = str(raw_wid).strip()
+        wid = s or None
     return _UploadPipelineContext(
         user_id=int(user_id),
         use_ocr=bool(options.get("use_ocr", False)),
         debug_mode=bool(options.get("debug", options.get("debug_mode", False))),
         dev_mode=bool(options.get("dev_mode", False)),
         on_report_saved=options.get("on_report_saved"),
+        workflow_id=wid,
     )
+
+
+def _workflow_fail_upload_safe(ctx: _UploadPipelineContext, detail_safe: str) -> None:
+    if not ctx.workflow_id:
+        return
+    try:
+        from services.workflow import hooks as workflow_hooks
+
+        workflow_hooks.notify_parse_failed(
+            ctx.user_id,
+            detail_safe[:500],
+            workflow_id=ctx.workflow_id,
+        )
+    except Exception:
+        pass
 
 
 def _process_single_pdf(
@@ -148,6 +171,7 @@ def _process_single_pdf(
     )
 
     if not full_text:
+        _workflow_fail_upload_safe(ctx, "Could not read text from this PDF.")
         return "no_text"
 
     progress.write(f"Read {num_pages} pages successfully.")
@@ -186,10 +210,18 @@ def _process_single_pdf(
 
     if bureau == "3bureau":
         progress.update(label=f"{filename} — 3-bureau report detected", state="error")
+        _workflow_fail_upload_safe(
+            ctx,
+            "Combined 3-bureau PDF is not supported; upload a single-bureau report.",
+        )
         return "3bureau"
 
     if bureau == "unknown":
         progress.update(label=f"{filename} — Bureau not identified", state="error")
+        _workflow_fail_upload_safe(
+            ctx,
+            "Could not identify bureau (Equifax, Experian, or TransUnion).",
+        )
         return "unknown"
 
     bureau_display = (
@@ -211,6 +243,7 @@ def _process_single_pdf(
             workflow_hooks.notify_parse_failed(
                 ctx.user_id,
                 str(parse_err)[:500],
+                workflow_id=ctx.workflow_id,
             )
         except Exception:
             pass
@@ -307,7 +340,9 @@ def _process_single_pdf(
         try:
             from services.workflow import hooks as workflow_hooks
 
-            workflow_hooks.notify_upload_storage_failed(ctx.user_id)
+            workflow_hooks.notify_upload_storage_failed(
+                ctx.user_id, workflow_id=ctx.workflow_id
+            )
         except Exception:
             pass
 
@@ -409,6 +444,7 @@ def _process_single_pdf(
                 report_id,
                 bureau,
                 filename,
+                workflow_id=ctx.workflow_id,
             )
         except Exception:
             pass
@@ -541,6 +577,7 @@ class UploadPipelineBatch:
     debug_mode: bool = False
     dev_mode: bool = False
     on_report_saved: Optional[Callable[[str, str], None]] = None
+    workflow_id: Optional[str] = None
 
     _ctx: _UploadPipelineContext = field(init=False, repr=False)
 
@@ -551,6 +588,7 @@ class UploadPipelineBatch:
             debug_mode=self.debug_mode,
             dev_mode=self.dev_mode,
             on_report_saved=self.on_report_saved,
+            workflow_id=self.workflow_id,
         )
 
     def reset(self) -> None:
@@ -560,6 +598,7 @@ class UploadPipelineBatch:
             debug_mode=self.debug_mode,
             dev_mode=self.dev_mode,
             on_report_saved=self.on_report_saved,
+            workflow_id=self.workflow_id,
         )
 
     @property

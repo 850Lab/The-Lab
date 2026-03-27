@@ -2,43 +2,48 @@ import { AnimatePresence, motion } from "framer-motion";
 import { useCallback, useRef, useState } from "react";
 import { UploadProgressState } from "@/components/UploadProgressState";
 
-type UploadPhase = "idle" | "dragging" | "selected" | "uploading" | "analyzing";
+type UploadResult =
+  | { success: true }
+  | { success: false; message: string };
+
+type Props = {
+  disabled?: boolean;
+  onUploadPdf: (file: File) => Promise<UploadResult>;
+};
 
 function isPdfFile(f: File) {
   return f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf");
 }
 
-export function UploadDropzoneCard() {
+export function UploadDropzoneCard({ disabled, onUploadPdf }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
-  const [phase, setPhase] = useState<UploadPhase>("idle");
+  const [phase, setPhase] = useState<"idle" | "dragging" | "uploading">("idle");
   const [fileName, setFileName] = useState<string | null>(null);
-  const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [cardHover, setCardHover] = useState(false);
   const dragDepth = useRef(0);
 
   const resetError = useCallback(() => setError(null), []);
 
-  const runUploadSimulation = useCallback((name: string) => {
-    setFileName(name);
-    setPhase("uploading");
-    setProgress(0);
-    const start = performance.now();
-    const duration = 1400;
-    const tick = (now: number) => {
-      const t = Math.min(1, (now - start) / duration);
-      setProgress(Math.round(t * 100));
-      if (t < 1) {
-        requestAnimationFrame(tick);
-      } else {
-        setPhase("analyzing");
+  const runUpload = useCallback(
+    async (file: File) => {
+      resetError();
+      setFileName(file.name);
+      setPhase("uploading");
+      const result = await onUploadPdf(file);
+      if (!result.success) {
+        setError(result.message);
+        setPhase("idle");
+        setFileName(null);
+        return;
       }
-    };
-    requestAnimationFrame(tick);
-  }, []);
+    },
+    [onUploadPdf, resetError],
+  );
 
   const handleFile = useCallback(
     (file: File | null) => {
+      if (disabled || phase === "uploading") return;
       resetError();
       if (!file) return;
       if (!isPdfFile(file)) {
@@ -46,11 +51,9 @@ export function UploadDropzoneCard() {
         setPhase("idle");
         return;
       }
-      setPhase("selected");
-      setFileName(file.name);
-      window.setTimeout(() => runUploadSimulation(file.name), 450);
+      void runUpload(file);
     },
-    [resetError, runUploadSimulation]
+    [disabled, phase, resetError, runUpload],
   );
 
   const onInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -62,12 +65,10 @@ export function UploadDropzoneCard() {
   const onDragEnter = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    if (disabled || phase === "uploading") return;
     dragDepth.current += 1;
     if (!e.dataTransfer.types.includes("Files")) return;
-    setPhase((p) => {
-      if (p === "analyzing" || p === "selected" || p === "uploading") return p;
-      return "dragging";
-    });
+    setPhase((p) => (p === "uploading" ? p : "dragging"));
   };
 
   const onDragLeave = (e: React.DragEvent) => {
@@ -90,13 +91,14 @@ export function UploadDropzoneCard() {
     e.preventDefault();
     e.stopPropagation();
     dragDepth.current = 0;
-    if (phase === "analyzing") return;
+    if (phase === "uploading" || disabled) return;
     const f = e.dataTransfer.files?.[0] ?? null;
     handleFile(f);
   };
 
-  const showDropzone = phase !== "analyzing";
-  const interactive = phase === "idle" || phase === "dragging" || phase === "selected";
+  const showDropzone = phase !== "uploading";
+  const interactive =
+    !disabled && (phase === "idle" || phase === "dragging");
 
   return (
     <motion.div
@@ -107,7 +109,7 @@ export function UploadDropzoneCard() {
       <motion.div
         layout
         className={`relative overflow-hidden rounded-2xl border bg-lab-elevated transition-[box-shadow,border-color] duration-300 ${
-          phase === "analyzing"
+          phase === "uploading"
             ? "border-lab-accent/20 shadow-[0_0_40px_-16px_rgba(59,130,246,0.25)]"
             : phase === "dragging"
               ? "border-lab-accent/55 shadow-[0_0_0_1px_rgba(59,130,246,0.35),0_0_48px_-12px_rgba(59,130,246,0.35)]"
@@ -159,17 +161,15 @@ export function UploadDropzoneCard() {
                 </motion.div>
 
                 <h3 className="mt-6 text-lg font-semibold text-lab-text sm:text-xl">
-                  {phase === "selected" || phase === "uploading" ? "Your file" : "Drag and drop your report here"}
+                  {disabled
+                    ? "Confirm processing below to upload"
+                    : "Drag and drop your report here"}
                 </h3>
                 <p className="mt-2 text-sm text-lab-muted sm:text-[15px]">
-                  {phase === "uploading"
-                    ? "Uploading securely…"
-                    : phase === "selected"
-                      ? "Preparing upload…"
-                      : "Or upload a PDF from your device"}
+                  Or upload a PDF from your device
                 </p>
 
-                {phase === "selected" || phase === "uploading" ? (
+                {fileName && phase === "idle" ? (
                   <motion.p
                     className="mt-3 max-w-full truncate px-2 text-xs text-lab-subtle sm:text-sm"
                     initial={{ opacity: 0, y: 4 }}
@@ -177,17 +177,6 @@ export function UploadDropzoneCard() {
                   >
                     {fileName}
                   </motion.p>
-                ) : null}
-
-                {phase === "uploading" ? (
-                  <div className="mt-6 h-1.5 w-full max-w-[240px] overflow-hidden rounded-full bg-lab-surface">
-                    <motion.div
-                      className="h-full rounded-full bg-lab-accent"
-                      initial={{ width: "0%" }}
-                      animate={{ width: `${progress}%` }}
-                      transition={{ duration: 0.12, ease: "easeOut" }}
-                    />
-                  </div>
                 ) : null}
 
                 {error ? (
@@ -206,11 +195,12 @@ export function UploadDropzoneCard() {
                     type="file"
                     accept=".pdf,application/pdf"
                     className="hidden"
+                    disabled={!interactive}
                     onChange={onInputChange}
                   />
                   <button
                     type="button"
-                    disabled={!interactive || phase === "selected"}
+                    disabled={!interactive}
                     onClick={() => inputRef.current?.click()}
                     className="rounded-lg bg-lab-accent px-7 py-3 text-[15px] font-semibold text-white shadow-lg shadow-lab-accent/25 transition-shadow hover:shadow-lab-accent/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-lab-accent/50 disabled:pointer-events-none disabled:opacity-40"
                   >
@@ -218,7 +208,7 @@ export function UploadDropzoneCard() {
                   </button>
                 </motion.div>
 
-                <p className="mt-4 text-xs text-lab-subtle">PDF preferred</p>
+                <p className="mt-4 text-xs text-lab-subtle">PDF · max 25 MB (same as main app)</p>
               </div>
             </motion.div>
           ) : (
@@ -230,6 +220,9 @@ export function UploadDropzoneCard() {
               transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
               className="px-6 sm:px-10"
             >
+              {fileName ? (
+                <p className="pb-2 text-center text-xs text-lab-subtle">{fileName}</p>
+              ) : null}
               <UploadProgressState />
             </motion.div>
           )}

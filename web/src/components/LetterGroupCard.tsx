@@ -1,12 +1,20 @@
 import { motion } from "framer-motion";
-import type { LetterGroupData } from "@/lib/mockLetterGroups";
+import type { LetterRow } from "@/lib/letterTypes";
 
 type Props = {
-  group: LetterGroupData;
+  letter: LetterRow;
   onViewLetter: () => void;
 };
 
-export function LetterGroupCard({ group, onViewLetter }: Props) {
+function previewSummaryLine(letter: LetterRow): string {
+  const cats = letter.categories?.filter(Boolean) ?? [];
+  if (cats.length) return cats.slice(0, 4).join(" · ");
+  const n = letter.charCount ?? 0;
+  return n ? `${n.toLocaleString()} characters` : "Bureau dispute letter";
+}
+
+export function LetterGroupCard({ letter, onViewLetter }: Props) {
+  const v = letter.violationCount ?? 0;
   return (
     <motion.article
       variants={{
@@ -22,14 +30,14 @@ export function LetterGroupCard({ group, onViewLetter }: Props) {
       <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
         <div>
           <h3 className="text-[15px] font-semibold text-lab-text sm:text-base">
-            {group.bureau}{" "}
+            {letter.bureauDisplay || letter.bureau}{" "}
             <span className="font-normal text-lab-muted">—</span>{" "}
             <span className="text-lab-text">
-              {group.disputeCount} dispute{group.disputeCount === 1 ? "" : "s"}
+              {v} cited issue{v === 1 ? "" : "s"}
             </span>
           </h3>
-          <p className="mt-1.5 text-sm text-lab-muted">{group.supportLine}</p>
-          <p className="mt-3 text-xs text-lab-subtle">{group.previewSummary}</p>
+          <p className="mt-1.5 text-sm text-lab-muted">Saved to your account</p>
+          <p className="mt-3 text-xs text-lab-subtle">{previewSummaryLine(letter)}</p>
         </div>
         <motion.button
           type="button"

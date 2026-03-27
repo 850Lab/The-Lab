@@ -164,6 +164,75 @@ def fetch_latest_response_for_workflow(workflow_id: str) -> Optional[Dict[str, A
     return d
 
 
+def list_response_intake_metric_rows(workflow_id: str) -> List[Dict[str, Any]]:
+    """
+    Minimal columns for workflow-scoped response metrics (all rows; typically small per workflow).
+    """
+    from services.workflow.workflow_db import get_workflow_db
+
+    with get_workflow_db(dict_cursor=True) as (conn, cur):
+        cur.execute(
+            """
+            SELECT classification_status, escalation_recommendation, received_at,
+                   source_type, response_channel, recommended_next_action
+            FROM workflow_response_intake
+            WHERE workflow_id = %s
+            ORDER BY received_at DESC, created_at DESC
+            """,
+            (workflow_id,),
+        )
+        rows = cur.fetchall()
+    out: List[Dict[str, Any]] = []
+    for row in rows:
+        d = dict(row)
+        v = d.get("escalation_recommendation")
+        if isinstance(v, str):
+            try:
+                d["escalation_recommendation"] = json.loads(v)
+            except Exception:
+                d["escalation_recommendation"] = {}
+        out.append(d)
+    return out
+
+
+def list_responses_detailed_for_workflow(
+    workflow_id: str, limit: int = 30
+) -> List[Dict[str, Any]]:
+    """Full rows for customer / operator UI (JSON fields parsed)."""
+    from services.workflow.workflow_db import get_workflow_db
+
+    with get_workflow_db(dict_cursor=True) as (conn, cur):
+        cur.execute(
+            """
+            SELECT response_id::text AS response_id, workflow_id::text AS workflow_id, user_id,
+                   source_type, response_channel, received_at,
+                   linked_mailing_id, linked_letter_id, storage_ref,
+                   parsed_summary, classification_status, response_classification,
+                   classification_reasoning_safe, classification_confidence,
+                   recommended_next_action, escalation_recommendation,
+                   created_at, updated_at
+            FROM workflow_response_intake
+            WHERE workflow_id = %s
+            ORDER BY received_at DESC, created_at DESC
+            LIMIT %s
+            """,
+            (workflow_id, limit),
+        )
+        rows = cur.fetchall()
+    out: List[Dict[str, Any]] = []
+    for row in rows:
+        d = dict(row)
+        for k in ("parsed_summary", "escalation_recommendation"):
+            v = d.get(k)
+            if isinstance(v, str):
+                try:
+                    d[k] = json.loads(v)
+                except Exception:
+                    d[k] = {}
+        out.append(d)
+    return out
+
+
 def list_responses_for_workflow(workflow_id: str, limit: int = 20) -> List[Dict[str, Any]]:
     from services.workflow.workflow_db import get_workflow_db
 

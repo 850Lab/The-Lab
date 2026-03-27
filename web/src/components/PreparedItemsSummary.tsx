@@ -11,7 +11,7 @@ export function PreparedItemsSummary({ categories }: Props) {
   return (
     <div className="rounded-lg border border-white/[0.06] bg-lab-bg/40 px-4 py-3.5">
       <p className="text-xs font-medium uppercase tracking-[0.08em] text-lab-subtle">
-        Prepared for you
+        What you’re paying for (this round)
       </p>
       <dl className="mt-3 space-y-2">
         {categories.map((row) => (

@@ -1,26 +1,30 @@
 import { motion } from "framer-motion";
-import type { BureauMainStatus } from "@/lib/mockTrackingData";
 
 type Props = {
   bureau: string;
-  status: BureauMainStatus;
-  onViewTracking: () => void;
+  status: string;
+  onViewDetails: () => void;
 };
 
-function statusTone(s: BureauMainStatus): string {
+function statusTone(s: string): string {
   switch (s) {
-    case "Delivered":
+    case "Submitted — tracking active":
       return "text-emerald-300/95 bg-emerald-500/12";
-    case "In transit":
+    case "Submitted — tracking pending":
+    case "Processing":
       return "text-sky-200/95 bg-sky-500/12";
-    case "Needs attention":
+    case "Test — no USPS mail":
       return "text-amber-200/95 bg-amber-500/12";
+    case "Send failed":
+      return "text-red-200/95 bg-red-500/12";
+    case "Not submitted":
+      return "text-lab-muted bg-white/[0.06]";
     default:
       return "text-lab-muted bg-white/[0.06]";
   }
 }
 
-export function BureauTrackingRow({ bureau, status, onViewTracking }: Props) {
+export function BureauTrackingRow({ bureau, status, onViewDetails }: Props) {
   return (
     <motion.div
       variants={{
@@ -45,13 +49,13 @@ export function BureauTrackingRow({ bureau, status, onViewTracking }: Props) {
       </div>
       <motion.button
         type="button"
-        onClick={onViewTracking}
+        onClick={onViewDetails}
         className="shrink-0 self-start rounded-lg border border-white/[0.1] bg-white/[0.03] px-3.5 py-2 text-sm font-medium text-lab-text transition-colors hover:border-lab-accent/35 hover:bg-lab-accent/[0.08] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-lab-accent/35 sm:self-center"
         whileHover={{ y: -1 }}
         whileTap={{ scale: 0.98 }}
         transition={{ type: "spring", stiffness: 480, damping: 28 }}
       >
-        View tracking
+        View details
       </motion.button>
     </motion.div>
   );

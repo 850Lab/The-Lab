@@ -1,37 +1,12 @@
 import { motion } from "framer-motion";
 import { useMemo } from "react";
-import { useNavigate } from "react-router-dom";
-import { ContinueCTA } from "@/components/ContinueCTA";
-import { FindingGroupCard, type FindingGroupCardProps } from "@/components/FindingGroupCard";
+import { Link } from "react-router-dom";
+import { FindingGroupCard } from "@/components/FindingGroupCard";
 import { SummaryCard } from "@/components/SummaryCard";
 import { TopBarMinimal } from "@/components/TopBarMinimal";
-import { setWorkflowStep } from "@/lib/workflow";
-
-const FINDINGS: FindingGroupCardProps[] = [
-  {
-    title: "Collections",
-    count: 2,
-    explanation: "These accounts were sent to collection and can weigh heavily on your score.",
-    items: ["Medical Services — $428 reported", "Cellular Account — in collection since 2023"],
-  },
-  {
-    title: "Charge-offs",
-    count: 1,
-    explanation: "A lender wrote this balance off; it often stays visible until addressed.",
-    items: ["Retail Card — charged off, balance $1,240"],
-  },
-  {
-    title: "Late payments",
-    count: 4,
-    explanation: "Recent late marks can signal risk to lenders and pull your score down.",
-    items: [
-      "Auto loan — 30 days late (March)",
-      "Credit card — 30 days late (January)",
-      "Store card — 30 days late (November)",
-      "Installment loan — 30 days late (October)",
-    ],
-  },
-];
+import { useIntakeSummary } from "@/hooks/useIntakeSummary";
+import { buildFindingGroupsFromClaims } from "@/lib/reviewClaimsDisplay";
+import { useCustomerWorkflow } from "@/providers/CustomerWorkflowContext";
 
 const pageVariants = {
   hidden: { opacity: 0 },
@@ -59,17 +34,25 @@ const groupsContainer = {
 };
 
 export function AnalysisPage() {
-  const navigate = useNavigate();
+  const { envelope, authoritativeStepId } = useCustomerWorkflow();
+  const { bundle, loading, error } = useIntakeSummary();
 
-  const totalCount = useMemo(
-    () => FINDINGS.reduce((sum, g) => sum + g.count, 0),
-    []
+  const parseRow = envelope?.stepStatus?.find((s) => s.stepId === "parse_analyze");
+  const parseFailed = parseRow?.status === "failed";
+  const parseInFlight =
+    authoritativeStepId === "parse_analyze" &&
+    parseRow &&
+    parseRow.status !== "completed" &&
+    parseRow.status !== "failed";
+
+  const intake = bundle?.intake;
+  const findingGroups = useMemo(
+    () => (intake?.reviewClaims?.length ? buildFindingGroupsFromClaims(intake.reviewClaims) : []),
+    [intake?.reviewClaims],
   );
 
-  const handleContinue = () => {
-    setWorkflowStep("prepare");
-    navigate("/prepare", { replace: true });
-  };
+  const totalClaims = intake?.reviewClaimsCount ?? 0;
+  const reportRows = intake?.reports ?? [];
 
   return (
     <div className="relative min-h-full bg-lab-bg">
@@ -86,7 +69,7 @@ export function AnalysisPage() {
             variants={headerBlock}
             className="text-center text-xs font-medium uppercase tracking-[0.12em] text-lab-subtle"
           >
-            Step 2 of 5
+            Findings
           </motion.p>
 
           <motion.h1
@@ -100,29 +83,108 @@ export function AnalysisPage() {
             variants={headerBlock}
             className="mx-auto mt-3 max-w-md text-center text-sm leading-relaxed text-lab-muted sm:text-[15px]"
           >
-            We reviewed your report and identified items that may be affecting your credit.
+            Summary from your uploaded bureau report (same analysis path as the main app). Next
+            you’ll review line items, choose disputes, then pay for letter generation when you reach
+            that step.
           </motion.p>
 
-          <motion.div variants={headerBlock} className="mt-8">
-            <SummaryCard totalCount={totalCount} />
-          </motion.div>
+          {loading && !bundle ? (
+            <motion.p variants={headerBlock} className="mt-10 text-center text-sm text-lab-muted">
+              Loading your report summary…
+            </motion.p>
+          ) : null}
 
-          <motion.div variants={groupsContainer} className="mt-6 space-y-4">
-            {FINDINGS.map((group) => (
-              <FindingGroupCard key={group.title} {...group} />
-            ))}
-          </motion.div>
+          {error ? (
+            <motion.p
+              variants={headerBlock}
+              className="mt-10 text-center text-sm text-red-300/90"
+            >
+              {error}
+            </motion.p>
+          ) : null}
 
-          <motion.p
-            variants={headerBlock}
-            className="mt-8 text-center text-sm text-lab-muted"
-          >
-            We’ll guide you through fixing these next
-          </motion.p>
+          {parseInFlight ? (
+            <motion.p variants={headerBlock} className="mt-8 text-center text-sm text-lab-muted">
+              Processing your report on our servers… this usually finishes in a few seconds. The
+              page will update automatically.
+            </motion.p>
+          ) : null}
 
-          <motion.div variants={headerBlock} className="mt-8">
-            <ContinueCTA onClick={handleContinue} />
-          </motion.div>
+          {parseFailed ? (
+            <motion.div variants={headerBlock} className="mt-8 space-y-4 text-center">
+              <p className="text-sm text-lab-muted">
+                We couldn’t finish analysis for this workflow step. You may need to upload again
+                from the upload screen.
+              </p>
+              <Link
+                to="/upload"
+                className="inline-block text-sm font-medium text-lab-accent hover:text-lab-accent/90"
+              >
+                Back to upload
+              </Link>
+            </motion.div>
+          ) : null}
+
+          {!parseFailed && !parseInFlight && bundle ? (
+            <>
+              {reportRows.length > 0 ? (
+                <motion.div variants={headerBlock} className="mt-8 space-y-3">
+                  <p className="text-center text-xs font-medium uppercase tracking-[0.12em] text-lab-subtle">
+                    Reports on file
+                  </p>
+                  <ul className="space-y-2 rounded-xl border border-white/[0.08] bg-lab-surface p-4 text-sm text-lab-text/90">
+                    {reportRows.map((r) => (
+                      <li
+                        key={r.reportId}
+                        className="flex flex-col gap-0.5 border-b border-white/[0.06] pb-3 last:border-0 last:pb-0 sm:flex-row sm:justify-between"
+                      >
+                        <span className="font-medium capitalize">{r.bureau}</span>
+                        <span className="text-lab-muted">
+                          {r.fileName || "Report"}
+                          {r.uploadDate ? ` · ${r.uploadDate}` : ""}
+                        </span>
+                        <span className="text-xs text-lab-subtle sm:text-sm">
+                          {r.counts.accounts} accts · {r.counts.negativeItems} negatives ·{" "}
+                          {r.counts.hardInquiries} hard inq.
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </motion.div>
+              ) : (
+                <motion.p variants={headerBlock} className="mt-8 text-center text-sm text-lab-muted">
+                  No parsed reports are stored for your account yet. If you just uploaded, wait a
+                  moment and refresh.
+                </motion.p>
+              )}
+
+              <motion.div variants={headerBlock} className="mt-8">
+                <SummaryCard totalCount={totalClaims} />
+              </motion.div>
+
+              {findingGroups.length > 0 ? (
+                <motion.div variants={groupsContainer} className="mt-6 space-y-4">
+                  {findingGroups.map((group) => (
+                    <FindingGroupCard key={group.title} {...group} />
+                  ))}
+                </motion.div>
+              ) : reportRows.length > 0 ? (
+                <motion.p
+                  variants={headerBlock}
+                  className="mt-6 text-center text-sm text-lab-muted"
+                >
+                  Parsed data is saved, but no review items were produced from this report yet.
+                </motion.p>
+              ) : null}
+
+              <motion.p
+                variants={headerBlock}
+                className="mt-8 text-center text-sm text-lab-muted"
+              >
+                Next, you’ll confirm which items we should focus on.
+              </motion.p>
+            </>
+          ) : null}
         </motion.div>
       </main>
     </div>

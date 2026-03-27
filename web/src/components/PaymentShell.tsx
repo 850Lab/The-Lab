@@ -1,4 +1,10 @@
-export function PaymentShell() {
+type Props = {
+  /** When true, checkout is configured server-side and the user will leave the app for Stripe. */
+  stripeReady: boolean;
+  returnOriginConfigured: boolean;
+};
+
+export function PaymentShell({ stripeReady, returnOriginConfigured }: Props) {
   return (
     <div className="rounded-lg border border-white/[0.08] bg-lab-bg/30 p-4 sm:p-5">
       <div className="flex items-center gap-2 text-xs text-lab-subtle">
@@ -18,16 +24,18 @@ export function PaymentShell() {
         </svg>
         <span>Secure card checkout</span>
       </div>
-      <p className="mt-1 text-xs text-lab-subtle/90">
-        Card details are encrypted. Stripe will appear here when connected.
-      </p>
-      <div className="mt-4 space-y-3" aria-hidden>
-        <div className="h-10 rounded-md border border-white/[0.08] bg-lab-surface/50" />
-        <div className="flex gap-3">
-          <div className="h-10 flex-1 rounded-md border border-white/[0.08] bg-lab-surface/50" />
-          <div className="h-10 w-24 rounded-md border border-white/[0.08] bg-lab-surface/50 sm:w-28" />
-        </div>
-      </div>
+      {stripeReady && returnOriginConfigured ? (
+        <p className="mt-2 text-xs leading-relaxed text-lab-muted sm:text-sm">
+          Card details are entered on Stripe’s secure page. You’ll return here while we confirm the
+          charge and unlock letter generation — not mail yet.
+        </p>
+      ) : (
+        <p className="mt-2 text-xs leading-relaxed text-lab-muted sm:text-sm">
+          {stripeReady
+            ? "Stripe is connected, but the server must set WORKFLOW_CUSTOMER_APP_ORIGIN (or PUBLIC_APP_ORIGIN) so Stripe can redirect back to this app after payment."
+            : "Stripe keys are not configured on the server — card checkout is unavailable until STRIPE_SECRET_KEY and STRIPE_PUBLISHABLE_KEY (or Replit Stripe connector) are set."}
+        </p>
+      )}
     </div>
   );
 }

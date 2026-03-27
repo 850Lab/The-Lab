@@ -6,7 +6,13 @@ const LINES = [
   "We’ll guide you if more action is needed",
 ] as const;
 
-export function ExpectationsCard() {
+type Props = {
+  /** Optional backend hints (e.g. ``home_summary.nextBestAction``), shown first when present. */
+  extraLines?: string[];
+};
+
+export function ExpectationsCard({ extraLines }: Props) {
+  const extras = (extraLines ?? []).map((s) => s.trim()).filter(Boolean);
   return (
     <motion.section
       variants={{
@@ -23,6 +29,18 @@ export function ExpectationsCard() {
         What to expect
       </h3>
       <ul className="mt-4 space-y-3">
+        {extras.map((line) => (
+          <li
+            key={line}
+            className="flex gap-3 text-sm leading-relaxed text-lab-text/95"
+          >
+            <span
+              className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-lab-accent"
+              aria-hidden
+            />
+            {line}
+          </li>
+        ))}
         {LINES.map((line) => (
           <li
             key={line}

@@ -42,7 +42,7 @@ export function ActivationCard({
       </div>
 
       <div className="mt-6">
-        <PaymentShell />
+        <PaymentShell stripeReady={false} returnOriginConfigured={false} />
       </div>
 
       <div className="mt-7 border-t border-white/[0.06] pt-6 sm:mt-8 sm:pt-7">

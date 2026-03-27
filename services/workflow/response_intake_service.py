@@ -14,6 +14,10 @@ from services.workflow.escalation_recommendation import recommend_escalation
 from services.workflow.repository import fetch_session, update_session_fields
 from services.workflow.response_classification import classify_parsed_response
 from services.workflow import response_repository as rr
+from services.workflow.response_flow_events import (
+    _summary_length_bucket,
+    emit_response_flow_event,
+)
 
 
 def _track_completed(steps_map: Dict[str, Dict[str, Any]]) -> bool:
@@ -80,6 +84,26 @@ def intake_bureau_response(
         linked_letter_id=linked_letter_id,
     )
 
+    emit_response_flow_event(
+        "response_intake_stored",
+        workflow_id=workflow_id,
+        user_id=user_id,
+        status="stored",
+        source="backend",
+        metadata={
+            "response_id": rid,
+            "source_type": (source_type or "")[:40],
+            "response_channel": (response_channel or "")[:40],
+            "classification_status": "pending",
+            "summary_length_bucket": _summary_length_bucket(parsed_summary),
+            "has_outcome_keywords": bool(
+                isinstance((parsed_summary or {}).get("outcome_keywords"), list)
+                and len((parsed_summary or {}).get("outcome_keywords") or []) > 0
+            ),
+            "has_storage_ref": bool(storage_ref),
+        },
+    )
+
     eng = WorkflowEngine()
     _, _, smap = eng.get_state_bundle(workflow_id)
     track_done = _track_completed(smap)
@@ -108,6 +132,41 @@ def intake_bureau_response(
             escalation=esc,
             reasoning_safe=outcome.reasoning_safe,
         )
+        emit_response_flow_event(
+            "response_classification_succeeded",
+            workflow_id=workflow_id,
+            user_id=user_id,
+            status="classified",
+            source="backend",
+            metadata={
+                "response_id": rid,
+                "classification": (outcome.classification or "")[:64],
+                "classification_status": "classified",
+                "recommended_next_action": (outcome.recommended_next_action or "")[:64],
+                "confidence_bucket": (
+                    "high"
+                    if outcome.confidence is not None and outcome.confidence >= 0.65
+                    else "low"
+                    if outcome.confidence is not None
+                    else "none"
+                ),
+            },
+        )
+        has_esc = bool(esc and isinstance(esc, dict) and esc.get("primary_path"))
+        if has_esc:
+            emit_response_flow_event(
+                "response_escalation_generated",
+                workflow_id=workflow_id,
+                user_id=user_id,
+                status="ok",
+                source="backend",
+                metadata={
+                    "response_id": rid,
+                    "has_escalation_recommendation": True,
+                    "primary_path": str(esc.get("primary_path") or "")[:64],
+                    "priority": str(esc.get("priority") or "")[:32],
+                },
+            )
         return {
             "ok": True,
             "responseId": rid,
@@ -134,6 +193,20 @@ def intake_bureau_response(
                 "factors": ["classification_error"],
                 "secondary_paths": [],
                 "priority": "high",
+            },
+        )
+        emit_response_flow_event(
+            "response_classification_failed",
+            workflow_id=workflow_id,
+            user_id=user_id,
+            status="failed",
+            source="backend",
+            error_code="CLASSIFICATION_FAILED",
+            message_safe=msg[:500],
+            metadata={
+                "response_id": rid,
+                "classification_status": "failed",
+                "recommended_next_action": "manual_review_required",
             },
         )
         return {

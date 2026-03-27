@@ -1,5 +1,7 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { useCallback, useEffect, useState } from "react";
+import { Link } from "react-router-dom";
+import { ANNUAL_CREDIT_REPORT_URL } from "@/lib/reportAcquisitionConfig";
 
 type Props = {
   open: boolean;
@@ -41,7 +43,7 @@ export function GetReportPanel({ open, onClose }: Props) {
   }, [open, onClose]);
 
   const getReport = useCallback(() => {
-    window.open("https://www.annualcreditreport.com/", "_blank", "noopener,noreferrer");
+    window.open(ANNUAL_CREDIT_REPORT_URL, "_blank", "noopener,noreferrer");
   }, []);
 
   return (
@@ -161,6 +163,16 @@ export function GetReportPanel({ open, onClose }: Props) {
                 <p className="text-xs leading-relaxed text-lab-subtle">
                   Once you download your report, come back here and upload it to continue.
                 </p>
+
+                <div className="border-t border-white/[0.06] pt-4 text-center">
+                  <Link
+                    to="/get-report"
+                    onClick={onClose}
+                    className="text-sm font-medium text-lab-accent hover:text-sky-300"
+                  >
+                    View all ways to get a report (recommended + free)
+                  </Link>
+                </div>
               </div>
             </motion.div>
           </div>

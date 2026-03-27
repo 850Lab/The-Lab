@@ -1,6 +1,14 @@
 import { motion } from "framer-motion";
 
-export function UploadProgressState() {
+type Props = {
+  title?: string;
+  subtitle?: string;
+};
+
+export function UploadProgressState({
+  title = "Processing your report…",
+  subtitle = "This runs on our servers and may take a moment. Please keep this tab open.",
+}: Props) {
   return (
     <div className="flex flex-col items-center justify-center py-10 sm:py-14">
       <motion.div
@@ -22,7 +30,7 @@ export function UploadProgressState() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.12, duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
       >
-        Analyzing your report…
+        {title}
       </motion.p>
       <motion.p
         className="mt-2 max-w-xs text-center text-sm text-lab-muted"
@@ -30,7 +38,7 @@ export function UploadProgressState() {
         animate={{ opacity: 1 }}
         transition={{ delay: 0.22, duration: 0.35 }}
       >
-        This usually takes a moment. Please keep this tab open.
+        {subtitle}
       </motion.p>
     </div>
   );

@@ -6,9 +6,10 @@ type Props = {
   onClose: () => void;
   bureau: string;
   body: string;
+  loading?: boolean;
 };
 
-export function LetterPreviewModal({ open, onClose, bureau, body }: Props) {
+export function LetterPreviewModal({ open, onClose, bureau, body, loading }: Props) {
   useEffect(() => {
     if (!open) return;
     const prev = document.body.style.overflow;
@@ -69,9 +70,13 @@ export function LetterPreviewModal({ open, onClose, bureau, body }: Props) {
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-6 sm:py-6">
               <div className="rounded-lg border border-white/[0.06] bg-lab-bg/80 px-4 py-5 sm:px-5 sm:py-6">
-                <pre className="whitespace-pre-wrap font-sans text-[13px] leading-[1.65] text-lab-text/95 sm:text-[14px]">
-                  {body}
-                </pre>
+                {loading ? (
+                  <p className="text-sm text-lab-muted">Loading letter…</p>
+                ) : (
+                  <pre className="whitespace-pre-wrap font-sans text-[13px] leading-[1.65] text-lab-text/95 sm:text-[14px]">
+                    {body}
+                  </pre>
+                )}
               </div>
             </div>
           </motion.div>

@@ -4,12 +4,14 @@ type Props = {
   canSend: boolean;
   onSend: () => void;
   onSaveLater: () => void;
+  sendBusy?: boolean;
 };
 
 export function VerificationActionSection({
   canSend,
   onSend,
   onSaveLater,
+  sendBusy,
 }: Props) {
   return (
     <motion.div
@@ -25,21 +27,21 @@ export function VerificationActionSection({
     >
       <motion.button
         type="button"
-        disabled={!canSend}
+        disabled={!canSend || sendBusy}
         onClick={onSend}
         className="w-full rounded-xl bg-lab-accent py-3.5 text-[15px] font-semibold text-white shadow-lg shadow-lab-accent/25 transition-shadow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-lab-accent/45 disabled:cursor-not-allowed disabled:bg-lab-accent/35 disabled:text-white/70 disabled:shadow-none"
         whileHover={
-          canSend
+          canSend && !sendBusy
             ? {
                 scale: 1.015,
                 boxShadow: "0 14px 44px -10px rgba(59,130,246,0.42)",
               }
             : undefined
         }
-        whileTap={canSend ? { scale: 0.985 } : undefined}
+        whileTap={canSend && !sendBusy ? { scale: 0.985 } : undefined}
         transition={{ type: "spring", stiffness: 420, damping: 28 }}
       >
-        Send my disputes
+        {sendBusy ? "Continuing…" : "Send my disputes"}
       </motion.button>
       <p className="text-center text-xs text-lab-subtle sm:text-sm">
         You can save this and come back if needed

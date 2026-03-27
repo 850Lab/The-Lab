@@ -644,6 +644,38 @@ def get_all_reports(user_id=None):
     
     return [dict(r) for r in reports]
 
+
+def get_recent_reports_with_parsed_for_user(user_id: int, limit: int = 25):
+    """
+    Latest reports for a user including parsed_data (for React intake / analyze UI).
+    parsed_data is returned as a dict (JSON decoded if needed).
+    """
+    with get_db(dict_cursor=True) as (conn, cur):
+        cur.execute(
+            """
+            SELECT id, upload_date, bureau, file_name, parsed_data
+            FROM reports
+            WHERE user_id = %s
+            ORDER BY upload_date DESC
+            LIMIT %s
+            """,
+            (user_id, limit),
+        )
+        rows = cur.fetchall()
+    out = []
+    for r in rows:
+        d = dict(r)
+        pd = d.get("parsed_data")
+        if isinstance(pd, str):
+            try:
+                d["parsed_data"] = json.loads(pd)
+            except Exception:
+                d["parsed_data"] = {}
+        elif pd is None:
+            d["parsed_data"] = {}
+        out.append(d)
+    return out
+
 def save_violation(report_id, violation_type, fcra_section, triggering_data, explanation):
     with get_db() as (conn, cur):
         cur.execute('''
@@ -1008,7 +1040,17 @@ def get_dispute_tracker(user_id, round_number=None):
             return [dict(r) for r in cur.fetchall()]
 
 
-def save_proof_upload(user_id, round_number, bureau, file_name, file_type, notes=None, file_data=None, doc_type=None):
+def save_proof_upload(
+    user_id,
+    round_number,
+    bureau,
+    file_name,
+    file_type,
+    notes=None,
+    file_data=None,
+    doc_type=None,
+    workflow_id=None,
+):
     with get_db() as (conn, cur):
         cur.execute('''
             INSERT INTO proof_uploads (user_id, round_number, bureau, file_name, file_type, notes, file_data, doc_type)
@@ -1023,7 +1065,9 @@ def save_proof_upload(user_id, round_number, bureau, file_name, file_type, notes
             try:
                 from services.workflow import hooks as workflow_hooks
 
-                workflow_hooks.maybe_notify_proof_attachment_completed(int(user_id))
+                workflow_hooks.maybe_notify_proof_attachment_completed(
+                    int(user_id), workflow_id=workflow_id
+                )
             except Exception:
                 pass
         return proof_id
@@ -2027,7 +2071,7 @@ def get_or_create_upload_token(user_id, expiry_days=7):
     return create_upload_token(user_id, expiry_days)
 
 
-def save_user_signature(user_id, signature_bytes):
+def save_user_signature(user_id, signature_bytes, workflow_id=None):
     with get_db() as (conn, cur):
         cur.execute('''
             INSERT INTO user_signatures (user_id, signature_data, created_at)
@@ -2040,7 +2084,9 @@ def save_user_signature(user_id, signature_bytes):
     try:
         from services.workflow import hooks as workflow_hooks
 
-        workflow_hooks.maybe_notify_proof_attachment_completed(int(user_id))
+        workflow_hooks.maybe_notify_proof_attachment_completed(
+            int(user_id), workflow_id=workflow_id
+        )
     except Exception:
         pass
 

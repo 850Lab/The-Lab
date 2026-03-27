@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { EscalationCTASection } from "@/components/EscalationCTASection";
 import { EscalationOptionCard } from "@/components/EscalationOptionCard";
@@ -11,7 +11,6 @@ import {
   getEscalationOption,
   type EscalationOptionId,
 } from "@/lib/escalationOptions";
-import { setWorkflowStep } from "@/lib/workflow";
 
 const pageVariants = {
   hidden: { opacity: 0 },
@@ -53,14 +52,9 @@ export function EscalationPage() {
     DEFAULT_ESCALATION_ID,
   );
 
-  useEffect(() => {
-    setWorkflowStep("escalation");
-  }, []);
-
   const selected = getEscalationOption(selectedId);
 
   const handleContinue = () => {
-    setWorkflowStep("escalation_action");
     navigate("/escalation-action", { replace: true });
   };
 

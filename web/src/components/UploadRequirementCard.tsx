@@ -11,6 +11,10 @@ export type UploadRequirementCardProps = {
   onFileSelected: (file: File) => void;
   onClearFile: () => void;
   accept?: string;
+  /** When a local file is chosen, optional second step to upload to the server. */
+  onCommit?: () => void;
+  commitLabel?: string;
+  commitBusy?: boolean;
 };
 
 export function UploadRequirementCard({
@@ -23,6 +27,9 @@ export function UploadRequirementCard({
   onFileSelected,
   onClearFile,
   accept = "image/jpeg,image/png,image/webp,application/pdf,.pdf",
+  onCommit,
+  commitLabel = "Save to account",
+  commitBusy,
 }: UploadRequirementCardProps) {
   const inputId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -119,6 +126,16 @@ export function UploadRequirementCard({
                   Remove
                 </button>
               </div>
+              {onCommit ? (
+                <button
+                  type="button"
+                  onClick={onCommit}
+                  disabled={commitBusy}
+                  className="mt-3 w-full rounded-lg bg-lab-accent/20 py-2.5 text-sm font-semibold text-lab-accent transition-colors hover:bg-lab-accent/28 disabled:pointer-events-none disabled:opacity-45"
+                >
+                  {commitBusy ? "Saving…" : commitLabel}
+                </button>
+              ) : null}
             </motion.div>
           ) : (
             <motion.div

@@ -91,6 +91,21 @@ def get_session_user(
     return user
 
 
+def get_session_bearer_token(
+    creds: Optional[HTTPAuthorizationCredentials] = Depends(_bearer),
+) -> str:
+    """Raw bearer token string for logout and other token-scoped actions."""
+    if creds is None or not creds.credentials:
+        raise HTTPException(
+            status_code=401,
+            detail={
+                "code": "AUTH_REQUIRED",
+                "messageSafe": "Authorization Bearer token required.",
+            },
+        )
+    return creds.credentials.strip()
+
+
 def get_owned_workflow(
     workflow_id: str,
     user: Dict[str, Any] = Depends(get_session_user),

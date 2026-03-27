@@ -1,8 +1,4 @@
 import { motion } from "framer-motion";
-import {
-  TIMELINE_CURRENT_DAY,
-  TIMELINE_TOTAL_DAYS,
-} from "@/lib/mockTrackingData";
 
 const STEPS = [
   { dayLabel: "Day 0", title: "Sent", range: "Mailed to bureaus" },
@@ -11,8 +7,13 @@ const STEPS = [
   { dayLabel: "Day 30", title: "Response expected", range: "Typical reply timeframe" },
 ] as const;
 
-function stepState(index: number): "done" | "current" | "upcoming" {
-  const d = TIMELINE_CURRENT_DAY;
+type Props = {
+  /** From backend ``timeline.daysSinceFirstMail`` (0 until first mailed send exists). */
+  dayCurrent: number;
+  totalDays: number;
+};
+
+function stepState(index: number, d: number): "done" | "current" | "upcoming" {
   if (index === 0) {
     if (d > 0) return "done";
     if (d === 0) return "current";
@@ -31,7 +32,8 @@ function stepState(index: number): "done" | "current" | "upcoming" {
   return d >= 30 ? "current" : "upcoming";
 }
 
-export function ProgressTimelineCard() {
+export function ProgressTimelineCard({ dayCurrent, totalDays }: Props) {
+  const d = Math.max(0, Math.min(totalDays, dayCurrent));
   return (
     <motion.section
       variants={{
@@ -49,7 +51,7 @@ export function ProgressTimelineCard() {
           Your timeline
         </h3>
         <p className="text-sm font-medium text-lab-accent">
-          Day {TIMELINE_CURRENT_DAY} of {TIMELINE_TOTAL_DAYS}
+          Day {d} of {totalDays}
         </p>
       </div>
 
@@ -60,7 +62,7 @@ export function ProgressTimelineCard() {
         />
         <ul className="space-y-0">
           {STEPS.map((step, index) => {
-            const state = stepState(index);
+            const state = stepState(index, d);
             return (
               <li key={step.title} className="relative flex gap-4 pb-7 last:pb-0">
                 <div className="relative z-[1] flex shrink-0 flex-col items-center pt-0.5">

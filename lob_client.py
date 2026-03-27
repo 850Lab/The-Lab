@@ -360,3 +360,26 @@ def is_test_mode() -> bool:
     if not key:
         return True
     return _is_test_key(key)
+
+
+def require_live_lob_for_customer_send() -> bool:
+    """When true, non-admin customer API must not submit real Lob sends using a test API key."""
+    v = (os.environ.get("REQUIRE_LOB_LIVE_FOR_CUSTOMER_SEND") or "").strip().lower()
+    return v in ("1", "true", "yes", "on")
+
+
+def customer_mail_send_blocked_reason(*, is_admin: bool) -> Optional[str]:
+    """
+    If non-empty, customer mail send should be blocked before calling Lob.
+    Admins bypass live-key enforcement for support/testing.
+    """
+    if is_admin:
+        return None
+    if not is_configured():
+        return "Lob API key is not configured."
+    if require_live_lob_for_customer_send() and is_test_mode():
+        return (
+            "Live Lob is required for customer mail (REQUIRE_LOB_LIVE_FOR_CUSTOMER_SEND), "
+            "but the server is using a test Lob key."
+        )
+    return None

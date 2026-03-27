@@ -260,7 +260,7 @@ def validate_session(token: str) -> dict:
 
     with get_db(dict_cursor=True) as (conn, cur):
         cur.execute('''
-            SELECT s.*, u.id as user_id, u.email, u.display_name, u.role, u.tier
+            SELECT s.*, u.id as user_id, u.email, u.display_name, u.role, u.tier, u.email_verified
             FROM sessions s
             JOIN users u ON s.user_id = u.id
             WHERE s.session_token = %s AND s.expires_at > NOW()
@@ -276,6 +276,7 @@ def validate_session(token: str) -> dict:
         'display_name': result['display_name'],
         'role': result['role'],
         'tier': result['tier'],
+        'email_verified': bool(result.get('email_verified')),
     }
 
 

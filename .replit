@@ -6,7 +6,7 @@ packages = ["freetype", "gitFull", "glib", "glibcLocales", "gumbo", "harfbuzz", 
 
 [deployment]
 deploymentTarget = "autoscale"
-build = ["sh", "-c", "pip install bcrypt deepdiff fastapi openai openpyxl pandas pdf2image pdfplumber pillow psycopg2-binary pymupdf pytesseract reportlab requests resend streamlit stripe uvicorn websocket-client websockets"]
+build = ["sh", "-c", "pip install bcrypt deepdiff fastapi openai openpyxl pandas pdf2image pdfplumber pillow psycopg2-binary pymupdf pytesseract python-multipart reportlab requests resend streamlit stripe uvicorn websocket-client websockets"]
 run = ["sh", "scripts/replit_deployment_entry.sh"]
 [workflows]
 runButton = "Project"
