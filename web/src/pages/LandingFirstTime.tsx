@@ -54,23 +54,23 @@ export function LandingFirstTime() {
   const canStart = Boolean(token && emailVerified);
 
   return (
-    <div className="relative min-h-full bg-lab-bg">
+    <div className="relative flex min-h-screen flex-col bg-lab-bg">
       <StartTransitionOverlay open={overlayOpen} />
 
       <div
-        className="pointer-events-none absolute left-1/2 top-[38%] z-0 h-[min(85vw,640px)] w-[min(85vw,640px)] -translate-x-1/2 -translate-y-1/2 rounded-full bg-lab-accent/[0.14] blur-[100px] sm:top-[40%]"
+        className="pointer-events-none absolute left-1/2 top-1/2 z-0 h-[min(85vw,640px)] w-[min(85vw,640px)] -translate-x-1/2 -translate-y-1/2 rounded-full bg-lab-accent/[0.14] blur-[100px]"
         aria-hidden
       />
       <div
-        className="pointer-events-none absolute left-1/2 top-[42%] z-0 h-[min(55vw,420px)] w-[min(55vw,420px)] -translate-x-1/2 -translate-y-1/2 rounded-full bg-lab-accent/[0.06] blur-[80px]"
+        className="pointer-events-none absolute left-1/2 top-1/2 z-0 h-[min(55vw,420px)] w-[min(55vw,420px)] -translate-x-1/2 -translate-y-1/2 rounded-full bg-lab-accent/[0.06] blur-[80px]"
         aria-hidden
       />
 
       <TopBarMinimal />
 
-      <main className="relative z-10 mx-auto flex min-h-full max-w-2xl flex-col px-4 pb-16 pt-24 sm:px-6 sm:pt-28">
+      <main className="relative z-10 mx-auto flex flex-1 max-w-2xl flex-col items-center justify-center px-4 pb-16 sm:px-6">
         <motion.div
-          className="flex flex-1 flex-col items-center justify-center text-center"
+          className="flex flex-col items-center text-center"
           variants={heroContainer}
           initial="hidden"
           animate="show"
