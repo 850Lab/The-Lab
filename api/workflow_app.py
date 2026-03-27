@@ -1761,8 +1761,12 @@ if os.path.isdir(_SPA_DIST):
 
     app.mount("/assets", StaticFiles(directory=os.path.join(_SPA_DIST, "assets")), name="spa-assets")
 
+    _API_PREFIXES = ("api/", "internal/", "health", "docs", "openapi.json")
+
     @app.get("/{full_path:path}")
     async def _spa_fallback(full_path: str):
+        if full_path and any(full_path == p or full_path.startswith(p) for p in _API_PREFIXES):
+            raise HTTPException(status_code=404, detail="Not found")
         if full_path:
             safe = os.path.normpath(full_path).lstrip(os.sep)
             file_path = os.path.join(_SPA_DIST, safe)
