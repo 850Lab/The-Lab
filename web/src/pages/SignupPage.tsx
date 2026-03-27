@@ -1,11 +1,13 @@
 import { motion } from "framer-motion";
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { TopBarMinimal } from "@/components/TopBarMinimal";
+import { safeAppPath } from "@/lib/postAuthRedirect";
 import { useAuth } from "@/providers/AuthContext";
 
 export function SignupPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { signUp } = useAuth();
   const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
@@ -24,7 +26,16 @@ export function SignupPage() {
     setBusy(true);
     try {
       await signUp(email.trim(), password, displayName.trim());
-      navigate("/verify-email", { replace: true, state: { sendInitialCode: true } });
+      const returnTo = safeAppPath(
+        new URLSearchParams(location.search).get("next"),
+      );
+      navigate("/verify-email", {
+        replace: true,
+        state: {
+          sendInitialCode: true,
+          ...(returnTo ? { returnTo } : {}),
+        },
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -101,7 +112,10 @@ export function SignupPage() {
 
         <p className="mt-6 text-center text-sm text-lab-muted">
           Already have an account?{" "}
-          <Link to="/login" className="font-medium text-lab-accent hover:text-sky-300">
+          <Link
+            to={`/login${location.search}`}
+            className="font-medium text-lab-accent hover:text-sky-300"
+          >
             Sign in
           </Link>
         </p>

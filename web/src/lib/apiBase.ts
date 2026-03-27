@@ -8,6 +8,5 @@ export function workflowApiBase(): string {
     import.meta.env.VITE_WORKFLOW_API_PREFIX as string | undefined
   )?.trim();
   if (prefix) return prefix.replace(/\/$/, "");
-  if (import.meta.env.PROD) return "";
   return "/workflow-api";
 }

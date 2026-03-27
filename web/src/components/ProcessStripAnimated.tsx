@@ -14,10 +14,11 @@ export function ProcessStripAnimated() {
   }, []);
 
   return (
-    <div className="mx-auto w-full max-w-md sm:max-w-lg">
-      <div className="relative px-1">
+    <div className="w-full">
+      <div className="relative">
+        {/* Track spans dot centers at 12.5% / 37.5% / 62.5% / 87.5% (4 equal columns). */}
         <div
-          className="absolute left-[14%] right-[14%] top-[11px] h-px overflow-hidden rounded-full bg-white/[0.08] sm:top-[13px]"
+          className="absolute left-[12.5%] right-[12.5%] top-[11px] h-px overflow-hidden rounded-full bg-white/[0.08] sm:top-[13px]"
           aria-hidden
         >
           <motion.div
@@ -30,11 +31,11 @@ export function ProcessStripAnimated() {
             }}
           />
         </div>
-        <ul className="relative flex justify-between gap-1">
+        <ul className="relative grid grid-cols-4">
           {STEPS.map((label, i) => {
             const active = i === pulseIndex;
             return (
-              <li key={label} className="flex flex-1 flex-col items-center">
+              <li key={label} className="flex flex-col items-center">
                 <motion.div
                   className="relative flex h-6 w-6 items-center justify-center sm:h-7 sm:w-7"
                   animate={{

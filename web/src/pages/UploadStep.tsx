@@ -1,11 +1,12 @@
 import { motion } from "framer-motion";
-import { useCallback, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { GetReportPanel } from "@/components/GetReportPanel";
 import { TopBarMinimal } from "@/components/TopBarMinimal";
 import { UploadDropzoneCard } from "@/components/UploadDropzoneCard";
 import { postReportUpload } from "@/lib/workflowApi";
 import { customerPathFromEnvelope } from "@/lib/workflowStepRoutes";
+import { useAuth } from "@/providers/AuthContext";
 import { useCustomerWorkflow } from "@/providers/CustomerWorkflowContext";
 
 const page = {
@@ -40,16 +41,52 @@ function skipReasonMessage(reason: string): string {
 
 export function UploadStep() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [getReportOpen, setGetReportOpen] = useState(false);
   const [privacyAgreed, setPrivacyAgreed] = useState(false);
-  const { token, workflowId, applyWorkflowEnvelope } = useCustomerWorkflow();
+  const [setupError, setSetupError] = useState<string | null>(null);
+  const initOnceRef = useRef(false);
+  const { token: authToken, emailVerified } = useAuth();
+  const {
+    token,
+    workflowId,
+    loading: wfLoading,
+    applyWorkflowEnvelope,
+    initWorkflow,
+  } = useCustomerWorkflow();
+
+  const authReturn = encodeURIComponent(`${location.pathname}${location.search}`);
+
+  useEffect(() => {
+    if (!authToken || !emailVerified || workflowId || wfLoading) return;
+    if (initOnceRef.current) return;
+    initOnceRef.current = true;
+    void (async () => {
+      try {
+        setSetupError(null);
+        await initWorkflow();
+      } catch (e) {
+        initOnceRef.current = false;
+        setSetupError(
+          e instanceof Error ? e.message : "Could not start your workspace.",
+        );
+      }
+    })();
+  }, [authToken, emailVerified, workflowId, wfLoading, initWorkflow]);
+
+  const guestExplore = !authToken;
+  const workspaceReady = Boolean(
+    authToken && emailVerified && workflowId && !wfLoading,
+  );
+  const allowUpload = workspaceReady && privacyAgreed;
 
   const onUploadPdf = useCallback(
     async (file: File) => {
       if (!token || !workflowId) {
         return {
           success: false as const,
-          message: "Session or workflow missing. Return home and start again.",
+          message:
+            "Sign in and create a free account to upload your report and save progress.",
         };
       }
       try {
@@ -91,6 +128,53 @@ export function UploadStep() {
           initial="hidden"
           animate="show"
         >
+          {guestExplore ? (
+            <motion.div
+              variants={block}
+              className="mb-6 w-full max-w-lg rounded-xl border border-sky-500/25 bg-sky-500/10 px-4 py-3 text-left text-sm text-sky-100/95"
+            >
+              <p className="font-medium text-sky-50">Save your progress</p>
+              <p className="mt-1 text-sky-100/85">
+                Create a free account when you&apos;re ready to upload — we&apos;ll keep your
+                report and dispute work tied to your account.
+              </p>
+              <div className="mt-3 flex flex-wrap gap-3">
+                <Link
+                  to={`/signup?next=${authReturn}`}
+                  state={{ from: location.pathname }}
+                  className="inline-flex rounded-lg bg-lab-accent px-3 py-1.5 text-sm font-semibold text-white hover:bg-sky-500"
+                >
+                  Create account
+                </Link>
+                <Link
+                  to={`/login?next=${authReturn}`}
+                  state={{ from: location.pathname }}
+                  className="text-sm font-medium text-sky-200 underline-offset-2 hover:underline"
+                >
+                  Sign in
+                </Link>
+              </div>
+            </motion.div>
+          ) : null}
+
+          {setupError ? (
+            <motion.p
+              variants={block}
+              className="mb-4 max-w-lg rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-center text-sm text-red-200/95"
+            >
+              {setupError}
+            </motion.p>
+          ) : null}
+
+          {!guestExplore && authToken && emailVerified && !workflowId && wfLoading ? (
+            <motion.p
+              variants={block}
+              className="mb-4 text-center text-sm text-lab-muted"
+            >
+              Setting up your workspace…
+            </motion.p>
+          ) : null}
+
           <motion.div variants={block} className="max-w-lg text-center">
             <h1 className="text-2xl font-semibold tracking-tight text-lab-text sm:text-3xl md:text-[1.75rem]">
               Upload your credit report
@@ -117,11 +201,14 @@ export function UploadStep() {
 
           <motion.label
             variants={block}
-            className="mt-8 flex max-w-lg cursor-pointer items-start gap-3 text-left text-sm text-lab-muted"
+            className={`mt-8 flex max-w-lg items-start gap-3 text-left text-sm text-lab-muted ${
+              guestExplore ? "cursor-not-allowed opacity-60" : "cursor-pointer"
+            }`}
           >
             <input
               type="checkbox"
-              className="mt-1 h-4 w-4 shrink-0 rounded border-white/20 bg-lab-surface text-lab-accent focus:ring-lab-accent/40"
+              disabled={guestExplore}
+              className="mt-1 h-4 w-4 shrink-0 rounded border-white/20 bg-lab-surface text-lab-accent focus:ring-lab-accent/40 disabled:opacity-50"
               checked={privacyAgreed}
               onChange={(e) => setPrivacyAgreed(e.target.checked)}
             />
@@ -132,7 +219,10 @@ export function UploadStep() {
           </motion.label>
 
           <motion.div variants={block} className="mt-8 w-full sm:mt-10">
-            <UploadDropzoneCard disabled={!privacyAgreed} onUploadPdf={onUploadPdf} />
+            <UploadDropzoneCard
+              disabled={!allowUpload}
+              onUploadPdf={onUploadPdf}
+            />
           </motion.div>
 
           <motion.div

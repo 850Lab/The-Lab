@@ -68,10 +68,9 @@ The application utilizes Streamlit with a wide layout and a **full-screen steppe
 - Stripe API (for payment processing)
 - Lob API (for Certified Mail integration)
 
-### React/FastAPI Customer App + Deployment
-- **Deployed Repl (Autoscale)**: FastAPI on **port 5000** serves both the API (`/api/*`) and the built React frontend from `web/dist` with SPA fallback. Production builds automatically use `import.meta.env.PROD` to call `/api/*` directly (no Vite proxy needed). Streamlit is NOT started in production.
-- **Development**: the **Project** Run button starts two parallel workflows: `workflow_api` (FastAPI on port 8000) and `react_frontend` (Vite dev server on port 5173). The React app uses Vite's proxy (`/workflow-api` → `127.0.0.1:8000`, prefix stripped). Streamlit is available as a separate workflow for internal/admin use but is not part of the default Run.
-- **Streamlit (internal/legacy)**: Run manually from the Shell when needed: `streamlit run app.py --server.port 5000 --server.address 0.0.0.0 --server.headless true`. It is not part of the default Run or deployment.
+### Mission Control (React) + Workflow API on Replit
+- **Deployed Repl (Autoscale)** runs `scripts/replit_deployment_entry.sh`: FastAPI `api.workflow_app` on **port 8000** and Streamlit on **port 5000**. The published webview is still Streamlit; the React app is not part of that run command.
+- **Developing Mission Control**: use the **Project** Run button (parallel workflows) or start both manually: `streamlit …` on 5000 and `python -m uvicorn api.workflow_app:app --host 0.0.0.0 --port 8000` on 8000. From the Shell, run `cd web && npm install && npm run dev` so Vite serves the React app (default **5173**, bound to `0.0.0.0`). Mission Control uses `/workflow-api` → Vite proxy → `127.0.0.1:8000` unless overridden.
 - **Secrets / env**: set `WORKFLOW_ADMIN_API_SECRET` for admin routes; optional `WORKFLOW_INTERNAL_API_SECRET` for worker/internal endpoints. For Mission Control UI, operators paste the same value (or use `VITE_WORKFLOW_ADMIN_KEY` only for local convenience — prefer Secrets for real admin keys).
 - **Cross-origin**: if the browser origin is not the Vite dev server (e.g. `vite preview`), set `VITE_WORKFLOW_API_URL` to the full origin of the workflow API (Replit’s URL for port **8000**). Optional `WORKFLOW_API_PROXY_TARGET` adjusts the dev proxy target (default `http://127.0.0.1:8000`).
 
@@ -80,20 +79,23 @@ The application utilizes Streamlit with a wide layout and a **full-screen steppe
 ### Runtime contract (verify after pull)
 | Service | Port | Bind | Notes |
 |---------|------|------|--------|
-| FastAPI (`api.workflow_app`) — production | **5000** | `0.0.0.0` | Serves React SPA from `web/dist` + all `/api/*` routes |
-| FastAPI (`api.workflow_app`) — dev | **8000** | `0.0.0.0` | API only in dev; React calls via Vite proxy |
-| Vite (React frontend) — dev only | **5173** | `0.0.0.0` | `web/vite.config.ts` proxies `/workflow-api` → `127.0.0.1:8000` |
-| Streamlit (`app.py`) — dev/internal only | **5000** | `0.0.0.0` | Not started in production; available as separate dev workflow |
+| Streamlit (`app.py`) | **5000** | `0.0.0.0` | Primary webview; `.streamlit/config.toml` also sets 5000 |
+| Workflow API (`api.workflow_app`) | **8000** | `0.0.0.0` | Same Repl as Streamlit for dev proxy |
+| Vite (Mission Control / React) | **5173** | `0.0.0.0` | `web/vite.config.ts` proxies `/workflow-api` → `WORKFLOW_API_PROXY_TARGET` or `http://127.0.0.1:8000` |
 
 ### Autoscale **Run** (production deploy)
-- Build: `pip install ...` + `cd web && npm install && VITE_WORKFLOW_API_PREFIX='' npm run build`
-- Run: `python -m uvicorn api.workflow_app:app --host 0.0.0.0 --port 5000`
-- Published site is the **React frontend** served by FastAPI. SPA fallback ensures all client routes work on refresh.
+- Command: `scripts/replit_deployment_entry.sh` (starts uvicorn **8000** in background, then **exec** Streamlit **5000**).
+- **Public URL (port 80)** maps to **workflow API port 8000** (customer React + `/api/...`). **Streamlit** stays on **5000** — open it from the Replit **Ports** / preview list when you need the legacy admin UI.
+- **Customer React** is served from the same process when `web/dist` exists:
+  - After deploy, the main site URL should load the SPA at `/`.
+  - Same origin serves the SPA and `/api/...`. The API also accepts **`/workflow-api/...`** (stripped to `/...`) so existing `web/dist` built with the Vite proxy prefix keeps working without rebuilding.
+  - After `git pull`, ensure `web/dist` is up to date: `cd web && npm install && npm run build` (or rely on committed `dist` from the repo).
 
-### Dev: React + API (same Repl)
-1. Click **Project** Run button — starts `workflow_api` (port 8000) + `react_frontend` (Vite on port 5173) in parallel.
-2. Open the Replit preview URL for port **5173** to see the React app.
-3. For Mission Control, navigate to **`/mission-control`** and paste the Workflow Admin secret.
+### Dev: Mission Control (same Repl)
+1. Start API + Streamlit: use the **Project** workflow in `.replit` (parallel **streamlit_app** + **workflow_api**) *or* run the same two commands from the Shell.
+2. In another Shell: `cd web && npm install && npm run dev`
+3. Open the Replit preview URL for port **5173**, then navigate to **`/mission-control`** (e.g. `https://<your-5173-preview-host>/mission-control`).
+4. Paste **Workflow Admin** secret in the UI (or set `VITE_WORKFLOW_ADMIN_KEY` only for local convenience; prefer Replit **Secrets** for real keys).
 
 ### Required / recommended Secrets (Streamlit + API)
 - **`DATABASE_URL`** — **required** (`app.py` stops without it). Use Replit PostgreSQL.
@@ -104,5 +106,4 @@ The application utilizes Streamlit with a wide layout and a **full-screen steppe
 - **AI:** `AI_INTEGRATIONS_OPENAI_API_KEY` (and optional `AI_INTEGRATIONS_OPENAI_BASE_URL`) for strategy / doc validation paths.
 
 ### Build note
-- `.replit` **deployment** `build` uses an explicit `pip install …` list (not `requirements.txt`) followed by `cd web && npm install --production=false && npm run build` to produce the React SPA in `web/dist`. Keep the pip list in sync with imports or switch to `pip install -r requirements.txt` (note: `requirements.txt` includes **playwright**, which is heavy on Repl builds).
-- The React frontend automatically uses `import.meta.env.PROD` to detect production builds and calls `/api/*` directly instead of going through the Vite dev proxy (`/workflow-api` prefix).
+- `.replit` **deployment** `build` uses an explicit `pip install …` list, not `requirements.txt`. Keep it in sync with imports or switch the build step to `pip install -r requirements.txt` (note: `requirements.txt` includes **playwright**, which is heavy on Repl builds).

@@ -2,6 +2,7 @@ import { motion } from "framer-motion";
 import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { TopBarMinimal } from "@/components/TopBarMinimal";
+import { postAuthTargetFromSearchAndState } from "@/lib/postAuthRedirect";
 import { useAuth } from "@/providers/AuthContext";
 
 export function LoginPage() {
@@ -25,7 +26,10 @@ export function LoginPage() {
         navigate("/verify-email", { replace: true, state: { sendInitialCode: true } });
         return;
       }
-      navigate(from && from !== "/login" ? from : "/", { replace: true });
+      navigate(
+        postAuthTargetFromSearchAndState(location.search, from, "/login"),
+        { replace: true },
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -95,7 +99,10 @@ export function LoginPage() {
 
         <p className="mt-6 text-center text-sm text-lab-muted">
           No account?{" "}
-          <Link to="/signup" className="font-medium text-lab-accent hover:text-sky-300">
+          <Link
+            to={`/signup${location.search}`}
+            className="font-medium text-lab-accent hover:text-sky-300"
+          >
             Create one
           </Link>
         </p>

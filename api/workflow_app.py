@@ -31,6 +31,11 @@ from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, UploadFi
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
+from api.customer_web_static import (
+    install_strip_workflow_api_prefix_middleware,
+    mount_customer_web_dist_if_present,
+    register_customer_web_status_route,
+)
 from api.workflow_deps import (
     get_owned_workflow,
     get_session_bearer_token,
@@ -131,6 +136,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+install_strip_workflow_api_prefix_middleware(app)
+register_customer_web_status_route(app)
 
 _engine = WorkflowEngine()
 
@@ -1751,25 +1758,4 @@ def health() -> Dict[str, str]:
     return {"status": "ok", "service": "workflow-api"}
 
 
-_SPA_DIST = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "web", "dist")
-
-if os.path.isdir(_SPA_DIST):
-    from fastapi.staticfiles import StaticFiles
-    from fastapi.responses import FileResponse
-
-    _SPA_INDEX = os.path.join(_SPA_DIST, "index.html")
-
-    app.mount("/assets", StaticFiles(directory=os.path.join(_SPA_DIST, "assets")), name="spa-assets")
-
-    _API_PREFIXES = ("api/", "api", "internal/", "internal", "health", "docs", "openapi.json")
-
-    @app.get("/{full_path:path}")
-    async def _spa_fallback(full_path: str):
-        if full_path and any(full_path == p or full_path.startswith(p) for p in _API_PREFIXES):
-            raise HTTPException(status_code=404, detail="Not found")
-        if full_path:
-            safe = os.path.normpath(full_path).lstrip(os.sep)
-            file_path = os.path.join(_SPA_DIST, safe)
-            if os.path.commonpath([_SPA_DIST, file_path]) == _SPA_DIST and os.path.isfile(file_path):
-                return FileResponse(file_path)
-        return FileResponse(_SPA_INDEX)
+mount_customer_web_dist_if_present(app, _logger)
