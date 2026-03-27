@@ -14,7 +14,7 @@ export function ProcessStripAnimated() {
   }, []);
 
   return (
-    <div className="w-full max-w-md sm:max-w-lg">
+    <div className="mx-auto w-full max-w-md sm:max-w-lg">
       <div className="relative px-1">
         <div
           className="absolute left-[14%] right-[14%] top-[11px] h-px overflow-hidden rounded-full bg-white/[0.08] sm:top-[13px]"
