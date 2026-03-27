@@ -1,0 +1,41 @@
+Prompt for Replit (browser testing)
+Context: This is the 850 Lab customer SPA (Vite + React Router). API calls go to the backend via the dev proxy path /workflow-api (rewritten to the FastAPI host). Playwright smoke tests in the repo already verify the following without logging in—skip deep re-checking unless something looks broken:
+
+/ — Hero heading “Turn your credit report into real action”, brand 850 Lab, Start now visible and disabled when signed out; two Sign in links (header + hero)—use first or be specific.
+From /, Create account → /signup heading Create account; Sign in → /login heading Sign in; login has #login-email, #login-password, submit Sign in.
+Guards: /upload and /get-report redirect to /login with no session.
+/mission-control — Heading Mission Control, placeholder X-Workflow-Admin-Key, Save; sidebar: Workflows, Exceptions, Responses, Reminders, Admin audit, Overview — each changes URL to /mission-control/... as expected.
+Unknown path → redirect to /.
+Your job (efficiency): Assume the above pass. Focus on logged-in behavior, backend coupling, and congruence (copy, CTAs, loading/error states). Use a real or staging test account with a verified email and an active workflow if the environment provides one; if not, document what blocked you.
+
+Priority order:
+
+Auth after verify
+
+Sign in → if unverified, you should land on /verify-email.
+After verify, /login or /signup should redirect toward / or the canonical workflow step (not stay on auth).
+Workflow shell
+
+With token + verified email + workflow loaded: visiting a wrong funnel step (e.g. /payment when step is still /upload) should redirect to the authoritative step (backend-driven).
+WorkflowIntegrityBanner (if shown): readable, actionable, no broken links.
+Funnel pages (hit in order only as far as data allows)
+Routes: /get-report → /get-report/idiq (if used) → /upload → /analyze → /prepare → /strategy → /payment → /letters → /proof → /send → /tracking → /responses → /escalation (and /escalation-action if applicable).
+For each reachable page: primary button and link work (no dead clicks), loading then content or clear error (not infinite spinners), layout not clipped on ~1280px width.
+
+Payment
+
+Stripe checkout opens only when intended; return URL brings you back to /payment with query params as designed; “Finish activating” or reconcile path if shown—note behavior.
+Escalation
+
+/escalation and /escalation-action are not blocked by the same step guard as the linear funnel—confirm they load and primary actions work.
+Mission Control (authenticated vs not)
+
+Confirm internal nav still works with admin key saved (if you can set a test key): data loads or explicit error (not blank silent failure).
+Reporting format (short):
+
+Pass / fail per priority block.
+For each failure: URL, what you clicked, expected vs actual, console or network error if visible.
+Not tested + reason (e.g. no test user, no PDF, Stripe test mode unavailable).
+Do not spend time re-proving the anonymous smoke list unless a regression is suspected.
+
+You can prepend one line with your exact deployed origin (e.g. https://<your-replit-url>) and whether npm run dev vs production build is running so Replit hits the right host. If you want, we can add a second variant of this prompt that assumes only production and no /workflow-api proxy (full API URL in env).

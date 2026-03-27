@@ -68,6 +68,14 @@ outputType = "webview"
 localPort = 5000
 externalPort = 80
 
+[[ports]]
+localPort = 5174
+externalPort = 3000
+
+[[ports]]
+localPort = 8000
+externalPort = 8000
+
 [agent]
 integrations = ["python_openai_ai_integrations:1.0.0", "stripe:2.0.0", "resend:1.0.0"]
 expertMode = true
