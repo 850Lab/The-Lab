@@ -39,6 +39,21 @@ def install_strip_workflow_api_prefix_middleware(app: FastAPI) -> None:
     app.add_middleware(StripWorkflowApiPrefixMiddleware)
 
 
+def register_customer_web_status_route(app: FastAPI) -> None:
+    """Always-on probe so Replit/deploy hosts can confirm dist + routing (no auth)."""
+
+    @app.get("/api/system/customer-web-status", include_in_schema=False)
+    def customer_web_status() -> dict[str, object]:
+        idx = _DIST / "index.html"
+        return {
+            "ok": True,
+            "dist_index_exists": idx.is_file(),
+            "assets_dir_exists": _ASSETS.is_dir(),
+            "dist_path": str(_DIST),
+            "hint": "If dist_index_exists is false, run: cd web && npm install && npm run build",
+        }
+
+
 def mount_customer_web_dist_if_present(app: FastAPI, logger: logging.Logger) -> None:
     if not _DIST.is_dir() or not (_DIST / "index.html").is_file():
         logger.warning(

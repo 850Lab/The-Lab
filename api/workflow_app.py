@@ -34,6 +34,7 @@ from pydantic import BaseModel, Field
 from api.customer_web_static import (
     install_strip_workflow_api_prefix_middleware,
     mount_customer_web_dist_if_present,
+    register_customer_web_status_route,
 )
 from api.workflow_deps import (
     get_owned_workflow,
@@ -136,6 +137,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 install_strip_workflow_api_prefix_middleware(app)
+register_customer_web_status_route(app)
 
 _engine = WorkflowEngine()
 

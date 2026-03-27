@@ -85,9 +85,9 @@ The application utilizes Streamlit with a wide layout and a **full-screen steppe
 
 ### Autoscale **Run** (production deploy)
 - Command: `scripts/replit_deployment_entry.sh` (starts uvicorn **8000** in background, then **exec** Streamlit **5000**).
-- **Default webview (port 80 → 5000)** is **Streamlit** — not the new customer React app.
-- **Customer React (landing, workflow funnel, Mission Control UI)** is served from the **workflow API** when `web/dist` exists:
-  - Open Replit’s preview for **port 8000** (Workflow API), not 5000.
+- **Public URL (port 80)** maps to **workflow API port 8000** (customer React + `/api/...`). **Streamlit** stays on **5000** — open it from the Replit **Ports** / preview list when you need the legacy admin UI.
+- **Customer React** is served from the same process when `web/dist` exists:
+  - After deploy, the main site URL should load the SPA at `/`.
   - Same origin serves the SPA and `/api/...`. The API also accepts **`/workflow-api/...`** (stripped to `/...`) so existing `web/dist` built with the Vite proxy prefix keeps working without rebuilding.
   - After `git pull`, ensure `web/dist` is up to date: `cd web && npm install && npm run build` (or rely on committed `dist` from the repo).
 
