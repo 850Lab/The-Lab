@@ -1,0 +1,212 @@
+You are working inside the 850 Lab Replit project.
+
+Your job is to finish DEPLOYMENT READINESS so the full customer workflow can run in Replit without me manually starting pieces in the terminal.
+
+IMPORTANT:
+Do NOT redesign the product.
+Do NOT change core business logic unless required to make deployment work.
+Do NOT remove or rewrite the workflow system.
+Do NOT simplify the app into a fake demo.
+Do NOT break the current structure.
+
+The goal is:
+- backend runs correctly
+- frontend runs correctly
+- Replit knows how to start the app
+- deployment works from the Replit run/publish flow
+- public app can be tested end-to-end
+
+==================================================
+CURRENT REALITY
+==================================================
+
+The repo structure is split:
+- backend code in root/api and services
+- frontend Vite app in /web
+- there is no root package.json for npm run dev
+- frontend currently runs with:
+  cd web
+  npm install
+  npm run dev
+
+This means the code is present, but Replit is not yet fully orchestrated for one-click run/deploy.
+
+==================================================
+PRIMARY OBJECTIVE
+==================================================
+
+Set up this Replit so that the project can run and deploy cleanly without manual terminal juggling.
+
+I want a proper Replit run configuration that starts the full system in a reliable way.
+
+==================================================
+TASK 1 — AUDIT CURRENT RUN/DEPLOY STRUCTURE
+==================================================
+
+Inspect and report:
+- current .replit file
+- any existing run scripts
+- backend entrypoint(s)
+- frontend package scripts in /web/package.json
+- whether backend already serves the frontend in production
+- whether Replit deployment is currently pointed at the wrong command
+
+Do not assume the best architecture. Inspect first.
+
+==================================================
+TASK 2 — CHOOSE THE BEST DEPLOYMENT SHAPE
+==================================================
+
+Based on the actual codebase, choose the cleanest Replit deployment model.
+
+Prefer the most production-appropriate option among these:
+
+OPTION A
+Backend serves the built frontend statically in production.
+
+OPTION B
+Replit runs backend and frontend together through a controlled start script if static serving is not yet clean.
+
+Choose the option that makes this app actually deployable and testable in Replit with the least fragility.
+
+IMPORTANT:
+Explain why your chosen deployment shape is the correct one for THIS repo.
+
+==================================================
+TASK 3 — IMPLEMENT REPLIT RUN ORCHESTRATION
+==================================================
+
+Make whatever changes are needed so Replit can start the app correctly.
+
+This may include:
+- updating .replit
+- adding a root run script (bash/python/etc.)
+- adding build/start scripts
+- wiring backend and frontend together properly
+- making sure ports/hosts are correct for Replit
+
+Requirements:
+- one clear run command
+- no manual cd web && npm run dev needed for normal use
+- deployment should not depend on me remembering multiple commands
+
+==================================================
+TASK 4 — HANDLE FRONTEND PRODUCTION SERVING
+==================================================
+
+If the best path is backend-serving-frontend:
+
+- make sure web can build successfully
+- make sure backend serves the built frontend correctly
+- make sure SPA routing works (important for routes like /payment, /upload, /responses, /get-report, etc.)
+- make sure API routes still work
+- make sure refresh on frontend routes does not 404
+
+If that path is not yet possible cleanly, explain why and implement the best viable Replit-safe alternative.
+
+==================================================
+TASK 5 — VERIFY ENV / PORT / HOST REQUIREMENTS
+==================================================
+
+Inspect and fix:
+- host binding
+- port usage
+- any Replit-specific env assumptions
+- frontend API base assumptions
+- deployment readiness issues related to PUBLIC_APP_ORIGIN / WORKFLOW_CUSTOMER_APP_ORIGIN if relevant
+
+Do not invent fake values, but make the app deployment-ready and explain what env vars still need real production values.
+
+==================================================
+TASK 6 — DO A REAL RUN VERIFICATION
+==================================================
+
+After changes:
+- run the project the way Replit will run it
+- confirm the app starts
+- confirm frontend loads
+- confirm backend endpoints are reachable from frontend
+- confirm no immediate blank screen / fatal startup issue
+
+If something fails, fix it before reporting back.
+
+==================================================
+TASK 7 — MINIMAL DEPLOYMENT HARDENING
+==================================================
+
+Add only what is necessary to make deployment solid.
+
+Examples:
+- frontend build before backend serve
+- clean start script
+- SPA fallback
+- static asset path fix
+- helpful startup logging
+
+Do NOT widen scope into product features.
+
+==================================================
+DELIVERABLE FORMAT
+==================================================
+
+Return your answer in EXACTLY this structure:
+
+1. COMPLETION STATUS
+- overall completion %
+- technical %
+- operational reality %
+- what this deployment step improves
+
+2. AUDIT FINDINGS
+- current .replit state
+- current backend entrypoint
+- current frontend start/build scripts
+- main deployment problem you found
+
+3. DEPLOYMENT MODEL CHOSEN
+- backend-served frontend OR dual-process startup
+- why this was the best choice for this repo
+
+4. FILES CHANGED
+List every changed file and why.
+
+5. RUN/DEPLOY COMMANDS
+- final Replit run command
+- final deployment command if different
+- how frontend/backend are wired together
+
+6. ROUTING / SERVING FIXES
+- how SPA routes are handled
+- how API routes are preserved
+
+7. ENV / CONFIG REQUIREMENTS
+- what is now handled
+- what still must be set by me for real live usage
+
+8. VERIFICATION
+- what command you ran
+- what loaded successfully
+- any remaining warnings
+
+9. HANDOFF FOR CURSOR
+- what was finished
+- what Cursor should verify once this is live
+
+==================================================
+SUCCESS CRITERIA
+==================================================
+
+This task is successful if:
+- Replit can run the full app with one clear command
+- frontend no longer requires manual terminal startup for normal use
+- backend and frontend work together in Replit
+- SPA routes do not break on refresh
+- the app is ready for live environment validation
+
+==================================================
+FINAL INSTRUCTION
+==================================================
+
+Do not stop at analysis.
+Implement the deployment setup fully.
+Then verify it actually runs.
