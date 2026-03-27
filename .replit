@@ -2,12 +2,12 @@ modules = ["nodejs-20", "postgresql-16", "python-3.11"]
 
 [nix]
 channel = "stable-25_05"
-packages = ["freetype", "gitFull", "glib", "glibcLocales", "gumbo", "harfbuzz", "jbig2dec", "lcms2", "libiconv", "libimagequant", "libjpeg", "libjpeg_turbo", "libtiff", "libwebp", "mupdf", "openjpeg", "poppler-utils", "swig", "zlib", "tesseract5", "ghostscript"]
+packages = ["arrow-cpp", "cacert", "cargo", "freetype", "ghostscript", "gitFull", "glib", "glibcLocales", "gumbo", "harfbuzz", "jbig2dec", "lcms2", "libffi", "libiconv", "libimagequant", "libjpeg", "libjpeg_turbo", "libtiff", "libwebp", "libxcrypt", "mupdf", "openjpeg", "openssl", "pkg-config", "playwright-driver", "poppler-utils", "poppler_utils", "rustc", "swig", "tcl", "tesseract", "tesseract5", "tk", "zlib"]
 
 [deployment]
 deploymentTarget = "autoscale"
-build = ["sh", "-c", "pip install bcrypt deepdiff fastapi openai openpyxl pandas pdf2image pdfplumber pillow psycopg2-binary pymupdf pytesseract python-multipart reportlab requests resend streamlit stripe uvicorn websocket-client websockets"]
-run = ["sh", "scripts/replit_deployment_entry.sh"]
+build = ["sh", "-c", "pip install bcrypt deepdiff fastapi openai openpyxl pandas pdf2image pdfplumber pillow psycopg2-binary pymupdf pytesseract python-multipart reportlab requests resend streamlit stripe uvicorn websocket-client websockets && cd web && npm install --production=false && npm run build"]
+run = ["sh", "-c", "python -m uvicorn api.workflow_app:app --host 0.0.0.0 --port 5000"]
 [workflows]
 runButton = "Project"
 
@@ -18,23 +18,11 @@ author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
-args = "streamlit_app"
+args = "workflow_api"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
-args = "workflow_api"
-
-[[workflows.workflow]]
-name = "streamlit_app"
-author = "agent"
-
-[workflows.workflow.metadata]
-outputType = "webview"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "streamlit run app.py --server.port 5000 --server.address 0.0.0.0 --server.headless true"
-waitForPort = 5000
+args = "react_frontend"
 
 [[workflows.workflow]]
 name = "workflow_api"
@@ -45,6 +33,21 @@ task = "shell.exec"
 args = "python -m uvicorn api.workflow_app:app --host 0.0.0.0 --port 8000"
 waitForPort = 8000
 
+[workflows.workflow.metadata]
+outputType = "console"
+
+[[workflows.workflow]]
+name = "react_frontend"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd web && npm install && npm run dev"
+waitForPort = 5173
+
+[workflows.workflow.metadata]
+outputType = "console"
+
 [[ports]]
 localPort = 5000
 externalPort = 80
@@ -54,10 +57,16 @@ localPort = 5173
 externalPort = 5173
 
 [[ports]]
+localPort = 5174
+externalPort = 3000
+
+[[ports]]
 localPort = 8000
+externalPort = 8000
 
 [agent]
 integrations = ["python_openai_ai_integrations:1.0.0", "stripe:2.0.0", "resend:1.0.0"]
+expertMode = true
 
 [userenv]
 

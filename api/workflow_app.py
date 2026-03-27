@@ -1749,3 +1749,23 @@ def mcc_admin_mc_reminder_candidates(
 @app.get("/health")
 def health() -> Dict[str, str]:
     return {"status": "ok", "service": "workflow-api"}
+
+
+_SPA_DIST = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "web", "dist")
+
+if os.path.isdir(_SPA_DIST):
+    from fastapi.staticfiles import StaticFiles
+    from fastapi.responses import FileResponse
+
+    _SPA_INDEX = os.path.join(_SPA_DIST, "index.html")
+
+    app.mount("/assets", StaticFiles(directory=os.path.join(_SPA_DIST, "assets")), name="spa-assets")
+
+    @app.get("/{full_path:path}")
+    async def _spa_fallback(full_path: str):
+        if full_path:
+            safe = os.path.normpath(full_path).lstrip(os.sep)
+            file_path = os.path.join(_SPA_DIST, safe)
+            if os.path.commonpath([_SPA_DIST, file_path]) == _SPA_DIST and os.path.isfile(file_path):
+                return FileResponse(file_path)
+        return FileResponse(_SPA_INDEX)

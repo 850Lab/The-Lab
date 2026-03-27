@@ -1,3 +1,5 @@
+import { workflowApiBase } from "@/lib/apiBase";
+
 const LS_KEY = "mcc_admin_key";
 
 export function getMissionControlAdminKey(): string {
@@ -13,25 +15,8 @@ export function setMissionControlAdminKey(key: string): void {
   localStorage.setItem(LS_KEY, key.trim());
 }
 
-/**
- * Workflow API base URL (no trailing slash).
- * - Replit / local Vite dev: default `/workflow-api` → dev-server proxy → uvicorn :8000.
- * - Cross-origin (e.g. preview on another port): set `VITE_WORKFLOW_API_URL` in Secrets / `.env`
- *   to the public origin of the FastAPI app (e.g. `https://<repl>-8000.<host>`).
- * - Path prefix only: `VITE_WORKFLOW_API_PREFIX` (overrides default path when URL not set).
- */
 function apiBase(): string {
-  const absolute = (
-    import.meta.env.VITE_WORKFLOW_API_URL as string | undefined
-  )?.trim();
-  if (absolute) return absolute.replace(/\/$/, "");
-
-  const prefix = (
-    import.meta.env.VITE_WORKFLOW_API_PREFIX as string | undefined
-  )?.trim();
-  if (prefix) return prefix.replace(/\/$/, "");
-
-  return "/workflow-api";
+  return workflowApiBase();
 }
 
 export class MissionControlApiError extends Error {

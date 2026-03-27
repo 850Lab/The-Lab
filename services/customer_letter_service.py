@@ -22,7 +22,6 @@ from services.workflow.repository import fetch_steps
 from services.workflow_payment_service import needed_letters_from_workflow_session
 
 _log = logging.getLogger(__name__)
-_ENGINE = WorkflowEngine()
 
 
 def _parsed_dict(raw: Any) -> Dict[str, Any]:

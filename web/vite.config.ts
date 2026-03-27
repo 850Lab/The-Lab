@@ -15,7 +15,8 @@ export default defineConfig(({ mode }) => {
     server: {
       host: "0.0.0.0",
       port: 5173,
-      strictPort: false,
+      strictPort: true,
+      allowedHosts: true,
       proxy: {
         "/workflow-api": {
           target: proxyTarget,
