@@ -1761,7 +1761,7 @@ if os.path.isdir(_SPA_DIST):
 
     app.mount("/assets", StaticFiles(directory=os.path.join(_SPA_DIST, "assets")), name="spa-assets")
 
-    _API_PREFIXES = ("api/", "internal/", "health", "docs", "openapi.json")
+    _API_PREFIXES = ("api/", "api", "internal/", "internal", "health", "docs", "openapi.json")
 
     @app.get("/{full_path:path}")
     async def _spa_fallback(full_path: str):
