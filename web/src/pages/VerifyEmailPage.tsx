@@ -2,7 +2,13 @@ import { motion } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { TopBarMinimal } from "@/components/TopBarMinimal";
+import { safeAppPath } from "@/lib/postAuthRedirect";
 import { useAuth } from "@/providers/AuthContext";
+
+type VerifyLocationState = {
+  sendInitialCode?: boolean;
+  returnTo?: string;
+};
 
 export function VerifyEmailPage() {
   const navigate = useNavigate();
@@ -15,8 +21,9 @@ export function VerifyEmailPage() {
   const [resendNote, setResendNote] = useState<string | null>(null);
   const initialSendRef = useRef(false);
 
-  const sendInitialCode =
-    Boolean((location.state as { sendInitialCode?: boolean } | null)?.sendInitialCode);
+  const locState = (location.state as VerifyLocationState | null) ?? null;
+  const sendInitialCode = Boolean(locState?.sendInitialCode);
+  const afterVerifyPath = safeAppPath(locState?.returnTo) ?? "/";
 
   useEffect(() => {
     if (!sendInitialCode || initialSendRef.current) return;
@@ -33,9 +40,9 @@ export function VerifyEmailPage() {
 
   useEffect(() => {
     if (user?.emailVerified) {
-      navigate("/", { replace: true });
+      navigate(afterVerifyPath, { replace: true });
     }
-  }, [user?.emailVerified, navigate]);
+  }, [user?.emailVerified, navigate, afterVerifyPath]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -43,7 +50,7 @@ export function VerifyEmailPage() {
     setBusy(true);
     try {
       await verifyEmail(code.trim());
-      navigate("/", { replace: true });
+      navigate(afterVerifyPath, { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {

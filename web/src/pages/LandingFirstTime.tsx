@@ -34,7 +34,11 @@ export function LandingFirstTime() {
   const { initWorkflow } = useCustomerWorkflow();
 
   const handleStart = useCallback(() => {
-    if (!token || !emailVerified) {
+    if (token && !emailVerified) {
+      return;
+    }
+    if (!token) {
+      navigate("/get-report", { replace: true });
       return;
     }
     setOverlayOpen(true);
@@ -51,7 +55,8 @@ export function LandingFirstTime() {
     })();
   }, [navigate, initWorkflow, token, emailVerified]);
 
-  const canStart = Boolean(token && emailVerified);
+  /** Guests can start immediately; signed-in users must verify email before continuing. */
+  const startDisabled = Boolean(token && !emailVerified);
 
   return (
     <div className="relative min-h-full bg-lab-bg">
@@ -90,7 +95,10 @@ export function LandingFirstTime() {
             forward step by step.
           </motion.p>
 
-          <motion.div variants={heroItem} className="mt-12 w-full sm:mt-14">
+          <motion.div
+            variants={heroItem}
+            className="mx-auto mt-12 w-full max-w-md sm:mt-14 sm:max-w-lg"
+          >
             <ProcessStripAnimated />
           </motion.div>
 
@@ -101,13 +109,11 @@ export function LandingFirstTime() {
             <motion.button
               type="button"
               onClick={handleStart}
-              disabled={overlayOpen || !canStart}
+              disabled={overlayOpen || startDisabled}
               title={
-                !token
-                  ? "Sign in to start."
-                  : !emailVerified
-                    ? "Verify your email to continue."
-                    : undefined
+                token && !emailVerified
+                  ? "Verify your email to continue."
+                  : undefined
               }
               className="rounded-lg bg-lab-accent px-8 py-3 text-[15px] font-semibold text-white shadow-lg shadow-lab-accent/20 outline-none ring-lab-accent/40 transition-shadow focus-visible:ring-2 disabled:pointer-events-none disabled:opacity-60"
               whileHover={{
@@ -120,21 +126,27 @@ export function LandingFirstTime() {
               Start now
             </motion.button>
             {!token ? (
-              <div className="flex flex-wrap items-center justify-center gap-4 text-sm">
-                <Link
-                  to="/login"
-                  className="font-medium text-lab-accent hover:text-sky-300"
-                >
-                  Sign in
-                </Link>
-                <span className="text-lab-subtle">·</span>
-                <Link
-                  to="/signup"
-                  className="font-medium text-lab-accent hover:text-sky-300"
-                >
-                  Create account
-                </Link>
-              </div>
+              <>
+                <p className="max-w-sm text-center text-xs leading-relaxed text-lab-subtle">
+                  No account needed to explore. Create a free account when you&apos;re ready to
+                  upload your report and save your progress.
+                </p>
+                <div className="flex flex-wrap items-center justify-center gap-4 text-sm">
+                  <Link
+                    to="/login"
+                    className="font-medium text-lab-accent hover:text-sky-300"
+                  >
+                    Sign in
+                  </Link>
+                  <span className="text-lab-subtle">·</span>
+                  <Link
+                    to="/signup"
+                    className="font-medium text-lab-accent hover:text-sky-300"
+                  >
+                    Create account
+                  </Link>
+                </div>
+              </>
             ) : null}
           </motion.div>
 

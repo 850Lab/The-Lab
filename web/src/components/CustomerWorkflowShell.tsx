@@ -7,8 +7,24 @@ import {
 import { useAuth } from "@/providers/AuthContext";
 import { useCustomerWorkflow } from "@/providers/CustomerWorkflowContext";
 
-const PUBLIC_UNAUTH_PATHS = new Set(["/", "/login", "/signup"]);
+/** Signed-out users can open the pre-upload funnel without an account. */
+const PUBLIC_UNAUTH_PATHS = new Set([
+  "/",
+  "/login",
+  "/signup",
+  "/get-report",
+  "/get-report/idiq",
+  "/upload",
+]);
 const VERIFY_EMAIL_PATH = "/verify-email";
+
+/** Logged-in + verified but no workflow yet: same pre-workflow pages as guests. */
+const PRE_WORKFLOW_PATHS = new Set([
+  "/",
+  "/get-report",
+  "/get-report/idiq",
+  "/upload",
+]);
 
 /**
  * Enforces auth + backend-driven customer routes when a session + workflow exist.
@@ -53,6 +69,14 @@ export function CustomerWorkflowShell() {
     return <Navigate to="/" replace />;
   }
 
+  if (auth.token && auth.emailVerified && ctx.loading) {
+    return (
+      <div className="flex min-h-[50vh] flex-col items-center justify-center gap-2 px-4 text-center text-sm text-white/70">
+        <p>Loading…</p>
+      </div>
+    );
+  }
+
   if (ctx.error && auth.token && auth.emailVerified) {
     return (
       <div className="p-6 text-center text-sm text-red-300">
@@ -63,7 +87,7 @@ export function CustomerWorkflowShell() {
   }
 
   if (!ctx.workflowId) {
-    if (path !== "/") {
+    if (!PRE_WORKFLOW_PATHS.has(path)) {
       return <Navigate to="/" replace />;
     }
     return <Outlet />;
