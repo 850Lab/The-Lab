@@ -31,6 +31,10 @@ from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, UploadFi
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
+from api.customer_web_static import (
+    install_strip_workflow_api_prefix_middleware,
+    mount_customer_web_dist_if_present,
+)
 from api.workflow_deps import (
     get_owned_workflow,
     get_session_bearer_token,
@@ -131,6 +135,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+install_strip_workflow_api_prefix_middleware(app)
 
 _engine = WorkflowEngine()
 
@@ -1749,3 +1754,6 @@ def mcc_admin_mc_reminder_candidates(
 @app.get("/health")
 def health() -> Dict[str, str]:
     return {"status": "ok", "service": "workflow-api"}
+
+
+mount_customer_web_dist_if_present(app, _logger)
