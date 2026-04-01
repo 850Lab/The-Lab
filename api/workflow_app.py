@@ -110,6 +110,17 @@ def _run_one_time_data_fixes():
     try:
         import database as _db
         with _db.get_db(dict_cursor=True) as (conn, cur):
+            cur.execute('''
+                CREATE TABLE IF NOT EXISTS mail_approvals (
+                    id SERIAL PRIMARY KEY,
+                    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    approved_by VARCHAR(100) NOT NULL DEFAULT 'admin',
+                    reason VARCHAR(500),
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(user_id)
+                )
+            ''')
+            conn.commit()
             cur.execute(
                 "SELECT id FROM proof_uploads WHERE id IN (6, 7) AND user_id IS NULL"
             )
