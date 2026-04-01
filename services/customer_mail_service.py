@@ -135,6 +135,7 @@ def _build_mail_status(
     target_count: int,
     per_bureau: List[Dict[str, Any]],
     mail_gate_last_failure: str,
+    mail_approved: bool = True,
 ) -> Dict[str, Any]:
     has_tracking_any = any(bool(b.get("trackingUrl")) for b in per_bureau)
     is_blocked = bool(customer_block_reason) or not lob_configured
@@ -166,6 +167,13 @@ def _build_mail_status(
             )
         else:
             message = block_detail or "Sending is not available right now."
+    elif not mail_approved:
+        primary = "pending_approval"
+        title = "Letters pending review"
+        message = (
+            "Your letters are being reviewed by the 850 Lab team before mailing. "
+            "We'll let you know once they're approved — no action needed from you right now."
+        )
     elif not has_letters:
         primary = "no_letters"
         title = "Letters not ready for mail"
@@ -270,6 +278,7 @@ def _build_mail_status(
             or credits_block
             or not proof_both
             or not has_letters
+            or not mail_approved
             or (requires_live_for_customer and lob_test_mode)
         )
 
@@ -283,6 +292,7 @@ def _build_mail_status(
         "hasTracking": bool(has_tracking_any),
         "lettersGenerated": bool(has_letters),
         "proofComplete": bool(proof_both),
+        "mailApproved": bool(mail_approved),
         "mailingCreditsAvailable": bool(is_admin or has_credits),
         "pendingBureauCount": int(pending_ct),
         "mailedBureauCount": int(mailed_ct),
@@ -407,6 +417,8 @@ def build_mail_context_payload(
         for x in bureau_payload
     ]
 
+    _mail_approved = is_admin or db.is_mail_approved(user_id)
+
     mail_status_block = _build_mail_status(
         mail_step_failed=mail_row_status == "failed",
         has_letters=len(bureau_payload) > 0,
@@ -422,6 +434,7 @@ def build_mail_context_payload(
         target_count=len(bureau_payload),
         per_bureau=per_bureau_status,
         mail_gate_last_failure=last_fail,
+        mail_approved=_mail_approved,
     )
 
     return {
@@ -439,6 +452,7 @@ def build_mail_context_payload(
         "mailedCount": mailed_ct,
         "hasLetters": len(bureau_payload) > 0,
         "proofBothOnFile": bool(hp.get("both")),
+        "mailApproved": _mail_approved,
         "lobConfigured": lob_client.is_configured(),
         "lobTestMode": lob_client.is_test_mode(),
         "requiresLiveLobForCustomerSend": lob_client.require_live_lob_for_customer_send(),
@@ -494,6 +508,9 @@ def send_certified_letter_for_bureau(
     attachments, att_err = _proof_attachments(user_id)
     if att_err:
         return None, att_err
+
+    if not is_admin and not db.is_mail_approved(user_id):
+        return None, "Your letters are pending admin review. We'll notify you once they're approved for mailing."
 
     lob_block = lob_client.customer_mail_send_blocked_reason(is_admin=is_admin)
     if lob_block:

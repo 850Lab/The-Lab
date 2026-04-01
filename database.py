@@ -437,6 +437,17 @@ def _init_database_ddl(pool, conn):
         pass
 
     cur.execute('''
+        CREATE TABLE IF NOT EXISTS mail_approvals (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            approved_by VARCHAR(100) NOT NULL DEFAULT 'admin',
+            reason VARCHAR(500),
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(user_id)
+        )
+    ''')
+
+    cur.execute('''
         CREATE TABLE IF NOT EXISTS user_ui_state (
             user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
             ui_card VARCHAR(50) NOT NULL DEFAULT 'UPLOAD',
@@ -1071,6 +1082,39 @@ def save_proof_upload(
             except Exception:
                 pass
         return proof_id
+
+
+def is_mail_approved(user_id):
+    try:
+        with get_db() as (conn, cur):
+            cur.execute(
+                "SELECT 1 FROM mail_approvals WHERE user_id = %s", (user_id,)
+            )
+            return cur.fetchone() is not None
+    except Exception:
+        return False
+
+
+def approve_mail_for_user(user_id, approved_by="admin", reason=None):
+    with get_db() as (conn, cur):
+        cur.execute('''
+            INSERT INTO mail_approvals (user_id, approved_by, reason)
+            VALUES (%s, %s, %s)
+            ON CONFLICT (user_id) DO UPDATE SET
+                approved_by = EXCLUDED.approved_by,
+                reason = EXCLUDED.reason,
+                created_at = CURRENT_TIMESTAMP
+        ''', (user_id, approved_by, reason))
+        conn.commit()
+        return True
+
+
+def revoke_mail_approval(user_id):
+    with get_db() as (conn, cur):
+        cur.execute("DELETE FROM mail_approvals WHERE user_id = %s", (user_id,))
+        deleted = cur.rowcount
+        conn.commit()
+        return deleted > 0
 
 
 def reassign_orphaned_proof_uploads(proof_ids, target_user_id):

@@ -1666,6 +1666,51 @@ def internal_admin_recovery_mail_retry(
     )
 
 
+class MailApprovalBody(BaseModel):
+    user_id: int = Field(..., ge=1)
+    actor_source: str = "admin"
+    reason_safe: str = ""
+
+
+@app.post("/internal/admin/mail/approve")
+def internal_admin_approve_mail(
+    body: MailApprovalBody,
+    _: None = Depends(require_admin_service),
+) -> Dict[str, Any]:
+    db.approve_mail_for_user(
+        body.user_id,
+        approved_by=body.actor_source,
+        reason=body.reason_safe or None,
+    )
+    _logger.info(
+        "Admin approved mail for user %d (actor=%s reason=%s)",
+        body.user_id, body.actor_source, body.reason_safe,
+    )
+    return {"ok": True, "userId": body.user_id, "approved": True}
+
+
+@app.post("/internal/admin/mail/revoke")
+def internal_admin_revoke_mail(
+    body: MailApprovalBody,
+    _: None = Depends(require_admin_service),
+) -> Dict[str, Any]:
+    revoked = db.revoke_mail_approval(body.user_id)
+    _logger.info(
+        "Admin revoked mail approval for user %d (revoked=%s actor=%s)",
+        body.user_id, revoked, body.actor_source,
+    )
+    return {"ok": True, "userId": body.user_id, "revoked": revoked}
+
+
+@app.get("/internal/admin/mail/approval-status/{user_id}")
+def internal_admin_mail_approval_status(
+    user_id: int,
+    _: None = Depends(require_admin_service),
+) -> Dict[str, Any]:
+    approved = db.is_mail_approved(user_id)
+    return {"userId": user_id, "approved": approved}
+
+
 class ReassignProofBody(BaseModel):
     proof_ids: List[int] = Field(..., min_length=1, max_length=50)
     target_user_id: int = Field(..., ge=1)
