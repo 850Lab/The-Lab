@@ -106,6 +106,43 @@ _logger = logging.getLogger(__name__)
 _MAX_REPORT_UPLOAD_MB = 25
 
 
+def _run_one_time_data_fixes():
+    try:
+        import database as _db
+        with _db.get_db(dict_cursor=True) as (conn, cur):
+            cur.execute(
+                "SELECT id FROM proof_uploads WHERE id IN (6, 7) AND user_id IS NULL"
+            )
+            orphaned = [r["id"] for r in cur.fetchall()]
+            if orphaned:
+                cur.execute(
+                    "UPDATE proof_uploads SET user_id = 11 WHERE id IN (6, 7) AND user_id IS NULL"
+                )
+                conn.commit()
+                _logger.info("Startup fix: reassigned %d orphaned proof uploads to user 11", len(orphaned))
+            else:
+                conn.rollback()
+
+            cur.execute("SELECT mailings FROM entitlements WHERE user_id = 11")
+            row = cur.fetchone()
+            if row and (row["mailings"] or 0) == 0:
+                cur.execute(
+                    "UPDATE entitlements SET mailings = mailings + 3, updated_at = NOW() WHERE user_id = 11"
+                )
+                cur.execute(
+                    "INSERT INTO entitlement_transactions "
+                    "(user_id, transaction_type, ai_rounds, letters, mailings, source, note, created_at) "
+                    "VALUES (11, 'credit', 0, 0, 3, 'admin_grant', "
+                    "'Startup fix: mailing credits for restart-storm affected customer', NOW())"
+                )
+                conn.commit()
+                _logger.info("Startup fix: granted 3 mailing credits to user 11")
+            else:
+                conn.rollback()
+    except Exception:
+        _logger.debug("Startup data fixes skipped or failed", exc_info=True)
+
+
 @asynccontextmanager
 async def _workflow_api_lifespan(_app: FastAPI):
     """
@@ -121,6 +158,7 @@ async def _workflow_api_lifespan(_app: FastAPI):
         _logger.exception(
             "workflow API: init_database() failed — DB unavailable or misconfigured"
         )
+    _run_one_time_data_fixes()
     yield
 
 
