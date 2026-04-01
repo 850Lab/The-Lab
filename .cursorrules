@@ -1,0 +1,73 @@
+## 850 Lab — Project Context for AI Assistants
+
+### Architecture
+- **Frontend**: React + Vite (in `web/`), served by FastAPI at port 5000
+- **Backend**: FastAPI (`api/workflow_app.py`), PostgreSQL database (`database.py`)
+- **Deployment**: Replit autoscale, FastAPI port 5000 serves built React SPA at `/` with SPA fallback + all `/api/*` routes
+- **Build**: `pip install -r requirements.txt && cd web && npm install --production=false && npm run build`
+- **Run**: `python -m uvicorn api.workflow_app:app --host 0.0.0.0 --port 5000`
+
+### Key Files
+- `api/workflow_app.py` — FastAPI app, all endpoints, startup lifespan with one-time data fixes
+- `database.py` — PostgreSQL persistence layer, all table DDL, CRUD functions
+- `services/customer_mail_service.py` — Certified mail sending via Lob, mail status builder, admin approval gate
+- `services/customer_proof_service.py` — Proof document upload/management
+- `letter_generator.py` — Dispute letter generation from parsed credit report data
+- `lob_client.py` — Lob API integration for certified mail
+- `web/src/` — React frontend
+
+### Secrets (set in Replit, available as env vars)
+- `DATABASE_URL` — PostgreSQL connection
+- `WORKFLOW_ADMIN_API_SECRET` — Protects all `/internal/admin/...` endpoints (header: `X-Workflow-Admin-Key`)
+- `LOB_API_KEY` — Lob certified mail API (live key)
+- `AI_INTEGRATIONS_OPENAI_API_KEY` + `AI_INTEGRATIONS_OPENAI_BASE_URL` — OpenAI via Replit proxy
+
+### Admin Endpoints (all require `X-Workflow-Admin-Key` header)
+- `POST /internal/admin/mail/approve` — `{"user_id": N}` — approve customer for mailing
+- `POST /internal/admin/mail/revoke` — `{"user_id": N}` — revoke mail approval
+- `GET /internal/admin/mail/approval-status/{user_id}` — check approval
+- `POST /internal/admin/proof/reassign-orphaned` — reassign proof uploads
+- `POST /internal/admin/entitlements/grant` — grant credits
+- `POST /internal/admin/responses/override-classification` — override response classification
+- `POST /internal/admin/responses/override-escalation` — override escalation recommendation
+
+### Mail Approval Gate
+Every customer must be admin-approved before they can send certified mail. The `mail_approvals` table tracks approvals. The check happens in `send_certified_letter_for_bureau()` and the status appears in `_build_mail_status()`. Admins bypass this check.
+
+---
+
+## BRITTANY FRANKLIN (user_id=11) — First E2E Customer
+
+### Current State (as of latest deploy)
+- **Email**: brittanyfranklin10@yahoo.com
+- **Address**: 6095 Windsong St, Beaumont, TX 77713-3413
+- **Tier**: Founder
+
+### What's Done ✓
+- TransUnion letter (letter_id=6, report_id=31): Fixed — garbled address corrected, 24 dispute items, proper FCRA §611 language
+- Proof uploads: Government ID (proof_id=6) + Address proof (proof_id=7) — reassigned to user_id=11
+- Mailing credits: 3 granted
+- Report 31 personal_info: Name and address corrected in parsed_data
+- Mail approval gate: Active — she is NOT approved yet (must approve before she can mail)
+
+### What's NOT Done ✗
+- **Experian letter**: Report (id=29) has 0 parsed accounts and NULL full_text — PDF text extraction failed completely. She needs to re-upload her Experian credit report.
+- **Equifax letter**: Report (id=30) has 0 parsed accounts and NULL full_text — same issue. She needs to re-upload her Equifax credit report.
+- **Signature**: No entry in `user_signatures` table. Not required for Lob mailing (letter has printed name), but may be needed for PDF downloads.
+- **Workflow session**: None exists — she used the old Streamlit app, not the React workflow. She has no `workflow_sessions` row.
+- **Admin approval**: Not yet approved for mailing. Call `POST /internal/admin/mail/approve {"user_id": 11}` when ready.
+
+### Her Credit Report Data
+- Report 29 (Experian): Uploaded as "Annual Credit Report - Experian.pdf" — parser extracted nothing
+- Report 30 (Equifax): Uploaded as "Credit Report.pdf" — parser extracted nothing
+- Report 31 (TransUnion): Uploaded as "View Your Report | Transunion Credit Report.pdf" — 24 accounts parsed, letter generated
+
+### TransUnion Letter Content (letter_id=6)
+Disputes 24 items including: ACCEPTANCENOW, CONN APPLIANCES INC, DEPT OF ED/NELNET, DIVERSIFIED ADJ SVC, GM FINANCIAL, SELF/SOUTH STATE BANK, WELLS FARGO AUTO, WESTERN FINANCE. Uses FCRA §611 reinvestigation request language. Includes SSN last four (6388), DOB (04/13/1995).
+
+### Entitlements
+- Founder grant: 9 AI rounds, 9 letters, 0→3 mailings (3 granted via admin fix)
+- 1 letter already used (TransUnion letter generation)
+
+### KNOWN BUG
+Every `git pull origin main` may re-introduce `_ENGINE = WorkflowEngine()` in `services/customer_letter_service.py` — always check and remove after pulling.
