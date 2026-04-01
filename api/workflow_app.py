@@ -123,6 +123,35 @@ def _run_one_time_data_fixes():
             else:
                 conn.rollback()
 
+            cur.execute("SELECT letter_text FROM letters WHERE id = 6")
+            lrow = cur.fetchone()
+            if lrow and lrow["letter_text"] and "AAAAdddd" in lrow["letter_text"]:
+                fixed = lrow["letter_text"].replace(
+                    "BRITTANY M. FRANKLIN AAAAddddddddrrrreeeesssssssseeeessss\n--- Page 2 ---",
+                    "BRITTANY M. FRANKLIN\n6095 Windsong St\nBeaumont, TX 77713-3413",
+                )
+                fixed = fixed.replace(
+                    "BRITTANY M. FRANKLIN AAAAddddddddrrrreeeesssssssseeeessss",
+                    "BRITTANY M. FRANKLIN\n6095 Windsong St\nBeaumont, TX 77713-3413",
+                )
+                cur.execute("UPDATE letters SET letter_text = %s WHERE id = 6", (fixed,))
+                conn.commit()
+                _logger.info("Startup fix: corrected garbled address in letter 6")
+            else:
+                conn.rollback()
+
+            cur.execute(
+                "UPDATE reports SET parsed_data = jsonb_set("
+                "  jsonb_set(parsed_data::jsonb, '{personal_info,name}', '\"BRITTANY M. FRANKLIN\"'),"
+                "  '{personal_info,address}', '\"6095 Windsong St, Beaumont, TX 77713-3413\"'"
+                ") WHERE id = 31 AND parsed_data::text LIKE '%%AAAAdddd%%'"
+            )
+            if cur.rowcount:
+                conn.commit()
+                _logger.info("Startup fix: corrected garbled personal_info in report 31")
+            else:
+                conn.rollback()
+
             cur.execute("SELECT mailings FROM entitlements WHERE user_id = 11")
             row = cur.fetchone()
             if row and (row["mailings"] or 0) == 0:
