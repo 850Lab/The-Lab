@@ -1816,6 +1816,90 @@ def internal_admin_grant_entitlements(
     }
 
 
+@app.get("/internal/admin/customer/{user_id}")
+def internal_admin_customer_detail(
+    user_id: int,
+    _: None = Depends(require_admin_service),
+) -> Dict[str, Any]:
+    with db.get_db(dict_cursor=True) as (conn, cur):
+        cur.execute("SELECT id, email, display_name, role, tier, is_founder, created_at FROM users WHERE id = %s", (user_id,))
+        user = cur.fetchone()
+        if not user:
+            raise HTTPException(404, "User not found")
+
+        cur.execute("SELECT id, bureau, upload_date, LENGTH(full_text) as full_text_len FROM reports WHERE user_id = %s ORDER BY id", (user_id,))
+        reports = [dict(r) for r in cur.fetchall()]
+        report_ids = [r["id"] for r in reports]
+
+        letters = []
+        if report_ids:
+            cur.execute(
+                "SELECT id, report_id, bureau, LENGTH(letter_text) as letter_len, letter_text, created_at FROM letters WHERE report_id = ANY(%s) ORDER BY id",
+                (report_ids,),
+            )
+            letters = [dict(r) for r in cur.fetchall()]
+
+        cur.execute("SELECT id, bureau, file_name, doc_type, file_type, LENGTH(file_data) as file_size FROM proof_uploads WHERE user_id = %s ORDER BY id", (user_id,))
+        proofs = [dict(r) for r in cur.fetchall()]
+
+        cur.execute("SELECT id, created_at FROM user_signatures WHERE user_id = %s", (user_id,))
+        sigs = [dict(r) for r in cur.fetchall()]
+
+        ent = auth.get_entitlements(user_id)
+        approved = db.is_mail_approved(user_id)
+
+        for r in reports:
+            if r.get("upload_date"):
+                r["upload_date"] = str(r["upload_date"])
+            r["letter_count"] = sum(1 for l in letters if l.get("report_id") == r["id"])
+            cur.execute(
+                "SELECT (parsed_data::json->'summary_stats'->'total_accounts_found')::text as acct_count FROM reports WHERE id = %s",
+                (r["id"],),
+            )
+            sr = cur.fetchone()
+            r["parsed_account_count"] = int(sr["acct_count"]) if sr and sr["acct_count"] and sr["acct_count"] != "null" else 0
+
+        for l in letters:
+            if l.get("created_at"):
+                l["created_at"] = str(l["created_at"])
+
+        conn.rollback()
+
+    return {
+        "user": {k: (str(v) if k == "created_at" else v) for k, v in dict(user).items()},
+        "reports": reports,
+        "letters": [{k: v for k, v in l.items() if k != "letter_text"} | {"letter_preview": (l.get("letter_text") or "")[:500]} for l in letters],
+        "lettersFull": [{k: v for k, v in l.items()} for l in letters],
+        "proofs": proofs,
+        "signatures": sigs,
+        "entitlements": ent,
+        "mailApproved": approved,
+    }
+
+
+@app.get("/internal/admin/customers")
+def internal_admin_customers_list(
+    _: None = Depends(require_admin_service),
+    limit: int = Query(50, ge=1, le=200),
+) -> Dict[str, Any]:
+    with db.get_db(dict_cursor=True) as (conn, cur):
+        cur.execute(
+            "SELECT u.id, u.email, u.display_name, u.role, u.is_founder, u.created_at, "
+            "(SELECT count(*) FROM reports r WHERE r.user_id = u.id) as report_count, "
+            "(SELECT count(*) FROM letters l JOIN reports r2 ON l.report_id = r2.id WHERE r2.user_id = u.id) as letter_count "
+            "FROM users u ORDER BY u.id DESC LIMIT %s",
+            (limit,),
+        )
+        rows = cur.fetchall()
+        conn.rollback()
+    return {
+        "customers": [
+            {k: (str(v) if k == "created_at" else v) for k, v in dict(r).items()}
+            for r in rows
+        ]
+    }
+
+
 # --- Mission Control (admin secret): aggregates + thin operator POST wrappers ----
 
 

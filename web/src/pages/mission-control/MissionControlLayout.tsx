@@ -12,6 +12,7 @@ const nav = [
   ["Responses", "/mission-control/responses"],
   ["Reminders", "/mission-control/reminders"],
   ["Admin audit", "/mission-control/audit"],
+  ["Customers", "/mission-control/customers"],
 ];
 
 export function MissionControlLayout() {

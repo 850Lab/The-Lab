@@ -103,6 +103,11 @@ The application utilizes Streamlit with a wide layout and a **full-screen steppe
 - **`POST /internal/admin/proof/reassign-orphaned`** — Reassign proof uploads with NULL `user_id` to a target user. Body: `{ proof_ids: [6,7], target_user_id: 11 }`. Requires `X-Workflow-Admin-Key` header.
 - **`POST /internal/admin/entitlements/grant`** — Grant entitlement credits to a user. Body: `{ user_id: 11, mailings: 3 }`. Requires `X-Workflow-Admin-Key` header.
 
+### Mission Control "Customers" tab
+- **`GET /internal/admin/customers`** — List all customers with report/letter counts. Optional `?limit=N`.
+- **`GET /internal/admin/customer/{user_id}`** — Full customer detail: user info, reports (with parsed account counts), letters (with full text), proofs, signatures, entitlements, mail approval status.
+- **Frontend**: `web/src/pages/mission-control/McCustomers.tsx` — Left panel customer list, right panel detail view with expandable letter text, mail approval toggle, entitlement summary.
+
 ### Required / recommended Secrets (Streamlit + API)
 - **`DATABASE_URL`** — **required** (`app.py` stops without it). Use Replit PostgreSQL.
 - **`WORKFLOW_ADMIN_API_SECRET`** — required for `/internal/admin/...` and Mission Control actions.

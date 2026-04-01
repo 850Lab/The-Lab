@@ -28,6 +28,7 @@ import { McExceptions } from "@/pages/mission-control/McExceptions";
 import { McResponses } from "@/pages/mission-control/McResponses";
 import { McReminders } from "@/pages/mission-control/McReminders";
 import { McAudit } from "@/pages/mission-control/McAudit";
+import { McCustomers } from "@/pages/mission-control/McCustomers";
 
 export default function App() {
   return (
@@ -42,6 +43,7 @@ export default function App() {
           <Route path="responses" element={<McResponses />} />
           <Route path="reminders" element={<McReminders />} />
           <Route path="audit" element={<McAudit />} />
+          <Route path="customers" element={<McCustomers />} />
         </Route>
 
         <Route
