@@ -1073,6 +1073,22 @@ def save_proof_upload(
         return proof_id
 
 
+def reassign_orphaned_proof_uploads(proof_ids, target_user_id):
+    if not proof_ids:
+        return 0
+    deduped = list(dict.fromkeys(proof_ids))
+    with get_db() as (conn, cur):
+        placeholders = ','.join(['%s'] * len(deduped))
+        cur.execute(f'''
+            UPDATE proof_uploads
+            SET user_id = %s
+            WHERE id IN ({placeholders}) AND user_id IS NULL
+        ''', (target_user_id, *deduped))
+        updated = cur.rowcount
+        conn.commit()
+        return updated
+
+
 def get_proof_docs_for_user(user_id, doc_types=None):
     with get_db(dict_cursor=True) as (conn, cur):
         if doc_types:

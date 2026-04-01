@@ -1628,6 +1628,71 @@ def internal_admin_recovery_mail_retry(
     )
 
 
+class ReassignProofBody(BaseModel):
+    proof_ids: List[int] = Field(..., min_length=1, max_length=50)
+    target_user_id: int = Field(..., ge=1)
+    actor_source: str = "admin"
+    reason_safe: str = ""
+
+
+@app.post("/internal/admin/proof/reassign-orphaned")
+def internal_admin_reassign_proof(
+    body: ReassignProofBody,
+    _: None = Depends(require_admin_service),
+) -> Dict[str, Any]:
+    if any(pid < 1 for pid in body.proof_ids):
+        return {"ok": False, "error": {"code": "INVALID_PROOF_IDS"}}
+    target = db.get_user_by_id(body.target_user_id) if hasattr(db, "get_user_by_id") else True
+    if not target:
+        return {"ok": False, "error": {"code": "USER_NOT_FOUND"}}
+    updated = db.reassign_orphaned_proof_uploads(body.proof_ids, body.target_user_id)
+    _logger.info(
+        "Admin reassigned %d orphaned proof uploads to user %d (actor=%s reason=%s)",
+        updated, body.target_user_id, body.actor_source, body.reason_safe,
+    )
+    return {"ok": True, "updatedCount": updated}
+
+
+class GrantEntitlementsBody(BaseModel):
+    user_id: int = Field(..., ge=1)
+    ai_rounds: int = Field(0, ge=0)
+    letters: int = Field(0, ge=0)
+    mailings: int = Field(0, ge=0)
+    actor_source: str = "admin"
+    reason_safe: str = ""
+
+
+@app.post("/internal/admin/entitlements/grant")
+def internal_admin_grant_entitlements(
+    body: GrantEntitlementsBody,
+    _: None = Depends(require_admin_service),
+) -> Dict[str, Any]:
+    target = db.get_user_by_id(body.user_id) if hasattr(db, "get_user_by_id") else True
+    if not target:
+        return {"ok": False, "error": {"code": "USER_NOT_FOUND"}}
+    auth.add_entitlements(
+        body.user_id,
+        ai_rounds=body.ai_rounds,
+        letters=body.letters,
+        mailings=body.mailings,
+        source="admin_grant",
+        note=f"Admin grant: {body.reason_safe or 'manual'} (actor={body.actor_source})",
+    )
+    ent = auth.get_entitlements(body.user_id)
+    _logger.info(
+        "Admin granted entitlements to user %d: +%d ai, +%d letters, +%d mailings (actor=%s)",
+        body.user_id, body.ai_rounds, body.letters, body.mailings, body.actor_source,
+    )
+    return {
+        "ok": True,
+        "entitlements": {
+            "ai_rounds": ent.get("ai_rounds", 0),
+            "letters": ent.get("letters", 0),
+            "mailings": ent.get("mailings", 0),
+        },
+    }
+
+
 # --- Mission Control (admin secret): aggregates + thin operator POST wrappers ----
 
 

@@ -84,18 +84,24 @@ The application utilizes Streamlit with a wide layout and a **full-screen steppe
 | Vite (Mission Control / React) | **5173** | `0.0.0.0` | `web/vite.config.ts` proxies `/workflow-api` → `WORKFLOW_API_PROXY_TARGET` or `http://127.0.0.1:8000` |
 
 ### Autoscale **Run** (production deploy)
-- Command: `scripts/replit_deployment_entry.sh` (starts uvicorn **8000** in background, then **exec** Streamlit **5000**).
-- **Public URL (port 80)** maps to **workflow API port 8000** (customer React + `/api/...`). **Streamlit** stays on **5000** — open it from the Replit **Ports** / preview list when you need the legacy admin UI.
-- **Customer React** is served from the same process when `web/dist` exists:
-  - After deploy, the main site URL should load the SPA at `/`.
-  - Same origin serves the SPA and `/api/...`. The API also accepts **`/workflow-api/...`** (stripped to `/...`) so existing `web/dist` built with the Vite proxy prefix keeps working without rebuilding.
-  - After `git pull`, ensure `web/dist` is up to date: `cd web && npm install && npm run build` (or rely on committed `dist` from the repo).
+- Command: `python -m uvicorn api.workflow_app:app --host 0.0.0.0 --port 5000`
+- Build: `pip install ... && cd web && npm install --production=false && npm run build`
+- **Public URL (port 80)** maps to FastAPI on **port 5000** (customer React SPA + `/api/...`).
+- **Customer React** is served from the same FastAPI process via `web/dist`:
+  - The SPA at `/` with fallback routing for client-side routes.
+  - Unknown `/api/*` paths return 404 JSON (not HTML fallback).
+  - The API also accepts **`/workflow-api/...`** (stripped to `/...`) so existing `web/dist` built with the Vite proxy prefix keeps working without rebuilding.
+- **Streamlit** remains in repo for internal/dev use only (not part of production deployment).
 
 ### Dev: Mission Control (same Repl)
 1. Start API + Streamlit: use the **Project** workflow in `.replit` (parallel **streamlit_app** + **workflow_api**) *or* run the same two commands from the Shell.
 2. In another Shell: `cd web && npm install && npm run dev`
 3. Open the Replit preview URL for port **5173**, then navigate to **`/mission-control`** (e.g. `https://<your-5173-preview-host>/mission-control`).
 4. Paste **Workflow Admin** secret in the UI (or set `VITE_WORKFLOW_ADMIN_KEY` only for local convenience; prefer Replit **Secrets** for real keys).
+
+### Admin data-fix endpoints
+- **`POST /internal/admin/proof/reassign-orphaned`** — Reassign proof uploads with NULL `user_id` to a target user. Body: `{ proof_ids: [6,7], target_user_id: 11 }`. Requires `X-Workflow-Admin-Key` header.
+- **`POST /internal/admin/entitlements/grant`** — Grant entitlement credits to a user. Body: `{ user_id: 11, mailings: 3 }`. Requires `X-Workflow-Admin-Key` header.
 
 ### Required / recommended Secrets (Streamlit + API)
 - **`DATABASE_URL`** — **required** (`app.py` stops without it). Use Replit PostgreSQL.
