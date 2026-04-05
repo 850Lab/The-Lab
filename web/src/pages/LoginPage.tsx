@@ -1,13 +1,27 @@
 import { motion } from "framer-motion";
 import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
+import { DemoContinuationStrip } from "@/components/DemoContinuationStrip";
+import { ProgramPathContinuationStrip } from "@/components/ProgramPathContinuationStrip";
 import { TopBarMinimal } from "@/components/TopBarMinimal";
-import { postAuthTargetFromSearchAndState } from "@/lib/postAuthRedirect";
+import {
+  DEMO_PROGRAM_ENTRY_DEFAULT_NEXT,
+  shouldShowDemoContinuationStrip,
+} from "@/lib/demoProgramBridge";
+import {
+  isProgramOnboardingNext,
+  resolvedProgramNextFromSearch,
+} from "@/lib/programEntryContinuation";
+import { postAuthTargetFromSearchAndState, safeAppPath } from "@/lib/postAuthRedirect";
+import { LaunchHubNavLink } from "@/components/LaunchHubNavLink";
 import { useAuth } from "@/providers/AuthContext";
 
 export function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
+  const programEyebrow =
+    shouldShowDemoContinuationStrip(location.search) ||
+    isProgramOnboardingNext(resolvedProgramNextFromSearch(location.search));
   const { signIn } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -23,7 +37,23 @@ export function LoginPage() {
     try {
       const u = await signIn(email.trim(), password);
       if (!u.emailVerified) {
-        navigate("/verify-email", { replace: true, state: { sendInitialCode: true } });
+        try {
+          sessionStorage.setItem("850lab_verify_send_initial", "1");
+        } catch {
+          /* ignore */
+        }
+        const q = new URLSearchParams(location.search);
+        let returnTo = safeAppPath(q.get("next"));
+        if (!returnTo && q.get("from") === "demo") {
+          returnTo = DEMO_PROGRAM_ENTRY_DEFAULT_NEXT;
+        }
+        navigate("/verify-email", {
+          replace: true,
+          state: {
+            sendInitialCode: true,
+            ...(returnTo ? { returnTo } : {}),
+          },
+        });
         return;
       }
       navigate(
@@ -41,16 +71,30 @@ export function LoginPage() {
     <div className="relative min-h-full bg-lab-bg">
       <TopBarMinimal />
       <main className="relative z-10 mx-auto max-w-md px-4 pb-16 pt-24 sm:px-6 sm:pt-28">
+        {programEyebrow ? (
+          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-lab-accent">
+            Your program · Sign in
+          </p>
+        ) : null}
         <motion.h1
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
-          className="text-2xl font-semibold text-lab-text"
+          className={`text-2xl font-semibold text-lab-text ${programEyebrow ? "mt-2" : ""}`}
         >
           Sign in
         </motion.h1>
-        <p className="mt-2 text-sm text-lab-muted">
-          Use the same email and password as your 850 Lab account.
+        <p className="mt-2 text-sm leading-relaxed text-lab-muted">
+          {programEyebrow ? (
+            <>
+              Same email and password as your 850 Lab account — you’re signing back into your
+              program, not a separate login screen.
+            </>
+          ) : (
+            <>Use the same email and password as your 850 Lab account.</>
+          )}
         </p>
+        <DemoContinuationStrip stage="login" />
+        <ProgramPathContinuationStrip stage="login" />
 
         <form onSubmit={handleSubmit} className="mt-8 space-y-4">
           {error ? (
@@ -87,6 +131,14 @@ export function LoginPage() {
               required
               className="w-full rounded-lg border border-white/[0.1] bg-lab-elevated/80 px-3 py-2.5 text-sm text-lab-text placeholder:text-lab-subtle"
             />
+            <div className="mt-2 text-right">
+              <Link
+                to={`/forgot-password${location.search}`}
+                className="text-sm font-medium text-lab-accent hover:text-sky-300"
+              >
+                Forgot password?
+              </Link>
+            </div>
           </div>
           <button
             type="submit"
@@ -106,6 +158,7 @@ export function LoginPage() {
             Create one
           </Link>
         </p>
+        <LaunchHubNavLink />
       </main>
     </div>
   );

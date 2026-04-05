@@ -1,5 +1,6 @@
 /**
- * Subset of the FastAPI workflow envelope (services.workflow.responses.workflow_envelope).
+ * FastAPI workflow: legacy envelope (workflow_envelope) + canonical ``progression`` slice
+ * (services.workflow.progression_api.unified_progression_from_workflow_envelope).
  */
 
 export type WorkflowStepStatusRow = {
@@ -19,6 +20,52 @@ export type WorkflowStatePayload = {
   [k: string]: unknown;
 };
 
+/** Same shape for consumer, org program (when workflow-bound), and public demo. */
+export type ProgressionPayload = {
+  model: string;
+  surface: string;
+  actionResult?: string;
+  workflowId?: string | null;
+  workflowType?: string | null;
+  overallStatus?: string;
+  headStepId?: string | null;
+  phase: string;
+  linearOrder: string[];
+  completedStepIds: string[];
+  nextAvailableActions: Array<Record<string, unknown>>;
+  error?: unknown;
+};
+
+/** Escalation slice on ``canonicalProgression.context`` (from ``escalation_summary_for_progression``). */
+export type CanonicalProgressionEscalationSummary = {
+  status: string;
+  actionCount: number;
+  primaryActionType?: string | null;
+  primaryActionId?: string | null;
+  triggers: string[];
+};
+
+/** Full canonical spine: context + head + integrity; embeds slim ``progression``. */
+export type CanonicalProgressionPayload = {
+  model: string;
+  context: {
+    surface: string;
+    organizationProgramEnrollmentId?: number | null;
+    organizationId?: number | null;
+    demoLeadId?: number | null;
+    escalation?: CanonicalProgressionEscalationSummary | null;
+    [k: string]: unknown;
+  };
+  workflowId?: string | null;
+  workflowType?: string | null;
+  overallStatus?: string;
+  currentStep?: string | null;
+  stepStatus: WorkflowStepStatusRow[];
+  nextAvailableActions: Array<Record<string, unknown>>;
+  integrityHints?: unknown;
+  progression?: ProgressionPayload;
+};
+
 export type WorkflowEnvelope = {
   actionResult: string;
   workflowState: WorkflowStatePayload;
@@ -27,4 +74,8 @@ export type WorkflowEnvelope = {
   nextAvailableActions: Array<Record<string, unknown>>;
   asyncTaskState?: unknown;
   error?: unknown;
+  /** Canonical progression (mirror of workflowState + stepStatus); prefer for new UI. */
+  progression?: ProgressionPayload;
+  /** Same spine as consumer/org when backend attaches it. */
+  canonicalProgression?: CanonicalProgressionPayload;
 };

@@ -15,12 +15,35 @@ function parseDetailMessage(text: string): string {
   return text.slice(0, 500);
 }
 
+function authNetworkHelp(base: string): string {
+  const isRelative = base.startsWith("/");
+  if (isRelative) {
+    return `Start the workflow API (e.g. python -m uvicorn api.workflow_app:app --host 127.0.0.1 --port 5000) or set WORKFLOW_API_PROXY_TARGET in web/.env.local if it uses another port. Then restart npm run dev.`;
+  }
+  return `Check VITE_WORKFLOW_API_URL in web/.env.local — the browser must be able to reach that host (CORS is enabled on the API). For local dev, remove VITE_WORKFLOW_API_URL so requests use the Vite proxy at /workflow-api.`;
+}
+
 async function authFetchJson<T>(
   path: string,
   init?: RequestInit,
 ): Promise<T> {
-  const url = `${workflowApiBase()}${path.startsWith("/") ? path : `/${path}`}`;
-  const res = await fetch(url, init);
+  const base = workflowApiBase();
+  const url = `${base}${path.startsWith("/") ? path : `/${path}`}`;
+  let res: Response;
+  try {
+    res = await fetch(url, init);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (
+      e instanceof TypeError &&
+      (msg === "Failed to fetch" || /network|fetch|load failed/i.test(msg))
+    ) {
+      throw new Error(
+        `Could not reach the workflow API (${base}). ${authNetworkHelp(base)}`,
+      );
+    }
+    throw e;
+  }
   const text = await res.text();
   if (!res.ok) {
     throw new Error(`Auth API ${res.status}: ${parseDetailMessage(text)}`);
@@ -108,5 +131,25 @@ export async function authResendVerification(token: string): Promise<void> {
   await authFetchJson<{ ok: boolean }>("/api/auth/resend-verification", {
     method: "POST",
     headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+export async function authForgotPassword(email: string): Promise<void> {
+  await authFetchJson<{ ok: boolean }>("/api/auth/forgot-password", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email }),
+  });
+}
+
+export async function authResetPassword(
+  email: string,
+  code: string,
+  password: string,
+): Promise<void> {
+  await authFetchJson<{ ok: boolean }>("/api/auth/reset-password", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, code, password }),
   });
 }

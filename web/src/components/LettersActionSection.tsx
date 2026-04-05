@@ -6,6 +6,7 @@ type Props = {
   continueDisabled: boolean;
   downloadDisabled: boolean;
   bundleBusy?: boolean;
+  continueLabel?: string;
 };
 
 export function LettersActionSection({
@@ -14,6 +15,7 @@ export function LettersActionSection({
   continueDisabled,
   downloadDisabled,
   bundleBusy,
+  continueLabel = "Continue to proof & send",
 }: Props) {
   return (
     <div className="mt-10 space-y-3 sm:mt-11">
@@ -33,7 +35,7 @@ export function LettersActionSection({
         whileTap={continueDisabled ? undefined : { scale: 0.985 }}
         transition={{ type: "spring", stiffness: 420, damping: 28 }}
       >
-        We’ll send these for you
+        {continueLabel}
       </motion.button>
       <motion.button
         type="button"

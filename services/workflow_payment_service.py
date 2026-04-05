@@ -17,6 +17,10 @@ import database as db
 from database import get_db
 from services.workflow.engine import WorkflowEngine, compute_authoritative_step
 from services.workflow.repository import fetch_session, fetch_steps
+from services.workflow.workflow_flow_gates import (
+    assert_customer_payment_capture_allowed,
+    assert_customer_payment_continue_credits_allowed,
+)
 from stripe_client import create_checkout_session, get_stripe_client, verify_checkout_session
 
 _log = logging.getLogger(__name__)
@@ -53,6 +57,13 @@ def _sync_payment_step_once(
             user_id,
         )
         return False
+    if not assert_customer_payment_capture_allowed(wid):
+        _log.warning(
+            "payment step sync skipped: flow gate (not payment head) wf=%s user=%s",
+            wid,
+            user_id,
+        )
+        return False
     summary: Dict[str, Any] = {"stripeSessionId": stripe_session_id}
     if amount_cents is not None:
         summary["amountCents"] = int(amount_cents)
@@ -84,6 +95,12 @@ def ensure_payment_step_after_purchase(
     if not wid:
         return True
     if _payment_step_row_completed(wid):
+        try:
+            from services.workflow import hooks as workflow_hooks
+
+            workflow_hooks.clear_payment_unlock_audit(wid)
+        except Exception:
+            pass
         return True
     sid = (stripe_session_id or "").strip()
     for attempt in range(_PAYMENT_STEP_RETRY_ATTEMPTS):
@@ -103,6 +120,28 @@ def ensure_payment_step_after_purchase(
             wid,
             sid[:16] if sid else "",
         )
+        try:
+            from services.workflow import hooks as workflow_hooks
+
+            workflow_hooks.record_payment_unlock_audit(
+                wid,
+                user_id=int(user_id),
+                stripe_session_id=sid,
+                reason_code="payment_step_incomplete_after_retries",
+                detail_safe=(
+                    "Entitlements may be credited but the workflow payment step did not complete "
+                    "after retries — check head step, flow gate, or admin override."
+                ),
+            )
+        except Exception:
+            _log.debug("record_payment_unlock_audit skipped", exc_info=True)
+    else:
+        try:
+            from services.workflow import hooks as workflow_hooks
+
+            workflow_hooks.clear_payment_unlock_audit(wid)
+        except Exception:
+            pass
     return completed
 
 
@@ -206,6 +245,8 @@ def build_payment_context(
     is_admin: bool = False,
 ) -> Dict[str, Any]:
     sess = fetch_session(workflow_id)
+    meta_full = _parse_meta(sess.get("metadata") if sess else {})
+    pay_unlock = meta_full.get("payment_unlock_audit")
     head, phase, pay_row = workflow_payment_head_state(workflow_id)
     needed_letters = needed_letters_from_workflow_session(sess)
     catalog = build_product_catalog()
@@ -287,6 +328,7 @@ def build_payment_context(
         "catalogProductIds": list(catalog.keys()),
         "isAdmin": is_admin,
         "isFounder": is_founder,
+        "paymentUnlockAudit": pay_unlock if isinstance(pay_unlock, dict) else None,
     }
 
 
@@ -344,6 +386,8 @@ def reconcile_checkout_session_for_user(
             "paymentStepCompleted": step_ok,
             "workflowIdFromSession": wf_meta or None,
             "productId": product_id,
+            "paymentUnlockVerified": bool(step_ok and auth.entitlement_purchase_processed(sid)),
+            "paymentStepSyncIncomplete": bool(wf_meta) and not step_ok,
         }
 
     auth.add_entitlements(
@@ -377,6 +421,8 @@ def reconcile_checkout_session_for_user(
         "paymentStepCompleted": step_ok,
         "workflowIdFromSession": wf_meta or None,
         "productId": product_id,
+        "paymentUnlockVerified": bool(step_ok and auth.entitlement_purchase_processed(sid)),
+        "paymentStepSyncIncomplete": bool(wf_meta) and not step_ok,
     }
 
 
@@ -425,8 +471,16 @@ def complete_payment_with_existing_letter_entitlements(
         needed_letters = 1
     if not auth.has_entitlement(user_id, "letters", needed_letters):
         return False
-    return _ENGINE.service_complete_step(
-        workflow_id,
+    wid = str(workflow_id).strip()
+    if not assert_customer_payment_continue_credits_allowed(wid):
+        _log.warning(
+            "continue-with-credits skipped: flow gate wf=%s user=%s",
+            wid,
+            user_id,
+        )
+        return False
+    ok = _ENGINE.service_complete_step(
+        wid,
         "payment",
         {
             "source": "existing_entitlements",
@@ -435,3 +489,11 @@ def complete_payment_with_existing_letter_entitlements(
         audit_source="api:existing_letters",
         audit_user_id=user_id,
     )
+    if ok:
+        try:
+            from services.workflow import hooks as workflow_hooks
+
+            workflow_hooks.clear_payment_unlock_audit(wid)
+        except Exception:
+            pass
+    return ok

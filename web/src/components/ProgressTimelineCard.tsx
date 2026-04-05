@@ -1,10 +1,10 @@
 import { motion } from "framer-motion";
 
 const STEPS = [
-  { dayLabel: "Day 0", title: "Sent", range: "Mailed to bureaus" },
-  { dayLabel: "Days 1–7", title: "Received & processing", range: "Arrival & intake" },
-  { dayLabel: "Days 8–30", title: "Under review", range: "Bureau review window" },
-  { dayLabel: "Day 30", title: "Response expected", range: "Typical reply timeframe" },
+  { dayLabel: "Phase 1", title: "Sent", range: "Certified piece handed to USPS (live sends only)" },
+  { dayLabel: "Phase 2", title: "In process", range: "In transit; bureau receives and logs mail" },
+  { dayLabel: "Phase 3", title: "Under review", range: "Bureau investigation window (typical)" },
+  { dayLabel: "Phase 4", title: "Response", range: "Reply, update, or no change — then your next step" },
 ] as const;
 
 type Props = {
@@ -46,11 +46,16 @@ export function ProgressTimelineCard({ dayCurrent, totalDays }: Props) {
       }}
       className="rounded-xl border border-white/[0.08] bg-lab-surface px-5 py-5 shadow-lg shadow-black/15 sm:px-6 sm:py-6"
     >
-      <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
-        <h3 className="text-[15px] font-semibold text-lab-text sm:text-base">
-          Your timeline
-        </h3>
-        <p className="text-sm font-medium text-lab-accent">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h3 className="text-[15px] font-semibold text-lab-text sm:text-base">
+            Sent → in process → response
+          </h3>
+          <p className="mt-1 text-xs text-lab-subtle">
+            Typical pacing — exact timing depends on USPS and each bureau.
+          </p>
+        </div>
+        <p className="shrink-0 text-sm font-medium text-lab-accent sm:text-right">
           Day {d} of {totalDays}
         </p>
       </div>

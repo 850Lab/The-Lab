@@ -11,6 +11,7 @@ import json
 import logging
 import random
 import string
+from typing import Optional
 
 from database import get_db
 
@@ -84,7 +85,10 @@ SESSION_DURATION_DAYS = 30
 
 def init_auth_tables():
     with get_db() as (conn, cur):
-        cur.execute("SELECT 1 FROM information_schema.tables WHERE table_name = 'users'")
+        cur.execute(
+            "SELECT 1 FROM information_schema.tables "
+            "WHERE table_schema = 'public' AND table_name = 'users'"
+        )
         if cur.fetchone():
             return
         cur.execute('''
@@ -175,6 +179,13 @@ def create_user(email: str, password: str, display_name: str = None, role: str =
 
         user = dict(cur.fetchone())
         conn.commit()
+        # Fresh user row: drop any stale email_send limit for this id (e.g. TRUNCATE users
+        # RESTART IDENTITY but rate_limits kept, or recycled ids in local DBs).
+        _clear_rate_limit("email_send", f'user:{user["id"]}')
+        logger.debug(
+            "create_user: cleared email_send rate_limits row for new user_id=%s",
+            user["id"],
+        )
         return user
 
 
@@ -349,7 +360,25 @@ def payment_already_processed(stripe_session_id: str) -> bool:
 
 def record_payment(user_id: int, amount: int, stripe_session_id: str = None,
                    stripe_payment_intent: str = None, status: str = 'pending'):
+    """
+    Idempotent when ``stripe_session_id`` is set: duplicate reconcile/webhook calls
+    do not insert a second completed row for the same session.
+    """
     with get_db(dict_cursor=True) as (conn, cur):
+        sid = (stripe_session_id or "").strip()
+        if sid and status == "completed":
+            cur.execute(
+                '''
+                SELECT id FROM payments
+                WHERE stripe_session_id = %s AND status = %s
+                LIMIT 1
+                ''',
+                (sid, "completed"),
+            )
+            ex = cur.fetchone()
+            if ex:
+                conn.commit()
+                return dict(ex)
         cur.execute('''
             INSERT INTO payments (user_id, amount, stripe_session_id, stripe_payment_intent, status)
             VALUES (%s, %s, %s, %s, %s)
@@ -371,6 +400,20 @@ def update_payment_status(stripe_session_id: str, status: str):
 def get_user_by_id(user_id: int) -> dict:
     with get_db(dict_cursor=True) as (conn, cur):
         cur.execute('SELECT id, email, display_name, role, tier, created_at FROM users WHERE id = %s', (user_id,))
+        user = cur.fetchone()
+    return dict(user) if user else None
+
+
+def get_user_by_email(email: str) -> Optional[dict]:
+    """Lookup by normalized email (signup/login style)."""
+    key = (email or "").lower().strip()
+    if not key:
+        return None
+    with get_db(dict_cursor=True) as (conn, cur):
+        cur.execute(
+            "SELECT id, email, display_name, role, tier, created_at FROM users WHERE email = %s",
+            (key,),
+        )
         user = cur.fetchone()
     return dict(user) if user else None
 
@@ -677,8 +720,23 @@ def generate_verification_code() -> str:
 
 
 def set_verification_code(user_id: int) -> str:
-    rl = _check_and_increment_rate_limit('email_send', f'user:{user_id}', max_attempts=3, window_seconds=300)
-    if not rl['allowed']:
+    ident = f"user:{user_id}"
+    rl = _check_and_increment_rate_limit(
+        "email_send", ident, max_attempts=3, window_seconds=300
+    )
+    logger.info(
+        "verification code rate_limit check action=email_send identifier=%s allowed=%s "
+        "attempt_count=%s max_attempts=3 window_seconds=300",
+        ident,
+        rl["allowed"],
+        rl.get("count"),
+    )
+    if not rl["allowed"]:
+        logger.warning(
+            "set_verification_code returning None: rate limit exceeded for %s (count=%s)",
+            ident,
+            rl.get("count"),
+        )
         return None
     code = generate_verification_code()
     expires = datetime.utcnow() + timedelta(minutes=30)

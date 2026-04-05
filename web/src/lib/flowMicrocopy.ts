@@ -1,13 +1,13 @@
 /**
- * Shared customer-funnel language (Phase 4). Import where copy must stay aligned.
+ * Shared customer-funnel language — payment tied to value moments, not arbitrary gates.
  */
 
 export const PAYMENT_WHAT_HAPPENS_NEXT_LINES = [
-  "Letters: we generate dispute letter text for this round (from your selection). Your purchase adds letter credits; generation is the next step after payment.",
-  "Mail: certified send comes later — proof on file first, then you submit mail per bureau. Mailing uses credits if your pack includes them.",
-  "Tracking: after a live send, USPS tracking appears here when the processor provides a number (carrier status, not proof the bureau finished).",
-  "Responses: when mail or a notice arrives, record a short summary in this app — we classify it and show your next step.",
+  "Letter moment: you only pay when the plan is real — next screen generates bureau-ready dispute text from your selection (credits from this purchase or ones you already have).",
+  "Certified mail moment: mailing balance from your pack is used when you choose to submit each bureau — after proof is on file. No surprise charge at send unless you need more mailings on your account.",
+  "Tracking moment: after a live send, USPS status shows handoff and transit here when the processor returns a number — separate from bureau review.",
+  "Response moment: when a letter or notice lands, you log a short summary — we classify it and point you to the next move in the same program.",
 ] as const;
 
 export const NEXT_STEP_AFTER_PAYMENT_LINE =
-  "Next step: generate your dispute letters for this round.";
+  "Next up: letter generation from the plan you locked — the deliverable you just paid for.";

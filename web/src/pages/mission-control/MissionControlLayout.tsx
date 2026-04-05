@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { NavLink, Outlet } from "react-router-dom";
+import { Link, NavLink, Outlet } from "react-router-dom";
 import {
   getMissionControlAdminKey,
   setMissionControlAdminKey,
@@ -7,7 +7,9 @@ import {
 
 const nav = [
   ["Overview", "/mission-control"],
+  ["Architect access", "/mission-control/architect-access"],
   ["Workflows", "/mission-control/workflows"],
+  ["Demo leads", "/mission-control/demo-leads"],
   ["Exceptions", "/mission-control/exceptions"],
   ["Responses", "/mission-control/responses"],
   ["Reminders", "/mission-control/reminders"],
@@ -28,6 +30,12 @@ export function MissionControlLayout() {
           <h1 className="text-lg font-semibold text-lab-text">
             Mission Control
           </h1>
+          <Link
+            to="/launch-preview"
+            className="mt-1 inline-block text-xs text-violet-300 hover:text-violet-200 hover:underline"
+          >
+            GTM page hub (all routes &amp; status)
+          </Link>
         </div>
         <form
           className="flex flex-wrap items-center gap-2 ml-auto"
@@ -62,6 +70,12 @@ export function MissionControlLayout() {
       </header>
       <div className="flex flex-1 min-h-0">
         <nav className="w-44 shrink-0 border-r border-white/10 bg-lab-surface p-2 space-y-0.5">
+          <Link
+            to="/launch-preview"
+            className="mb-2 block rounded border border-violet-500/25 bg-violet-950/30 px-2 py-1.5 text-sm text-violet-200 hover:bg-violet-950/50"
+          >
+            GTM page hub
+          </Link>
           {nav.map(([label, to]) => (
             <NavLink
               key={to}

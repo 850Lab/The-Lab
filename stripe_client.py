@@ -7,6 +7,7 @@ Supports pack and à la carte entitlement purchases
 import os
 import json
 import requests
+from typing import Dict, Optional
 
 _stripe = None
 
@@ -103,19 +104,45 @@ def get_stripe_client():
     return s
 
 
+def _merge_checkout_metadata(
+    *,
+    user_id: int,
+    product_id: str,
+    ai_rounds: int,
+    letters: int,
+    mailings: int,
+    workflow_id: str,
+    extra: Optional[Dict[str, str]],
+) -> Dict[str, str]:
+    meta: Dict[str, str] = {
+        "user_id": str(user_id),
+        "product_id": product_id,
+        "ai_rounds": str(ai_rounds),
+        "letters": str(letters),
+        "mailings": str(mailings),
+    }
+    wf = (workflow_id or "").strip()
+    if wf:
+        meta["workflow_id"] = wf
+    if extra:
+        for k, v in extra.items():
+            if v is not None:
+                meta[str(k)] = str(v)
+    return meta
+
+
 def create_checkout_session(user_id: int, user_email: str, product_id: str,
                             product_label: str, amount_cents: int,
                             ai_rounds: int = 0, letters: int = 0, mailings: int = 0,
                             success_url: str = None, cancel_url: str = None,
                             *,
-                            workflow_id: str):
+                            workflow_id: str = "",
+                            extra_metadata: Optional[Dict[str, str]] = None):
     client = get_stripe_client()
     if not client:
         return {'error': 'Stripe is not configured'}
 
     wf = (workflow_id or "").strip()
-    if not wf:
-        return {'error': 'workflow_id is required for Stripe checkout metadata'}
 
     domains = os.environ.get('REPLIT_DOMAINS', '')
     base_url = f'https://{domains.split(",")[0]}' if domains else 'http://localhost:5000'
@@ -143,14 +170,15 @@ def create_checkout_session(user_id: int, user_email: str, product_id: str,
             success_url=success_url,
             cancel_url=cancel_url,
             customer_email=user_email,
-            metadata={
-                'user_id': str(user_id),
-                'product_id': product_id,
-                'ai_rounds': str(ai_rounds),
-                'letters': str(letters),
-                'mailings': str(mailings),
-                'workflow_id': wf,
-            },
+            metadata=_merge_checkout_metadata(
+                user_id=user_id,
+                product_id=product_id,
+                ai_rounds=ai_rounds,
+                letters=letters,
+                mailings=mailings,
+                workflow_id=wf,
+                extra=extra_metadata,
+            ),
         )
         return {'url': session.url, 'session_id': session.id}
     except Exception as e:

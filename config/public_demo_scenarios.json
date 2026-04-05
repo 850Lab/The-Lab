@@ -1,0 +1,56 @@
+{
+  "version": 1,
+  "scenarios": {
+    "transunion_acr": {
+      "file": "samples/transunion_acr_fixture_sample.pdf",
+      "fixture_bundle": [
+        "samples/transunion_acr_fixture_sample.pdf",
+        "samples/experian_fixture_sample.pdf",
+        "samples/equifax_fixture_sample.pdf"
+      ],
+      "title": "When your report has a lot of damage",
+      "description": "Late payments, collections, and charge-offs - see how we'd line up what to fix first. Sample only; your real report would be yours.",
+      "category": "general",
+      "category_label": "Clean up my report",
+      "visitor_placeholders": {
+        "omit_review_claim_details": true,
+        "strategy_round_summary": "For this scenario we prioritize adverse tradelines and collections before inquiries - the same ordering rules members get on a busy file.",
+        "strategy_rationale": "Demo uses a deterministic slice of items; your file would be fully personalized after signup."
+      }
+    },
+    "experian": {
+      "file": "samples/experian_fixture_sample.pdf",
+      "fixture_bundle": [
+        "samples/transunion_acr_fixture_sample.pdf",
+        "samples/experian_fixture_sample.pdf",
+        "samples/equifax_fixture_sample.pdf"
+      ],
+      "title": "When you need more than a basic 'please fix this'",
+      "description": "Some issues involve timing, proof, and what fair-credit rules say. This demo shows how we highlight that when the facts fit - not legal advice.",
+      "category": "law_backed",
+      "category_label": "Stronger pushback",
+      "visitor_placeholders": {
+        "omit_review_claim_details": true,
+        "strategy_round_summary": "Where statutes and bureau duties apply, selection weights validation and timeline leverage - surfaced here as a capability preview only.",
+        "strategy_rationale": "Not legal advice; demo illustrates how the engine surfaces leverage-aware ordering when the data supports it."
+      }
+    },
+    "equifax": {
+      "file": "samples/equifax_fixture_sample.pdf",
+      "fixture_bundle": [
+        "samples/transunion_acr_fixture_sample.pdf",
+        "samples/experian_fixture_sample.pdf",
+        "samples/equifax_fixture_sample.pdf"
+      ],
+      "title": "When you're new to credit or don't have many accounts",
+      "description": "Few accounts doesn't mean you can't fix mistakes - plus ideas to strengthen your profile over time. Sample story, not your file.",
+      "category": "thin_file",
+      "category_label": "Start or rebuild",
+      "visitor_placeholders": {
+        "omit_review_claim_details": true,
+        "strategy_round_summary": "Thin files get a mix of dispute-ready items plus diversification and profile-building moves - reflected in priorities and gameplan tone.",
+        "strategy_rationale": "Demo highlights build-and-clean strategy; real output depends on your tradeline mix."
+      }
+    }
+  }
+}

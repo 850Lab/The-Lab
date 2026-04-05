@@ -25,11 +25,41 @@ uvicorn api.workflow_app:app --host 0.0.0.0 --port 8000
 | Method | Path | Purpose |
 |--------|------|---------|
 | POST | `/api/auth/login` | JSON `{ "email", "password" }` → `auth.authenticate_user` + `auth.create_session`. Returns `{ "token", "user": { id, email, displayName, role, tier, emailVerified } }`. |
-| POST | `/api/auth/signup` | JSON `{ "email", "password", "display_name" }` (password rules match Streamlit). `auth.create_user` + `create_session`. Returns `{ "token", "user" }`. New accounts have `emailVerified: false`. |
+| POST | `/api/auth/signup` | JSON `{ "email", "password", "displayName" }` or `display_name` (password rules match Streamlit). `auth.create_user` + `create_session`. Returns `{ "token", "user" }`. New accounts have `emailVerified: false`. |
 | POST | `/api/auth/logout` | `Authorization: Bearer <token>`. `auth.delete_session`. Returns `{ "ok": true }`. |
 | GET | `/api/auth/me` | Bearer required. Returns `{ "user": { … } }` from session + `users` row. |
 | POST | `/api/auth/verify-email` | Bearer + JSON `{ "code" }`. `auth.verify_email_code`. |
 | POST | `/api/auth/resend-verification` | Bearer. Generates/sends code via `resend_client.send_verification_email` (may return 503 if email unavailable). |
+
+### Org program (Phase 1 — S1–S6)
+
+Uses the same Bearer session as customer auth. Org/enrollment JSON fields are **camelCase** (`organizationId`, `userId`, `enrolledAt`, …). Errors use `detail: { "code", "messageSafe" }` like other workflow routes.
+
+| Method | Path | Who | Purpose |
+|--------|------|-----|---------|
+| POST | `/api/orgs` | Platform `users.role` **admin** | Create organization. Returns `{ "organization": { id, name, status, createdAt, updatedAt } }`. |
+| GET | `/api/orgs/{org_id}` | Admin or active **org_instructor** for org | Org metadata (camelCase). |
+| POST | `/api/orgs/{org_id}/members` | Platform admin | Body `{ "userId", "role": "org_instructor" \| "org_user" }` (or snake `user_id`). Returns `{ "membership": { … } }`. |
+| GET | `/api/orgs/{org_id}/members` | Admin or org instructor | Active members (includes `email` / `displayName` for roster). |
+| POST | `/api/orgs/{org_id}/enrollments` | Admin or org instructor | Body `{ "userId", "status"? }`. Returns `{ "enrollment": { … } }`. |
+| GET | `/api/orgs/{org_id}/enrollments` | Admin or org instructor | `{ "enrollments": [...] }` (rows include `email` / `displayName`). |
+| GET | `/api/orgs/{org_id}/participants` | **Org instructor only** | Non-PII participant list (`userId`, `enrollmentId`, status, dates — no email). |
+| GET | `/api/orgs/{org_id}/participants/{user_id}` | Org instructor | Dual-state progress (`organizationId`, `progress.systemState` / `instructorState` / `effectiveState`). |
+| POST | `/api/orgs/{org_id}/participants/{user_id}/override` | Org instructor | Body `{ "action": "pause"\|"resume"\|"advance"\|"reset", "targetStep"?, "reasonSafe"? }`. |
+| GET | `/api/orgs/{org_id}/progress` | Admin or org instructor | Aggregate step counts / percents (no raw reports). |
+| GET | `/api/orgs/{org_id}/outcomes` | Admin or org instructor | Aggregate counts (reports, selections, letters, enrollments). |
+| GET | `/api/me/org-program` | Session | Participant’s org + membership + enrollment (`enrollment.enrollmentId` aligns with progress). |
+| GET | `/api/me/progress` | Enrolled **org_user** | `systemState`, `instructorState`, `effectiveState`, `gates`, `currentStep` / `nextStep`. |
+| POST | `/api/me/report` | Enrolled org_user | Multipart PDF + `privacy_consent`. |
+| POST | `/api/me/report/analyze` | Enrolled org_user | Rebuild findings. |
+| GET | `/api/me/report/findings` | Enrolled org_user | Findings payload. |
+| GET | `/api/me/dispute-options` | Enrolled org_user | Query `reportId` optional. |
+| GET/POST | `/api/me/dispute-selections` | Enrolled org_user | Save/list selections. |
+| POST | `/api/me/generate-letters` | Enrolled org_user | Body optional `reportId`. |
+
+Paused participants receive **403** `PROGRAM_PAUSED_BY_INSTRUCTOR` on forward **POST** actions (upload, analyze, dispute POSTs, generate letters), not on read-only GETs such as `/api/me/progress` or `/api/me/report/findings`.
+
+**Customer web (Vite):** participant UI lives under **`/program`** (and `/program/upload`, `/program/findings`, `/program/select`, `/program/letters`, `/program/progress`). Requires the same Bearer session; dev server proxies `/workflow-api` to the FastAPI app (`web/vite.config.ts`).
 
 ## User-facing endpoints (session required)
 

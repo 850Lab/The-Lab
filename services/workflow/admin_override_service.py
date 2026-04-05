@@ -11,7 +11,8 @@ from typing import Any, Dict, Optional
 
 from services.workflow.audit_log import log_workflow_event
 from services.workflow.engine import WorkflowEngine, compute_authoritative_step
-from services.workflow.repository import fetch_session, update_session_fields
+from services.workflow.repository import fetch_session
+from services.workflow.workflow_instance_service import patch_session_metadata
 from services.workflow import reminder_repository as rr
 from services.workflow import response_repository as resp_rr
 from services.workflow import reminder_service as rem_svc
@@ -206,7 +207,7 @@ def clear_stalled_flag(
     from services.workflow.workflow_db import get_workflow_db
 
     with get_workflow_db() as (conn, cur):
-        update_session_fields(conn, cur, workflow_id, metadata_patch=patch)
+        patch_session_metadata(conn, cur, workflow_id, patch)
         conn.commit()
     rr.insert_admin_audit(
         workflow_id=workflow_id,

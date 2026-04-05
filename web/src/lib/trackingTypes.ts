@@ -48,6 +48,8 @@ export type TrackingContextPayload = {
   timeline: {
     earliestMailedAt: string;
     daysSinceFirstMail: number;
+    /** Calendar days since first live send (not capped at 30). */
+    daysSinceFirstMailRaw?: number;
     timelineTotalDays: number;
   };
   homeSummary: TrackingHomeSummaryCompact | null;
@@ -63,6 +65,8 @@ export type TrackingContextPayload = {
 export type TrackingContextResponse = {
   workflow: WorkflowEnvelope;
   tracking: TrackingContextPayload;
+  progression?: WorkflowEnvelope["progression"];
+  canonicalProgression?: WorkflowEnvelope["canonicalProgression"];
 };
 
 /** Modal detail slice (subset of ``TrackingBureauRow``). */

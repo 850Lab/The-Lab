@@ -1,9 +1,9 @@
 import { motion } from "framer-motion";
 
 const LINES = [
-  "Most bureaus respond within 30 days",
-  "You may receive updates by mail",
-  "We’ll guide you if more action is needed",
+  "Tracking proves the carrier accepted your mail — not that the bureau finished its review",
+  "Many bureaus reply or update files within ~30 days; some take longer",
+  "When something arrives in the mail, record it under Responses — we’ll guide the next move",
 ] as const;
 
 type Props = {

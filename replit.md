@@ -1,5 +1,11 @@
 # Parser Machine - 850 Lab
 
+## Authoritative product surface (transition)
+
+**Forward build target:** **React** (`web/`) + **FastAPI** (`api/workflow_app.py`). New product features and workflow rules ship there (and in shared `services/`), not in Streamlit session state.
+
+**Streamlit** (`app.py`): **legacy reference / fallback** until parity criteria in `docs/STREAMLIT_RETIREMENT.md` are met. Streamlit is **frozen** for net-new product work (bug fixes and parity-support changes only).
+
 ## Overview
 Parser Machine is the foundational module of 850 Lab, a consumer credit report analysis and correspondence platform. Its primary purpose is to process credit report PDFs, extract structured data, identify potential inaccuracies and FCRA violations, and generate precise, factual dispute letters. The project aims to empower individuals by simplifying credit report review and the exercise of consumer rights.
 
@@ -84,12 +90,10 @@ The application utilizes Streamlit with a wide layout and a **full-screen steppe
 | Vite (Mission Control / React) | **5173** | `0.0.0.0` | `web/vite.config.ts` proxies `/workflow-api` → `WORKFLOW_API_PROXY_TARGET` or `http://127.0.0.1:8000` |
 
 ### Autoscale **Run** (production deploy)
-- Command: `scripts/replit_deployment_entry.sh` (starts uvicorn **8000** in background, then **exec** Streamlit **5000**).
-- **Public URL (port 80)** maps to **workflow API port 8000** (customer React + `/api/...`). **Streamlit** stays on **5000** — open it from the Replit **Ports** / preview list when you need the legacy admin UI.
-- **Customer React** is served from the same process when `web/dist` exists:
-  - After deploy, the main site URL should load the SPA at `/`.
-  - Same origin serves the SPA and `/api/...`. The API also accepts **`/workflow-api/...`** (stripped to `/...`) so existing `web/dist` built with the Vite proxy prefix keeps working without rebuilding.
-  - After `git pull`, ensure `web/dist` is up to date: `cd web && npm install && npm run build` (or rely on committed `dist` from the repo).
+- Command: `scripts/replit_deployment_entry.sh`.
+- **Does not depend on git-updated `.replit`:** templates often map **public port 80 → local 5000**. The script **`exec`’s uvicorn on 5000** (customer React + `/api/...`) and runs **Streamlit on 5001** in the background (open **5001** from Replit **Ports** for the legacy UI).
+- **Customer React** when `web/dist` exists: main deploy URL → SPA at `/`. API accepts **`/workflow-api/...`** (stripped) for bundled `web/dist`.
+- After `git pull`, if needed: `cd web && npm install && npm run build` (or use committed `web/dist`).
 
 ### Dev: Mission Control (same Repl)
 1. Start API + Streamlit: use the **Project** workflow in `.replit` (parallel **streamlit_app** + **workflow_api**) *or* run the same two commands from the Shell.
@@ -104,6 +108,16 @@ The application utilizes Streamlit with a wide layout and a **full-screen steppe
 - **Recommended:** `STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY`, `STRIPE_WEBHOOK_SECRET`, `LOB_API_KEY` (app warns if missing).
 - **Email:** `RESEND_API_KEY`; `RESEND_FROM_EMAIL` optional (`.replit` sets a shared default for userenv).
 - **AI:** `AI_INTEGRATIONS_OPENAI_API_KEY` (and optional `AI_INTEGRATIONS_OPENAI_BASE_URL`) for strategy / doc validation paths.
+
+### Public interactive demo (`/demo` on customer React)
+Ships with the repo as long as **`samples/*.pdf`** is in the deployment tree (same paths as `services/public_demo_service.py`).
+
+- **`PUBLIC_DEMO_ENABLED=1`** — turns on `GET/POST /api/public/demo/*`.
+- **`PUBLIC_DEMO_USER_ID=<users.id>`** — dedicated account used only for fixture runs (visitors never log in as this user).
+- Run once after picking the user id: `python scripts/bootstrap_public_demo_user.py <id>` (grants letter/mail credits from the API host).
+- Optional **`PUBLIC_DEMO_SECRET`** — if set, the browser must send `X-Public-Demo-Secret`; set matching **`VITE_PUBLIC_DEMO_SECRET`** in `web/.env.local` and rebuild `web/dist`.
+- Optional **`DEMO_LEADS_NOTIFY_EMAIL`** — Resend ping when someone submits the demo lead form.
+- Validate before launch: `PUBLIC_DEMO_ENABLED=1` + `WORKFLOW_LAUNCH_VALIDATE_DB=1 python scripts/workflow_launch_validate.py` (checks user exists + fixtures on disk).
 
 ### Build note
 - `.replit` **deployment** `build` uses an explicit `pip install …` list, not `requirements.txt`. Keep it in sync with imports or switch the build step to `pip install -r requirements.txt` (note: `requirements.txt` includes **playwright**, which is heavy on Repl builds).

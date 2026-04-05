@@ -1,5 +1,5 @@
 """
-Persistence for workflow_sessions and workflow_steps (Postgres or SQLite dev).
+Persistence for workflow_sessions and workflow_steps (Postgres by default; SQLite only if DB_BACKEND=sqlite).
 """
 
 from __future__ import annotations
@@ -12,8 +12,8 @@ from typing import Any, Dict, List, Optional
 from services.workflow.registry import (
     DEFINITION_VERSION,
     ENGINE_VERSION,
-    LINEAR_STEP_ORDER,
     WORKFLOW_TYPE_DEFAULT,
+    linear_order_for,
 )
 
 _UNSET = object()
@@ -56,7 +56,10 @@ def fetch_session(workflow_id: str) -> Optional[Dict[str, Any]]:
 def fetch_steps(workflow_id: str) -> List[Dict[str, Any]]:
     from services.workflow.workflow_db import get_workflow_db
 
-    order = {s: i for i, s in enumerate(LINEAR_STEP_ORDER)}
+    sess = fetch_session(workflow_id)
+    wt = str((sess or {}).get("workflow_type") or WORKFLOW_TYPE_DEFAULT)
+    order_list = linear_order_for(wt)
+    order = {s: i for i, s in enumerate(order_list)}
     with get_workflow_db(dict_cursor=True) as (conn, cur):
         cur.execute(
             """
@@ -98,6 +101,34 @@ def fetch_latest_active_workflow_id(
     return row["workflow_id"] if row else None
 
 
+def fetch_resume_workflow_id_for_user(
+    user_id: int,
+    workflow_type: Optional[str] = None,
+) -> Optional[str]:
+    """
+    Workflow id for React resume: prefer active/failed, else most recently updated completed.
+    Lets customers open tracking, responses, and additional dispute rounds after linear completion.
+    """
+    from services.workflow.workflow_db import get_workflow_db
+
+    wt = workflow_type or WORKFLOW_TYPE_DEFAULT
+    with get_workflow_db(dict_cursor=True) as (conn, cur):
+        cur.execute(
+            """
+            SELECT workflow_id AS workflow_id
+            FROM workflow_sessions
+            WHERE user_id = %s AND workflow_type = %s
+            ORDER BY
+              CASE WHEN overall_status IN ('active', 'failed') THEN 0 ELSE 1 END,
+              updated_at DESC
+            LIMIT 1
+            """,
+            (user_id, wt),
+        )
+        row = cur.fetchone()
+    return row["workflow_id"] if row else None
+
+
 def create_workflow_with_steps(
     *,
     user_id: int,
@@ -131,7 +162,18 @@ def create_workflow_with_steps(
                 ENGINE_VERSION,
             ),
         )
-        seed_steps_for_workflow(conn, cur, wid, first_step_id)
+        seed_steps_for_workflow(conn, cur, wid, first_step_id, workflow_type)
+        from services.workflow.workflow_event_service import record_event_tx
+
+        record_event_tx(
+            conn,
+            cur,
+            wid,
+            "workflow.session_created",
+            actor="system",
+            source="engine",
+            metadata={"workflowType": workflow_type, "userId": user_id},
+        )
         conn.commit()
     return wid
 
@@ -145,7 +187,7 @@ def ensure_active_workflow_id(
     if wid:
         return wid
     wt = workflow_type or WORKFLOW_TYPE_DEFAULT
-    first = LINEAR_STEP_ORDER[0]
+    first = linear_order_for(wt)[0]
     return create_workflow_with_steps(
         user_id=user_id,
         workflow_type=wt,
@@ -172,8 +214,15 @@ def insert_step_row(
     )
 
 
-def seed_steps_for_workflow(conn, cur, workflow_id: str, first_available: str) -> None:
-    for sid in LINEAR_STEP_ORDER:
+def seed_steps_for_workflow(
+    conn,
+    cur,
+    workflow_id: str,
+    first_available: str,
+    workflow_type: str,
+) -> None:
+    wt = workflow_type or WORKFLOW_TYPE_DEFAULT
+    for sid in linear_order_for(wt):
         st = "available" if sid == first_available else "not_started"
         insert_step_row(conn, cur, workflow_id=workflow_id, step_id=sid, status=st)
 
@@ -190,6 +239,7 @@ def update_session_fields(
     last_error_message_safe: Any = _UNSET,
     metadata_patch: Optional[Dict[str, Any]] = None,
 ) -> None:
+    """Low-level UPDATE. Prefer ``workflow_instance_service`` for lifecycle/metadata writes."""
     parts = ["updated_at = CURRENT_TIMESTAMP"]
     args: List[Any] = []
     if current_step is not _UNSET:
@@ -286,6 +336,7 @@ def update_step_fields(
     completion_payload_summary: Optional[Dict[str, Any]] = None,
     async_task_state: Any = False,
 ) -> None:
+    """Low-level UPDATE. Prefer ``workflow_instance_service.mutate_step`` for status changes."""
     sets = []
     args: List[Any] = []
     if status is not None:

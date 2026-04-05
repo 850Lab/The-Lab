@@ -41,14 +41,16 @@ export function VerificationActionSection({
         whileTap={canSend && !sendBusy ? { scale: 0.985 } : undefined}
         transition={{ type: "spring", stiffness: 420, damping: 28 }}
       >
-        {sendBusy ? "Continuing…" : "Send my disputes"}
+        {sendBusy ? "Continuing…" : "Continue to certified send"}
       </motion.button>
       <p className="text-center text-xs text-lab-subtle sm:text-sm">
-        You can save this and come back if needed
+        This saves proof to your workflow — the next screen is where certified mail goes out (real
+        USPS action when live).
       </p>
       {!canSend ? (
         <p className="text-center text-sm text-lab-muted">
-          Complete all three steps when you’re ready—we’ll hold your place.
+          Complete all three items above — one continue control when you&apos;re ready; we&apos;ll
+          hold your place.
         </p>
       ) : null}
       <motion.button

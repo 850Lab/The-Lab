@@ -1,19 +1,25 @@
 #!/bin/sh
-# Replit deployment: workflow API (8000) + Streamlit (5000). Trap stops uvicorn when Streamlit exits.
+# Replit Autoscale deployment entry.
+#
+# Many Repl templates lock .replit to "public port 80 → local 5000". We cannot rely on
+# git-pushed .replit edits, so the *customer* app must bind to 5000 here.
+#
+# - FastAPI + web/dist (React) → 5000 (this is what the public URL hits).
+# - Streamlit admin → 5001 (open from Replit Ports / preview).
 set -e
-uvicorn_pid=""
+streamlit_pid=""
 cleanup() {
-  if [ -n "$uvicorn_pid" ]; then
-    kill "$uvicorn_pid" 2>/dev/null || true
-    wait "$uvicorn_pid" 2>/dev/null || true
+  if [ -n "$streamlit_pid" ]; then
+    kill "$streamlit_pid" 2>/dev/null || true
+    wait "$streamlit_pid" 2>/dev/null || true
   fi
 }
 trap cleanup EXIT INT TERM
 
-python -m uvicorn api.workflow_app:app --host 0.0.0.0 --port 8000 &
-uvicorn_pid=$!
-
-exec streamlit run app.py \
-  --server.port 5000 \
+streamlit run app.py \
+  --server.port 5001 \
   --server.address 0.0.0.0 \
-  --server.headless true
+  --server.headless true &
+streamlit_pid=$!
+
+exec python -m uvicorn api.workflow_app:app --host 0.0.0.0 --port 5000

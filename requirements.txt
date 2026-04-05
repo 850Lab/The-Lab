@@ -55,6 +55,7 @@ pypdfium2==5.0.0
 pytesseract==0.3.13
 pytest==9.0.2
 python-dateutil==2.9.0.post0
+python-dotenv==1.0.1
 pytz==2025.2
 referencing==0.37.0
 reportlab==4.4.7

@@ -157,6 +157,9 @@ def get_workflow_detail(workflow_id: str) -> Dict[str, Any]:
         },
         "metadata": meta,
         "adminOverrideHistory": override_hist if isinstance(override_hist, list) else [],
+        "paymentUnlockAudit": (meta or {}).get("payment_unlock_audit")
+        if isinstance((meta or {}).get("payment_unlock_audit"), dict)
+        else None,
         "workflowStateEnvelope": state,
         "homeSummary": hs,
         "steps": steps,
@@ -206,6 +209,9 @@ def list_exceptions(limit: int = 100) -> Dict[str, Any]:
             reasons.append("escalation_available")
         if mc_repo.has_failed_reminder(wid):
             reasons.append("reminder_delivery_failed")
+        pua = (meta or {}).get("payment_unlock_audit")
+        if isinstance(pua, dict) and (pua.get("state") or "").strip() == "requires_intervention":
+            reasons.append("payment_unlock_requires_intervention")
         if not reasons:
             continue
         out.append(

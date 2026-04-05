@@ -4,9 +4,14 @@ Reminder delivery: channel routing, Resend email, optional SMS stub, explicit st
 
 from __future__ import annotations
 
+import logging
 import os
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
+
+from services.workflow.workflow_db_config import is_production_like
+
+_log = logging.getLogger(__name__)
 
 
 @dataclass
@@ -18,10 +23,17 @@ class ReminderDeliveryResult:
 
 
 def _allow_stub_fallback() -> bool:
-    return (os.environ.get("WORKFLOW_REMINDER_FALLBACK_STUB") or "").strip() in (
+    """
+    Never treat a failed email send as “success” via stub in production-like deployments.
+    ``WORKFLOW_REMINDER_FALLBACK_STUB=1`` is dev/test only.
+    """
+    if is_production_like():
+        return False
+    return (os.environ.get("WORKFLOW_REMINDER_FALLBACK_STUB") or "").strip().lower() in (
         "1",
         "true",
         "yes",
+        "on",
     )
 
 
@@ -105,10 +117,20 @@ def send_reminder(reminder_row: Dict[str, Any]) -> ReminderDeliveryResult:
         return r
 
     if _allow_stub_fallback():
+        _log.warning(
+            "WORKFLOW_REMINDER_FALLBACK_STUB: marking reminder email as stub after Resend failure "
+            "(non-production only): %s",
+            (r.error_safe or "")[:200],
+        )
         return ReminderDeliveryResult(
             success=True,
             delivery_channel="stub",
             provider_response_summary="fallback_stub_after_email_failure",
             error_safe=r.error_safe,
+        )
+    if is_production_like():
+        _log.error(
+            "Reminder email delivery failed (no stub in production): %s",
+            (r.error_safe or "")[:300],
         )
     return r

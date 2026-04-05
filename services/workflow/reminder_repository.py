@@ -319,7 +319,8 @@ def merge_session_admin_override_metadata(
     entry: Dict[str, Any],
 ) -> None:
     """Append one entry to metadata.adminOverrideHistory (bounded)."""
-    from services.workflow.repository import fetch_session, update_session_fields
+    from services.workflow.repository import fetch_session
+    from services.workflow.workflow_instance_service import patch_session_metadata
 
     from services.workflow.workflow_db import get_workflow_db
 
@@ -337,11 +338,11 @@ def merge_session_admin_override_metadata(
         hist = []
     hist.append(entry)
     with get_workflow_db() as (conn, cur):
-        update_session_fields(
+        patch_session_metadata(
             conn,
             cur,
             workflow_id,
-            metadata_patch={
+            {
                 "adminOverrideHistory": hist[-25:],
                 "adminOverridePresent": True,
             },

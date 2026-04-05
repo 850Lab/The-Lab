@@ -1,0 +1,22 @@
+# Keep API image small and builds fast (exclude SPA toolchain and local junk).
+.git
+.gitignore
+.cursor
+**/__pycache__
+**/*.pyc
+.venv
+venv
+.env
+.env.*
+!.env.example
+node_modules
+# SPA built on Vercel; API container does not need Vite source or dist.
+web/
+playwright-report
+test-results
+.pytest_cache
+*.sqlite
+lab_truth/*.sqlite
+lab_truth/*.sqlite-journal
+lab_truth/*.sqlite-wal
+lab_truth/*.sqlite-shm

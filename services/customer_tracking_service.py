@@ -135,11 +135,13 @@ def build_tracking_context_payload(
             }
         )
 
-    days_since = 0
+    days_since_raw = 0
+    days_since_display = 0
     if earliest_mailed:
         now = datetime.now(timezone.utc)
         delta = now - earliest_mailed
-        days_since = max(0, min(30, delta.days))
+        days_since_raw = max(0, delta.days)
+        days_since_display = max(0, min(30, delta.days))
 
     hs = build_home_summary(workflow_id)
     home_compact: Optional[Dict[str, Any]] = None
@@ -233,7 +235,8 @@ def build_tracking_context_payload(
         "hasTargets": len(bureau_rows) > 0,
         "timeline": {
             "earliestMailedAt": earliest_mailed.isoformat() if earliest_mailed else "",
-            "daysSinceFirstMail": days_since,
+            "daysSinceFirstMail": days_since_display,
+            "daysSinceFirstMailRaw": days_since_raw,
             "timelineTotalDays": 30,
         },
         "homeSummary": home_compact,

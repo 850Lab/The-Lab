@@ -3,6 +3,7 @@ import { Link, useLocation } from "react-router-dom";
 import {
   customerPathForNextRequiredAction,
   isEscalationPath,
+  isOrgProgramPath,
 } from "@/lib/workflowStepRoutes";
 import { useCustomerWorkflow } from "@/providers/CustomerWorkflowContext";
 
@@ -18,21 +19,21 @@ function pickBanner(
   if (h.workflowStepMismatch) {
     return {
       title: "We’ve moved you to the correct step",
-      body: "Your workflow position was out of sync; use the button below to continue where you should be.",
+      body: "Your place in the program was out of sync; use the button below to continue where you should be.",
       ctaLabel: "Go to current step",
     };
   }
   if (h.entitlementsButPaymentIncomplete) {
     return {
       title: "Finish activating your purchase",
-      body: "Your letter credits are ready, but this step still needs to be completed so the workflow can continue.",
+      body: "Your letter credits are ready, but this step still needs to complete so the program can continue.",
       ctaLabel: "Continue",
     };
   }
   if (h.paymentCompletedButWrongStep) {
     return {
       title: "Payment is complete",
-      body: "Continue from your current workflow step when you’re ready.",
+      body: "Continue from your current program step when you’re ready.",
       ctaLabel: "Continue",
     };
   }
@@ -53,7 +54,7 @@ function pickBanner(
   if (h.mailingDebitWithoutSend) {
     return {
       title: "We detected an issue with a previous send attempt",
-      body: "A mailing credit was used without a matching mailed record. If this persists, contact support with your workflow id.",
+      body: "A mailing credit was used without a matching mailed record. If this persists, contact support with your program / workflow id.",
       ctaLabel: "Continue",
     };
   }
@@ -88,6 +89,7 @@ export function WorkflowIntegrityBanner() {
 
   if (loading || !workflowId || !spec) return null;
   if (isEscalationPath(loc.pathname)) return null;
+  if (isOrgProgramPath(loc.pathname)) return null;
 
   return (
     <div

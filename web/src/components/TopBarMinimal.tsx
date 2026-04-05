@@ -2,7 +2,12 @@ import { motion } from "framer-motion";
 import { Link } from "react-router-dom";
 import { useAuth } from "@/providers/AuthContext";
 
-export function TopBarMinimal() {
+type TopBarMinimalProps = {
+  /** Hide “Live demo” when the current page already is the demo (home). */
+  hideLiveDemoLink?: boolean;
+};
+
+export function TopBarMinimal({ hideLiveDemoLink = false }: TopBarMinimalProps) {
   const { token, user, signOut } = useAuth();
 
   return (
@@ -13,12 +18,29 @@ export function TopBarMinimal() {
       className="fixed left-0 right-0 top-0 z-40 border-b border-white/[0.06] bg-lab-surface/75 backdrop-blur-md"
     >
       <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-3 px-4 sm:px-6">
-        <span className="text-[15px] font-semibold tracking-tight text-lab-text">
+        <Link
+          to="/"
+          className="text-[15px] font-semibold tracking-tight text-lab-text hover:text-lab-accent"
+        >
           850 Lab
-        </span>
-        <div className="flex min-w-0 items-center gap-3 text-sm">
+        </Link>
+        <div className="flex min-w-0 items-center gap-3 text-sm sm:gap-4">
+          {!hideLiveDemoLink ? (
+            <Link
+              to={{ pathname: "/", hash: "live-demo" }}
+              className="shrink-0 text-xs font-medium text-lab-accent hover:text-sky-300 sm:text-sm"
+            >
+              Live demo
+            </Link>
+          ) : null}
           {token ? (
             <>
+              <Link
+                to="/program"
+                className="shrink-0 text-xs text-lab-muted hover:text-lab-accent sm:text-sm"
+              >
+                Your program
+              </Link>
               <span
                 className="hidden max-w-[160px] truncate text-lab-muted sm:inline"
                 title={user?.email}

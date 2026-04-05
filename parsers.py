@@ -1088,7 +1088,8 @@ def parse_accounts_experian(text, pages_text=None):
     header_pattern = r'(\S[^\n]*)\n(?:(POTENTIALLY NEGATIVE)\n)?\s*\ue9ef?\s*\nAccount Info\n'
     header_matches = list(re.finditer(header_pattern, text))
     if not header_matches:
-        header_pattern_alt = r'(\S[^\n]*)\n(?:(POTENTIALLY NEGATIVE)\n)?\s*\nAccount Info\n'
+        # ASCII PDFs / pdfplumber: icon line may be lost, ``?``, or squeezed to one newline before Account Info
+        header_pattern_alt = r'(\S[^\n]*)\n(?:(POTENTIALLY NEGATIVE)\n)?(?:\s*\n|\?\n)?Account Info\n'
         header_matches = list(re.finditer(header_pattern_alt, text))
 
     if not header_matches:

@@ -38,3 +38,30 @@ export type LettersGenerateResponse = {
     };
   };
 };
+
+export type CreditCommandPlanAction = {
+  title: string;
+  why: string;
+  do_next: string;
+  script?: string;
+  warning?: string;
+};
+
+export type CreditCommandPlanDay = {
+  label: string;
+  actions: CreditCommandPlanAction[];
+};
+
+/** Mirrors ``credit_command_plan.build_credit_command_plan`` JSON shape. */
+export type CreditCommandPlanPayload = {
+  total_issues: number;
+  high_impact: number;
+  score_damaging: number;
+  quick_wins: number;
+  days: CreditCommandPlanDay[];
+};
+
+export type CreditCommandPlanResponse = {
+  creditCommandPlan: CreditCommandPlanPayload | null;
+  unavailableReason: string | null;
+};

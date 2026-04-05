@@ -7,10 +7,17 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
+import logging
+
 from services.workflow.audit_log import log_workflow_event
 from services.workflow.home_summary_service import build_home_summary
 from services.workflow import reminder_delivery
 from services.workflow import reminder_repository as rr
+import os
+
+from services.workflow.workflow_db_config import is_production_like
+
+_rem_log = logging.getLogger(__name__)
 
 
 def _reason_for_type(rtype: str, summary: Dict[str, Any]) -> str:
@@ -98,6 +105,12 @@ def queue_reminder(reminder_id: str) -> bool:
 
 def mark_reminder_sent_stub(reminder_id: str) -> bool:
     """Explicit stub (no external I/O); use for tests or manual ops only."""
+    if is_production_like():
+        _rem_log.error(
+            "mark_reminder_sent_stub refused in production (reminder_id=%s)",
+            reminder_id,
+        )
+        return False
     row = rr.fetch_reminder(reminder_id)
     if not row or row.get("status") not in ("eligible", "queued"):
         return False
@@ -266,11 +279,19 @@ def process_delivery_batch(limit: int = 20) -> Dict[str, Any]:
             if queue_reminder(rid):
                 _try_deliver(rid)
 
+    stub_env = (os.environ.get("WORKFLOW_REMINDER_FALLBACK_STUB") or "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
     return {
         "ok": True,
         "processedReminderIds": processed_ok,
         "failedReminderIds": failures,
         "count": len(processed_ok),
+        "productionLike": is_production_like(),
+        "reminderStubFallbackAfterEmailFailure": bool(stub_env and not is_production_like()),
     }
 
 

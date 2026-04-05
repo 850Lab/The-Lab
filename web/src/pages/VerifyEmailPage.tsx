@@ -2,6 +2,7 @@ import { motion } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { TopBarMinimal } from "@/components/TopBarMinimal";
+import { afterVerifyProgramLine } from "@/lib/programEntryContinuation";
 import { safeAppPath } from "@/lib/postAuthRedirect";
 import { useAuth } from "@/providers/AuthContext";
 
@@ -22,21 +23,43 @@ export function VerifyEmailPage() {
   const initialSendRef = useRef(false);
 
   const locState = (location.state as VerifyLocationState | null) ?? null;
-  const sendInitialCode = Boolean(locState?.sendInitialCode);
+  const sendInitialCodeFromNav = Boolean(locState?.sendInitialCode);
+  let sendInitialFromStorage = false;
+  try {
+    sendInitialFromStorage =
+      sessionStorage.getItem("850lab_verify_send_initial") === "1";
+  } catch {
+    sendInitialFromStorage = false;
+  }
+  const wantsInitialSend = sendInitialCodeFromNav || sendInitialFromStorage;
   const afterVerifyPath = safeAppPath(locState?.returnTo) ?? "/";
+  const afterVerifyLine = afterVerifyProgramLine(afterVerifyPath);
 
   useEffect(() => {
-    if (!sendInitialCode || initialSendRef.current) return;
+    if (!wantsInitialSend || initialSendRef.current) return;
     initialSendRef.current = true;
     void (async () => {
       try {
         await resendVerification();
         setResendNote("We sent a code to your email.");
-      } catch {
-        setResendNote("Could not send email yet. Use Resend code below.");
+        try {
+          sessionStorage.removeItem("850lab_verify_send_initial");
+        } catch {
+          /* ignore */
+        }
+      } catch (err) {
+        try {
+          sessionStorage.removeItem("850lab_verify_send_initial");
+        } catch {
+          /* ignore */
+        }
+        setResendNote("We could not send the email automatically.");
+        setError(
+          err instanceof Error ? err.message : String(err),
+        );
       }
     })();
-  }, [sendInitialCode, resendVerification]);
+  }, [wantsInitialSend, resendVerification]);
 
   useEffect(() => {
     if (user?.emailVerified) {
@@ -76,16 +99,31 @@ export function VerifyEmailPage() {
     <div className="relative min-h-full bg-lab-bg">
       <TopBarMinimal />
       <main className="relative z-10 mx-auto max-w-md px-4 pb-16 pt-24 sm:px-6 sm:pt-28">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-lab-accent">
+          Your program · Verify email
+        </p>
         <motion.h1
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
-          className="text-2xl font-semibold text-lab-text"
+          className="mt-2 text-2xl font-semibold text-lab-text"
         >
-          Verify your email
+          Confirm your email to continue
         </motion.h1>
-        <p className="mt-2 text-sm text-lab-muted">
-          Enter the 6-digit code we sent to{" "}
-          <span className="text-lab-text">{user?.email}</span>.
+        <p className="mt-2 text-sm leading-relaxed text-lab-muted">
+          We need a verified email to continue your program — the same secure inbox we&apos;ll use
+          for important updates. Enter the 6-digit code we sent to{" "}
+          <span className="text-lab-text">{user?.email || "your email"}</span>.
+        </p>
+        <div className="mt-4 rounded-xl border border-white/[0.1] bg-lab-surface/50 px-4 py-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-lab-muted">What&apos;s next</p>
+          <p className="mt-1.5 text-sm leading-relaxed text-lab-muted">{afterVerifyLine}</p>
+        </div>
+        <p className="mt-4 text-sm text-lab-muted">
+          No message yet? Check spam, then tap <span className="text-lab-text">Resend code</span>.
+        </p>
+        <p className="mt-2 text-xs text-lab-subtle">
+          Local dev: the workflow API should be running (often{" "}
+          <span className="text-lab-text">127.0.0.1:8000</span>) for codes to send.
         </p>
 
         {resendNote ? (
@@ -113,7 +151,7 @@ export function VerifyEmailPage() {
             disabled={busy || code.length !== 6}
             className="w-full rounded-lg bg-lab-accent py-2.5 text-sm font-semibold text-white disabled:opacity-60"
           >
-            {busy ? "Verifying…" : "Verify"}
+            {busy ? "Verifying…" : "Confirm & continue"}
           </button>
         </form>
 

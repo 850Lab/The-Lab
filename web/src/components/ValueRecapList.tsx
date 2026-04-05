@@ -5,7 +5,7 @@ type Props = {
 export function ValueRecapList({ lines }: Props) {
   return (
     <div>
-      <h3 className="text-sm font-semibold text-lab-text">What happens next</h3>
+      <h3 className="text-sm font-semibold text-lab-text">What this unlocks</h3>
       <ul className="mt-3 space-y-2.5">
         {lines.map((line) => (
           <li key={line} className="flex gap-2.5 text-sm leading-relaxed text-lab-muted">

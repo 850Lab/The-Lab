@@ -11,7 +11,8 @@ from __future__ import annotations
 import json
 from typing import Any, Dict, List, Optional, Set, Tuple
 
-from services.workflow.repository import fetch_session, update_session_fields
+from services.workflow.repository import fetch_session
+from services.workflow.workflow_instance_service import patch_session_metadata
 
 
 def _norm_bureau(b: str) -> str:
@@ -110,7 +111,7 @@ def record_mail_attempt_failed(
     from services.workflow.workflow_db import get_workflow_db
 
     with get_workflow_db() as (conn, cur):
-        update_session_fields(conn, cur, workflow_id, metadata_patch={"mail": mail})
+        patch_session_metadata(conn, cur, workflow_id, {"mail": mail})
         conn.commit()
 
 
@@ -118,5 +119,5 @@ def apply_mail_progress_metadata(workflow_id: str, metadata_patch: Dict[str, Any
     from services.workflow.workflow_db import get_workflow_db
 
     with get_workflow_db() as (conn, cur):
-        update_session_fields(conn, cur, workflow_id, metadata_patch=metadata_patch)
+        patch_session_metadata(conn, cur, workflow_id, metadata_patch)
         conn.commit()

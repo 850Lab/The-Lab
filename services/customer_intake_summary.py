@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import database as db
 from claims import extract_claims
@@ -31,8 +31,16 @@ def _parsed_dict(raw: Any) -> Dict[str, Any]:
     return {}
 
 
-def build_customer_intake_summary(user_id: int, *, report_limit: int = 25) -> Dict[str, Any]:
-    rows = db.get_recent_reports_with_parsed_for_user(user_id, limit=report_limit)
+def build_customer_intake_summary(
+    user_id: int,
+    *,
+    report_limit: int = 25,
+    only_report_ids: Optional[List[int]] = None,
+) -> Dict[str, Any]:
+    if only_report_ids is not None:
+        rows = db.get_reports_with_parsed_for_user_by_ids(user_id, only_report_ids)
+    else:
+        rows = db.get_recent_reports_with_parsed_for_user(user_id, limit=report_limit)
     report_summaries: List[Dict[str, Any]] = []
     all_raw_claims: List[Any] = []
 

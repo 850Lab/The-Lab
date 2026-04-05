@@ -11,12 +11,19 @@ from typing import Any, Dict, Optional
 
 from services.workflow.engine import WorkflowEngine
 from services.workflow.escalation_recommendation import recommend_escalation
-from services.workflow.repository import fetch_session, update_session_fields
+from services.workflow.repository import fetch_session
+from services.workflow.workflow_instance_service import patch_session_metadata
 from services.workflow.response_classification import classify_parsed_response
 from services.workflow import response_repository as rr
 from services.workflow.response_flow_events import (
     _summary_length_bucket,
     emit_response_flow_event,
+)
+from services.workflow.repository import merge_into_workflow_metadata
+from services.workflow.dispute_round_execution import (
+    append_intake_to_round_history,
+    merge_item_and_claim_outcomes_into_metadata,
+    refresh_round_execution_projection,
 )
 
 
@@ -47,7 +54,7 @@ def merge_workflow_source_of_truth_metadata(
         }
     }
     with get_workflow_db() as (conn, cur):
-        update_session_fields(conn, cur, workflow_id, metadata_patch=patch)
+        patch_session_metadata(conn, cur, workflow_id, patch)
         conn.commit()
 
 
@@ -104,6 +111,8 @@ def intake_bureau_response(
         },
     )
 
+    merge_item_and_claim_outcomes_into_metadata(workflow_id, parsed_summary or {})
+
     eng = WorkflowEngine()
     _, _, smap = eng.get_state_bundle(workflow_id)
     track_done = _track_completed(smap)
@@ -130,6 +139,12 @@ def intake_bureau_response(
             response_id=rid,
             response_classification=outcome.classification,
             escalation=esc,
+            reasoning_safe=outcome.reasoning_safe,
+        )
+        append_intake_to_round_history(
+            workflow_id,
+            response_id=str(rid),
+            document_classification=outcome.classification,
             reasoning_safe=outcome.reasoning_safe,
         )
         emit_response_flow_event(
@@ -195,6 +210,7 @@ def intake_bureau_response(
                 "priority": "high",
             },
         )
+        refresh_round_execution_projection(workflow_id)
         emit_response_flow_event(
             "response_classification_failed",
             workflow_id=workflow_id,

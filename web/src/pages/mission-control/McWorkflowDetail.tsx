@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
 import {
+  mccFetchWorkflowEvents,
   mccGet,
   getMissionControlAdminKey,
+  type McWorkflowEventRow,
 } from "@/lib/missionControlApi";
 import { McStatusChip } from "@/components/mission-control/McStatusChip";
 import { McWorkflowOperatorPanel } from "@/components/mission-control/McWorkflowOperatorPanel";
@@ -12,15 +14,28 @@ export function McWorkflowDetail() {
   const location = useLocation();
   const [data, setData] = useState<Record<string, unknown> | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [events, setEvents] = useState<McWorkflowEventRow[]>([]);
+  const [eventsErr, setEventsErr] = useState<string | null>(null);
 
   const loadDetail = useCallback(async () => {
     if (!workflowId || !getMissionControlAdminKey()) return;
     setErr(null);
+    setEventsErr(null);
     try {
       const d = await mccGet<Record<string, unknown>>(
         `/internal/admin/mission-control/workflows/${workflowId}`,
       );
       setData(d);
+      if (d && typeof d === "object" && d.ok === true) {
+        try {
+          setEvents(await mccFetchWorkflowEvents(workflowId));
+        } catch (e) {
+          setEventsErr(String((e as Error).message || e));
+          setEvents([]);
+        }
+      } else {
+        setEvents([]);
+      }
     } catch (e) {
       setErr(String((e as Error).message || e));
     }
@@ -57,6 +72,20 @@ export function McWorkflowDetail() {
   const responsesForActions =
     (data.responsesForActions as Record<string, unknown>[]) || [];
 
+  const env = data.workflowStateEnvelope as Record<string, unknown> | undefined;
+  const ws = env?.workflowState as Record<string, unknown> | undefined;
+  const dbStep =
+    session?.currentStep != null ? String(session.currentStep) : "";
+  const apiStep =
+    ws?.currentStep != null ? String(ws.currentStep) : "";
+  const dbOverall =
+    session?.overallStatus != null ? String(session.overallStatus) : "";
+  const apiOverall =
+    ws?.overallStatus != null ? String(ws.overallStatus) : "";
+  const instanceDrift =
+    (dbStep !== apiStep || dbOverall !== apiOverall) &&
+    Boolean(ws && Object.keys(ws).length > 0);
+
   return (
     <div className="space-y-6 max-w-6xl">
       <div className="flex items-center gap-3">
@@ -85,9 +114,79 @@ export function McWorkflowDetail() {
 
       <section>
         <h3 className="text-sm font-semibold text-lab-muted mb-2">Session</h3>
+        <p className="text-xs text-lab-muted mb-2">
+          DB row fields. Customer app uses the same engine read as{" "}
+          <span className="font-mono text-sky-200/90">workflowState</span> from{" "}
+          <span className="font-mono text-sky-200/90">GET …/state</span> (see
+          envelope below).
+        </p>
+        {instanceDrift ? (
+          <p className="text-xs text-amber-200/90 mb-2">
+            Note:{" "}
+            <span className="font-mono">currentStep</span> /{" "}
+            <span className="font-mono">overallStatus</span> differ between this
+            session row and the engine envelope below (often transient until
+            repair runs).
+          </p>
+        ) : null}
         <pre className="text-xs overflow-auto max-h-48 rounded border border-white/10 bg-lab-surface p-3">
           {JSON.stringify(data.session, null, 2)}
         </pre>
+      </section>
+
+      <section>
+        <h3 className="text-sm font-semibold text-lab-muted mb-2">
+          Event timeline
+        </h3>
+        <p className="text-xs text-lab-muted mb-2">
+          Oldest first (append-only log). Not analytics — durable trace of workflow
+          transitions and selected system outputs.
+        </p>
+        {eventsErr ? (
+          <p className="text-amber-200/90 text-xs mb-2">{eventsErr}</p>
+        ) : null}
+        {events.length === 0 && !eventsErr ? (
+          <p className="text-lab-muted text-xs">No events recorded yet.</p>
+        ) : null}
+        {events.length > 0 ? (
+          <ul className="space-y-2 text-xs max-h-96 overflow-y-auto rounded border border-white/10 p-2">
+            {events.map((e) => (
+              <li
+                key={e.id}
+                className="rounded border border-white/5 bg-lab-surface/50 p-2"
+              >
+                <div className="text-lab-muted">
+                  {e.createdAt ?? "—"} ·{" "}
+                  <span className="font-mono text-sky-200/90">{e.eventType}</span>
+                </div>
+                <div className="text-lab-muted mt-0.5">
+                  actor: <span className="font-mono">{e.actor}</span> · source:{" "}
+                  <span className="font-mono">{e.source}</span>
+                  {e.stepId ? (
+                    <>
+                      {" "}
+                      · step: <span className="font-mono">{e.stepId}</span>
+                    </>
+                  ) : null}
+                </div>
+                {e.metadata && Object.keys(e.metadata).length > 0 ? (
+                  <pre className="mt-1 max-h-24 overflow-auto text-[10px] text-lab-muted">
+                    {JSON.stringify(e.metadata, null, 2)}
+                  </pre>
+                ) : null}
+                {e.previousState != null || e.newState != null ? (
+                  <pre className="mt-1 max-h-32 overflow-auto text-[10px]">
+                    {JSON.stringify(
+                      { previous: e.previousState, new: e.newState },
+                      null,
+                      2,
+                    )}
+                  </pre>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        ) : null}
       </section>
 
       <section>
@@ -145,7 +244,8 @@ export function McWorkflowDetail() {
 
       <section>
         <h3 className="text-sm font-semibold text-lab-muted mb-2">
-          Full state envelope (API shape)
+          Full state envelope (same contract as customer{" "}
+          <span className="font-mono">/state</span>)
         </h3>
         <pre className="text-xs overflow-auto max-h-64 rounded border border-white/10 bg-lab-surface p-3">
           {JSON.stringify(data.workflowStateEnvelope, null, 2)}

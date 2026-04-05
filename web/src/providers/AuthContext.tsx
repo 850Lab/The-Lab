@@ -22,6 +22,11 @@ export type AuthContextValue = {
   /** True until initial token read + optional `/api/auth/me` completes. */
   authBootstrapping: boolean;
   emailVerified: boolean;
+  /**
+   * Trusted session handoff (e.g. Architect Access after admin-only apply).
+   * Does not bypass auth — server must have issued the token.
+   */
+  adoptTrustedSession: (sessionToken: string) => Promise<void>;
   signIn: (email: string, password: string) => Promise<AuthUser>;
   signUp: (
     email: string,
@@ -52,6 +57,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setToken("");
     setUser(null);
   }, []);
+
+  const adoptTrustedSession = useCallback(
+    async (sessionToken: string) => {
+      const t = sessionToken.trim();
+      if (!t) {
+        clearSession();
+        return;
+      }
+      const u = await authApi.authMe(t);
+      applySession(t, u);
+    },
+    [applySession, clearSession],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -153,6 +171,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       user,
       authBootstrapping,
       emailVerified,
+      adoptTrustedSession,
       signIn,
       signUp,
       signOut,
@@ -165,6 +184,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       user,
       authBootstrapping,
       emailVerified,
+      adoptTrustedSession,
       signIn,
       signUp,
       signOut,

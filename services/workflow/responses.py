@@ -1,5 +1,8 @@
 """
 Uniform API envelope for workflow endpoints (backend authority contract).
+
+Public routes also attach ``progression`` (see ``progression_api``): a stable slice
+derived from this envelope so consumer, org, and demo clients share one model.
 """
 
 from __future__ import annotations

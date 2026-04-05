@@ -1,13 +1,16 @@
 import { AnimatePresence, motion } from "framer-motion";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { LetterGeneratingState } from "@/components/LetterGeneratingState";
+import { ProgramFlowBridge } from "@/components/ProgramFlowBridge";
 import { LetterGroupCard } from "@/components/LetterGroupCard";
+import { CreditCommandPlanSection } from "@/components/CreditCommandPlanSection";
 import { LetterPreviewModal } from "@/components/LetterPreviewModal";
 import { LettersActionSection } from "@/components/LettersActionSection";
 import { TopBarMinimal } from "@/components/TopBarMinimal";
-import type { LetterRow, LettersUiFlags } from "@/lib/letterTypes";
+import type { CreditCommandPlanResponse, LetterRow, LettersUiFlags } from "@/lib/letterTypes";
 import {
+  fetchCreditCommandPlan,
   fetchLetterContent,
   fetchLettersBundleTxt,
   fetchLettersContext,
@@ -19,6 +22,7 @@ import {
   isAuthoritativeStepBefore,
 } from "@/lib/workflowStepRoutes";
 import { useCustomerWorkflow } from "@/providers/CustomerWorkflowContext";
+import { lettersPurposeBlock, postLettersWhatHappensNext } from "@/lib/intelligenceExpression";
 
 const pageVariants = {
   hidden: { opacity: 0 },
@@ -50,6 +54,9 @@ export function LettersReadyPage() {
   const { token, workflowId, authoritativeStepId, envelope, applyWorkflowEnvelope } =
     useCustomerWorkflow();
 
+  const lettersPurpose = useMemo(() => lettersPurposeBlock(), []);
+  const lettersProgramNext = useMemo(() => postLettersWhatHappensNext(), []);
+
   const [pageLoading, setPageLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [letters, setLetters] = useState<LetterRow[]>([]);
@@ -60,6 +67,8 @@ export function LettersReadyPage() {
   const [previewLetter, setPreviewLetter] = useState<LetterRow | null>(null);
   const [previewBody, setPreviewBody] = useState("");
   const [previewLoading, setPreviewLoading] = useState(false);
+  const [creditCommandPlanBundle, setCreditCommandPlanBundle] =
+    useState<CreditCommandPlanResponse | null>(null);
 
   const autoGenStartedRef = useRef(false);
   const genInFlightRef = useRef(false);
@@ -73,6 +82,7 @@ export function LettersReadyPage() {
     if (!token || !workflowId) {
       setLetters([]);
       setLettersUi(null);
+      setCreditCommandPlanBundle(null);
       setLoadError(null);
       setPageLoading(false);
       return;
@@ -80,14 +90,19 @@ export function LettersReadyPage() {
     setPageLoading(true);
     setLoadError(null);
     try {
-      const data = await fetchLettersContext(token, workflowId);
+      const [data, planBundle] = await Promise.all([
+        fetchLettersContext(token, workflowId),
+        fetchCreditCommandPlan(token, workflowId).catch(() => null),
+      ]);
       applyWorkflowEnvelope(data.workflow);
       setLetters(data.letters);
       setLettersUi(data.lettersUi);
+      setCreditCommandPlanBundle(planBundle);
     } catch (e) {
       setLoadError(e instanceof Error ? e.message : String(e));
       setLetters([]);
       setLettersUi(null);
+      setCreditCommandPlanBundle(null);
     } finally {
       setPageLoading(false);
     }
@@ -114,10 +129,14 @@ export function LettersReadyPage() {
     try {
       const r = await postLettersGenerate(token, workflowId);
       applyWorkflowEnvelope(r.workflow);
-      const again = await fetchLettersContext(token, workflowId);
+      const [again, planAgain] = await Promise.all([
+        fetchLettersContext(token, workflowId),
+        fetchCreditCommandPlan(token, workflowId).catch(() => null),
+      ]);
       applyWorkflowEnvelope(again.workflow);
       setLetters(again.letters);
       setLettersUi(again.lettersUi);
+      setCreditCommandPlanBundle(planAgain);
     } catch (e) {
       setGenError(e instanceof Error ? e.message : String(e));
       autoGenStartedRef.current = false;
@@ -262,7 +281,13 @@ export function LettersReadyPage() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -8 }}
               transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+              className="space-y-5"
             >
+              <ProgramFlowBridge className="mx-auto max-w-sm">
+                <span className="font-medium text-lab-text">Now that your dispute plan is set for this round,</span>{" "}
+                we&apos;re generating letters — the next beat in the same program, not a separate tool
+                to hunt for.
+              </ProgramFlowBridge>
               <LetterGeneratingState />
             </motion.div>
           ) : null}
@@ -296,24 +321,66 @@ export function LettersReadyPage() {
             >
               <motion.p
                 variants={headerVariants}
-                className="text-center text-xs font-medium uppercase tracking-[0.14em] text-lab-subtle"
+                className="text-center text-[10px] font-semibold uppercase tracking-[0.16em] text-lab-accent"
               >
-                Ready
+                Your program · Letters
               </motion.p>
               <motion.h1
                 variants={headerVariants}
-                className="mt-3 text-center text-2xl font-semibold tracking-tight text-lab-text sm:text-[1.65rem]"
+                className="mt-2 text-center text-2xl font-semibold tracking-tight text-lab-text sm:text-[1.65rem]"
               >
-                Your dispute letters are generated
+                Your dispute letters are ready
               </motion.h1>
+              <motion.div
+                variants={headerVariants}
+                className="mx-auto mt-5 max-w-sm rounded-xl border border-lab-accent/20 bg-lab-surface/80 px-4 py-4 text-left sm:px-5 sm:py-5"
+              >
+                <p className="text-xs font-semibold uppercase tracking-wide text-lab-accent">
+                  {lettersPurpose.headline}
+                </p>
+                {lettersPurpose.paragraphs.map((para) => (
+                  <p
+                    key={para.slice(0, 48)}
+                    className="mt-2 text-sm leading-relaxed text-lab-muted sm:text-[15px]"
+                  >
+                    {para}
+                  </p>
+                ))}
+              </motion.div>
+              <motion.p
+                variants={headerVariants}
+                className="mx-auto mt-4 max-w-sm text-center text-sm leading-relaxed text-lab-muted sm:text-[15px]"
+              >
+                This is a real outcome: bureau-specific dispute letter text built from your report
+                and the items you chose — not a generic form. Use them to challenge inaccurate
+                reporting; certified mail and proof come in the next steps of the same program.
+              </motion.p>
               <motion.p
                 variants={headerVariants}
                 className="mx-auto mt-3 max-w-sm text-center text-sm leading-relaxed text-lab-muted sm:text-[15px]"
               >
-                Letter text is generated from your dispute selection and reports (same engine as the
-                main app). “Generated” means ready to review and download — certified mail is a
-                later step after proof.
+                <span className="font-medium text-lab-text">Next:</span> open each letter to review,
+                download if you want a copy, then continue to proof and send when you&apos;re ready.
               </motion.p>
+              <motion.div
+                variants={headerVariants}
+                className="mx-auto mt-6 max-w-sm rounded-xl border border-white/[0.1] bg-lab-bg/60 px-4 py-4 sm:px-5 sm:py-5"
+              >
+                <p className="text-sm font-semibold text-lab-text">{lettersProgramNext.headline}</p>
+                <ul className="mt-3 list-disc space-y-2 pl-5 text-sm leading-relaxed text-lab-muted">
+                  {lettersProgramNext.bullets.map((b) => (
+                    <li key={b.slice(0, 40)}>{b}</li>
+                  ))}
+                </ul>
+              </motion.div>
+
+              <motion.div variants={headerVariants} className="mx-auto mt-5 max-w-sm">
+                <ProgramFlowBridge>
+                  <span className="font-medium text-lab-text">Now we&apos;ve prepared your dispute letters</span>{" "}
+                  in this program — they&apos;re real outputs from the plan you locked in. Two clear
+                  actions below: continue the program, or download everything.
+                </ProgramFlowBridge>
+              </motion.div>
 
               {lettersUi && lettersUi.selectedReviewClaimCount > 0 ? (
                 <motion.p
@@ -337,7 +404,7 @@ export function LettersReadyPage() {
                     className="text-center text-sm text-lab-muted"
                   >
                     No letter files are on record for your account yet. If you just finished an
-                    earlier step, refresh or go back to the workflow home.
+                    earlier step, refresh or go back to program home.
                   </motion.p>
                 ) : (
                   letters.map((letter) => (
@@ -349,6 +416,16 @@ export function LettersReadyPage() {
                   ))
                 )}
               </motion.div>
+
+              {creditCommandPlanBundle ? (
+                <motion.div variants={headerVariants} className="mt-2">
+                  <CreditCommandPlanSection
+                    variant="letters"
+                    plan={creditCommandPlanBundle.creditCommandPlan}
+                    unavailableReason={creditCommandPlanBundle.unavailableReason}
+                  />
+                </motion.div>
+              ) : null}
 
               <motion.div variants={headerVariants}>
                 <LettersActionSection

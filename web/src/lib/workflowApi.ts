@@ -6,6 +6,7 @@ import type {
 } from "@/lib/paymentTypes";
 import type { DisputeStrategyBundle } from "@/lib/strategyTypes";
 import type {
+  CreditCommandPlanResponse,
   LettersContextResponse,
   LettersGenerateResponse,
 } from "@/lib/letterTypes";
@@ -22,6 +23,8 @@ import type {
 } from "@/lib/responseTypes";
 import type { TrackingContextResponse } from "@/lib/trackingTypes";
 import { workflowApiBase } from "@/lib/apiBase";
+import { formatReportUploadErrorMessage } from "@/lib/uploadHttpError";
+import type { EscalationLayerResponse } from "@/lib/escalationLayerTypes";
 import type { WorkflowIntegrityHints } from "@/lib/integrityHintsTypes";
 import type { WorkflowEnvelope } from "@/lib/workflowTypes";
 
@@ -176,6 +179,18 @@ export async function postDisputeSelectionConfirm(
   );
 }
 
+/** After the first full cycle completes, reopen dispute selection → letters → mail for round 2+. */
+export async function postBeginNextDisputeRound(
+  token: string,
+  workflowId: string,
+): Promise<{ workflow: WorkflowEnvelope }> {
+  return workflowFetchJson<{ workflow: WorkflowEnvelope }>(
+    `/api/workflows/${encodeURIComponent(workflowId)}/disputes/begin-next-round`,
+    token,
+    { method: "POST", body: "{}" },
+  );
+}
+
 export async function fetchPaymentContext(
   token: string,
   workflowId: string,
@@ -231,6 +246,16 @@ export async function fetchLettersContext(
 ): Promise<LettersContextResponse> {
   return workflowFetchJson<LettersContextResponse>(
     `/api/workflows/${encodeURIComponent(workflowId)}/letters/context`,
+    token,
+  );
+}
+
+export async function fetchCreditCommandPlan(
+  token: string,
+  workflowId: string,
+): Promise<CreditCommandPlanResponse> {
+  return workflowFetchJson<CreditCommandPlanResponse>(
+    `/api/workflows/${encodeURIComponent(workflowId)}/credit-command-plan`,
     token,
   );
 }
@@ -384,6 +409,41 @@ export async function fetchTrackingContext(
   );
 }
 
+export async function fetchEscalationLayer(
+  token: string,
+  workflowId: string,
+): Promise<EscalationLayerResponse> {
+  return workflowFetchJson<EscalationLayerResponse>(
+    `/api/workflows/${encodeURIComponent(workflowId)}/escalation/layer`,
+    token,
+  );
+}
+
+export type EscalationUxStateApiResponse = {
+  workflow: WorkflowEnvelope;
+  progression?: WorkflowEnvelope["progression"];
+  canonicalProgression?: WorkflowEnvelope["canonicalProgression"];
+};
+
+export async function postEscalationUxState(
+  token: string,
+  workflowId: string,
+  payload: { actionId: string; reviewed?: boolean; proceeded?: boolean },
+): Promise<EscalationUxStateApiResponse> {
+  return workflowFetchJson<EscalationUxStateApiResponse>(
+    `/api/workflows/${encodeURIComponent(workflowId)}/escalation/ux-state`,
+    token,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        actionId: payload.actionId,
+        reviewed: payload.reviewed ?? false,
+        proceeded: payload.proceeded ?? false,
+      }),
+    },
+  );
+}
+
 export async function fetchWorkflowResponses(
   token: string,
   workflowId: string,
@@ -496,15 +556,45 @@ export type ReportUploadResponse = {
   workflow: WorkflowEnvelope;
 };
 
+/** Manual multi-part uploads: each piece stays under this (server merges). */
+const MAX_REPORT_CHUNK_MB = 25;
+/** One full bureau PDF; larger files are split by page server-side then merged for parsing. */
+const MAX_SINGLE_REPORT_MB = 200;
+const MAX_REPORT_PARTS = 12;
+
 /** Multipart upload → same ``report_pipeline`` as Streamlit; completes upload + parse_analyze hooks. */
 export async function postReportUpload(
   token: string,
   workflowId: string,
-  file: File,
+  files: File | File[],
   privacyConsent: boolean,
 ): Promise<ReportUploadResponse> {
+  const list = Array.isArray(files) ? files : [files];
+  if (list.length === 0) {
+    throw new Error("Choose at least one PDF.");
+  }
+  if (list.length > MAX_REPORT_PARTS) {
+    throw new Error(`At most ${MAX_REPORT_PARTS} PDF parts per upload.`);
+  }
+  const chunkBytes = MAX_REPORT_CHUNK_MB * 1024 * 1024;
+  const singleBytes = MAX_SINGLE_REPORT_MB * 1024 * 1024;
+  if (list.length > 1) {
+    for (const f of list) {
+      if (f.size > chunkBytes) {
+        throw new Error(
+          `Each part must be at most ${MAX_REPORT_CHUNK_MB} MB (${f.name}). Or upload one large PDF (up to ${MAX_SINGLE_REPORT_MB} MB) and we split it automatically.`,
+        );
+      }
+    }
+  } else if (list[0].size > singleBytes) {
+    throw new Error(`This PDF is too large (max ${MAX_SINGLE_REPORT_MB} MB).`);
+  }
   const fd = new FormData();
-  fd.append("file", file);
+  // Primary field name expected by older APIs and some proxies; keep `files` for multi-part merge.
+  fd.append("file", list[0], list[0].name);
+  for (const f of list) {
+    fd.append("files", f, f.name);
+  }
   fd.append("privacy_consent", privacyConsent ? "true" : "false");
   const url = `${apiBase()}/api/workflows/${encodeURIComponent(workflowId)}/reports/upload`;
   const res = await fetch(url, {
@@ -514,18 +604,9 @@ export async function postReportUpload(
   });
   const text = await res.text();
   if (!res.ok) {
-    let detail = text.slice(0, 500);
-    try {
-      const j = JSON.parse(text) as { detail?: unknown };
-      if (typeof j.detail === "object" && j.detail && "messageSafe" in j.detail) {
-        detail = String((j.detail as { messageSafe: string }).messageSafe);
-      } else if (typeof j.detail === "string") {
-        detail = j.detail;
-      }
-    } catch {
-      /* keep slice */
-    }
-    throw new Error(`Upload failed (${res.status}): ${detail}`);
+    throw new Error(
+      `Upload failed (${res.status}): ${formatReportUploadErrorMessage(res.status, text)}`,
+    );
   }
   return JSON.parse(text) as ReportUploadResponse;
 }

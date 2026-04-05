@@ -45,13 +45,31 @@ def register_customer_web_status_route(app: FastAPI) -> None:
     @app.get("/api/system/customer-web-status", include_in_schema=False)
     def customer_web_status() -> dict[str, object]:
         idx = _DIST / "index.html"
-        return {
+        out: dict[str, object] = {
             "ok": True,
             "dist_index_exists": idx.is_file(),
             "assets_dir_exists": _ASSETS.is_dir(),
             "dist_path": str(_DIST),
             "hint": "If dist_index_exists is false, run: cd web && npm install && npm run build",
         }
+        try:
+            import services.public_demo_service as pds
+
+            cfg_err = pds.public_demo_config_error()
+            scenarios = pds.list_demo_scenarios_public()
+            out["publicDemo"] = {
+                "productionLikeDeploy": pds.is_production_like_public_demo_deploy(),
+                "configError": cfg_err,
+                "scenarioCount": len(scenarios),
+                "ready": cfg_err is None and len(scenarios) > 0,
+                # Present only on builds with auto-provisioned demo user (pull + restart API if null/absent).
+                "internalDemoUserEmail": getattr(
+                    pds, "INTERNAL_PUBLIC_DEMO_EMAIL", None
+                ),
+            }
+        except Exception as exc:  # noqa: BLE001 — status probe must not 500
+            out["publicDemo"] = {"error": f"probe_failed: {exc!s}"[:200]}
+        return out
 
 
 def mount_customer_web_dist_if_present(app: FastAPI, logger: logging.Logger) -> None:

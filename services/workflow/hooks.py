@@ -4,14 +4,30 @@ Backend integration: connect domain events to WorkflowEngine.
 Browser clients must not call these directly; use authenticated workflow HTTP routes
 instead. Streamlit, webhooks, DB helpers, and pipelines call into this module as
 trusted server code.
+
+Flow control: progression mutating hooks first pass ``workflow_flow_gates`` assertions
+(equivalent to internal HTTP service-complete / customer payment rules) so Streamlit,
+``report_pipeline``, webhooks, and DB triggers cannot advance the wrong head step.
+
+Set ``STREAMLIT_WORKFLOW_MUTATIONS_DISABLED=1`` to no-op Streamlit-branded hook calls.
+
+Production-like deploys also disable those hooks unless ``STREAMLIT_ALLOW_CUSTOMER_MUTATIONS=1``
+(see ``services.streamlit_customer_gate``). ``audit_source`` containing ``payment_return`` is
+exempt so Stripe success URLs still applying credits are not stranded during URL migration.
 """
 
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
+from services.workflow import registry as reg
 from services.workflow.engine import WorkflowEngine, compute_authoritative_step
+from services.workflow.workflow_flow_gates import (
+    assert_internal_service_complete_allowed,
+    assert_internal_service_fail_allowed,
+)
 from services.workflow.mail_gating import (
     apply_mail_progress_metadata,
     record_mail_attempt_failed,
@@ -21,10 +37,26 @@ from services.workflow.repository import (
     ensure_active_workflow_id,
     fetch_session,
     merge_into_workflow_metadata,
-    update_session_fields,
 )
 
 _log = logging.getLogger(__name__)
+
+
+def _streamlit_workflow_mutations_blocked(audit_source: Optional[str]) -> bool:
+    """
+    Block hook mutations attributed to interactive Streamlit when the kill-switch or
+    production Streamlit policy is active. Exempt ``payment_return`` audit paths.
+    """
+    from services.streamlit_customer_gate import streamlit_workflow_hook_mutations_disabled
+
+    if not streamlit_workflow_hook_mutations_disabled():
+        return False
+    s = (audit_source or "").lower()
+    if "streamlit" not in s:
+        return False
+    if "payment_return" in s:
+        return False
+    return True
 
 
 def _engine() -> WorkflowEngine:
@@ -61,6 +93,13 @@ def notify_upload_and_parse_success(
         wid = _resolve_wid(user_id, workflow_id)
         if not wid:
             return
+        if not assert_internal_service_complete_allowed(wid, "upload"):
+            _log.info(
+                "hook gate: skip upload+parse success (upload head) wf=%s user=%s",
+                wid,
+                user_id,
+            )
+            return
         eng = _engine()
         summary: Dict[str, Any] = {
             "bureau": bureau,
@@ -71,6 +110,13 @@ def notify_upload_and_parse_success(
         eng.service_complete_step(
             wid, "upload", summary, audit_source="report_pipeline", audit_user_id=user_id
         )
+        if not assert_internal_service_complete_allowed(wid, "parse_analyze"):
+            _log.info(
+                "hook gate: upload done but parse head mismatch wf=%s user=%s",
+                wid,
+                user_id,
+            )
+            return
         eng.service_complete_step(
             wid,
             "parse_analyze",
@@ -91,6 +137,13 @@ def notify_upload_storage_failed(
     def _go() -> None:
         wid = _resolve_wid(user_id, workflow_id)
         if not wid:
+            return
+        if not assert_internal_service_fail_allowed(wid, "upload"):
+            _log.info(
+                "hook gate: skip upload storage fail (head/status) wf=%s user=%s",
+                wid,
+                user_id,
+            )
             return
         _engine().service_fail_step(
             wid,
@@ -116,6 +169,13 @@ def notify_parse_failed(
         wid = _resolve_wid(user_id, workflow_id)
         if not wid:
             return
+        if not assert_internal_service_fail_allowed(wid, "upload"):
+            _log.info(
+                "hook gate: skip parse_failed on upload (head/status) wf=%s user=%s",
+                wid,
+                user_id,
+            )
+            return
         msg = (detail_safe or "Parse failed.")[:500]
         _engine().service_fail_step(
             wid,
@@ -140,8 +200,23 @@ def notify_review_claims_completed(
     audit_source: str = "streamlit",
 ) -> None:
     def _go() -> None:
+        if _streamlit_workflow_mutations_blocked(audit_source):
+            _log.info(
+                "STREAMLIT_WORKFLOW_MUTATIONS_DISABLED: skip review_claims user=%s source=%s",
+                user_id,
+                audit_source,
+            )
+            return
         wid = _resolve_wid(user_id, workflow_id)
         if not wid:
+            return
+        if not assert_internal_service_complete_allowed(wid, "review_claims"):
+            _log.info(
+                "hook gate: skip review_claims complete wf=%s user=%s source=%s",
+                wid,
+                user_id,
+                audit_source,
+            )
             return
         summary: Dict[str, Any] = {}
         if item_count is not None:
@@ -170,8 +245,23 @@ def complete_select_disputes_step(
     Complete workflow step ``select_disputes`` and persist mail + optional dispute_selection ids.
     Returns False if the engine refused (wrong head / state).
     """
+    if _streamlit_workflow_mutations_blocked(audit_source):
+        _log.info(
+            "STREAMLIT_WORKFLOW_MUTATIONS_DISABLED: skip select_disputes user=%s source=%s",
+            user_id,
+            audit_source,
+        )
+        return False
     wid = _resolve_wid(user_id, workflow_id)
     if not wid:
+        return False
+    if not assert_internal_service_complete_allowed(wid, "select_disputes"):
+        _log.info(
+            "hook gate: skip select_disputes complete wf=%s user=%s source=%s",
+            wid,
+            user_id,
+            audit_source,
+        )
         return False
     summary: Dict[str, Any] = {"selectedCount": int(selected_count)}
     if bureaus:
@@ -212,6 +302,13 @@ def complete_select_disputes_step(
                 ds = dict(ds)
             ds["selected_review_claim_ids"] = ids
             ds["draft_selected_review_claim_ids"] = ids
+            cum: set[str] = set()
+            raw_c = ds.get("cumulative_disputed_review_claim_ids")
+            if isinstance(raw_c, list):
+                cum = {str(x) for x in raw_c if x}
+            cum |= set(ids)
+            ds["cumulative_disputed_review_claim_ids"] = sorted(cum)
+            ds["previously_disputed_claim_ids"] = sorted(cum)
             meta["dispute_selection"] = ds
 
     merge_into_workflow_metadata(wid, _mut)
@@ -228,6 +325,13 @@ def notify_select_disputes_completed(
     selected_review_claim_ids: Optional[List[str]] = None,
 ) -> None:
     def _go() -> None:
+        if _streamlit_workflow_mutations_blocked(audit_source):
+            _log.info(
+                "STREAMLIT_WORKFLOW_MUTATIONS_DISABLED: skip notify_select_disputes user=%s source=%s",
+                user_id,
+                audit_source,
+            )
+            return
         sc = int(selected_count) if selected_count is not None else 0
         complete_select_disputes_step(
             user_id,
@@ -244,6 +348,64 @@ def notify_select_disputes_completed(
 # --- Payment (Stripe webhook) -------------------------------------------------
 
 
+def record_payment_unlock_audit(
+    workflow_id: str,
+    *,
+    user_id: int,
+    stripe_session_id: str,
+    reason_code: str,
+    detail_safe: str,
+) -> None:
+    """
+    Persist operator-visible state when Stripe credits exist but the workflow ``payment``
+    step could not be completed (flow gate, retries exhausted, etc.).
+    """
+    wid = str(workflow_id or "").strip()
+    if not wid:
+        return
+    sid = (stripe_session_id or "").strip()
+    suffix = sid[-12:] if len(sid) > 12 else sid
+
+    def _mut(meta: Dict[str, Any]) -> None:
+        meta["payment_unlock_audit"] = {
+            "state": "requires_intervention",
+            "reasonCode": (reason_code or "unknown")[:64],
+            "detailSafe": (detail_safe or "")[:500],
+            "stripeSessionSuffix": suffix,
+            "updatedAt": datetime.now(timezone.utc).isoformat(),
+            "userId": int(user_id),
+        }
+
+    merge_into_workflow_metadata(wid, _mut)
+    try:
+        from services.workflow.audit_log import log_workflow_event
+
+        log_workflow_event(
+            "payment_unlock_requires_intervention",
+            workflow_id=wid,
+            step_id="payment",
+            source="workflow_payment",
+            user_id=int(user_id),
+            message_safe=(detail_safe or "")[:500],
+            extra={"reasonCode": reason_code, "stripeSessionSuffix": suffix},
+        )
+    except Exception:
+        _log.debug("payment_unlock audit log skipped", exc_info=True)
+
+
+def clear_payment_unlock_audit(workflow_id: str) -> None:
+    """Remove drift marker after the payment step is confirmed complete."""
+    wid = str(workflow_id or "").strip()
+    if not wid:
+        return
+
+    def _mut(meta: Dict[str, Any]) -> None:
+        if "payment_unlock_audit" in meta:
+            del meta["payment_unlock_audit"]
+
+    merge_into_workflow_metadata(wid, _mut)
+
+
 def notify_payment_completed(
     user_id: int,
     stripe_session_id: str,
@@ -257,6 +419,14 @@ def notify_payment_completed(
     def _go() -> None:
         if not workflow_id or not str(workflow_id).strip():
             _log.warning("payment_completed skipped: missing workflow_id")
+            return
+        if _streamlit_workflow_mutations_blocked(audit_source):
+            _log.info(
+                "STREAMLIT_WORKFLOW_MUTATIONS_DISABLED: skip notify_payment_completed user=%s wf=%s source=%s",
+                user_id,
+                workflow_id,
+                audit_source,
+            )
             return
         from services.workflow_payment_service import ensure_payment_step_after_purchase
 
@@ -293,6 +463,13 @@ def notify_payment_waived(
     """
 
     def _go() -> bool:
+        if _streamlit_workflow_mutations_blocked(actor_source):
+            _log.info(
+                "STREAMLIT_WORKFLOW_MUTATIONS_DISABLED: skip payment_waived user=%s actor=%s",
+                user_id,
+                actor_source,
+            )
+            return False
         wid = str(workflow_id or "").strip()
         if not wid:
             return False
@@ -301,7 +478,8 @@ def notify_payment_waived(
             return False
         eng = _engine()
         _, _, smap = eng.get_state_bundle(wid)
-        head, _ = compute_authoritative_step(smap)
+        order = reg.linear_order_for(str(session.get("workflow_type") or reg.WORKFLOW_TYPE_DEFAULT))
+        head, _ = compute_authoritative_step(smap, order)
         if head != "payment":
             return False
         row = smap.get("payment")
@@ -322,7 +500,10 @@ def notify_payment_waived(
         )
 
     try:
-        return bool(_go())
+        ok = bool(_go())
+        if ok:
+            clear_payment_unlock_audit(str(workflow_id or "").strip())
+        return ok
     except Exception:
         _log.warning("notify_payment_waived failed", exc_info=True)
         return False
@@ -338,8 +519,23 @@ def complete_letter_generation_step(
     *,
     audit_source: str = "api",
 ) -> bool:
+    if _streamlit_workflow_mutations_blocked(audit_source):
+        _log.info(
+            "STREAMLIT_WORKFLOW_MUTATIONS_DISABLED: skip letter_generation user=%s source=%s",
+            user_id,
+            audit_source,
+        )
+        return False
     wid = _resolve_wid(user_id, workflow_id)
     if not wid:
+        return False
+    if not assert_internal_service_complete_allowed(wid, "letter_generation"):
+        _log.info(
+            "hook gate: skip letter_generation complete wf=%s user=%s source=%s",
+            wid,
+            user_id,
+            audit_source,
+        )
         return False
     return _engine().service_complete_step(
         wid,
@@ -358,6 +554,13 @@ def notify_letter_generation_completed(
     audit_source: str = "streamlit",
 ) -> None:
     def _go() -> None:
+        if _streamlit_workflow_mutations_blocked(audit_source):
+            _log.info(
+                "STREAMLIT_WORKFLOW_MUTATIONS_DISABLED: skip notify_letter_generation user=%s source=%s",
+                user_id,
+                audit_source,
+            )
+            return
         complete_letter_generation_step(
             user_id,
             workflow_id,
@@ -391,6 +594,9 @@ def maybe_notify_proof_attachment_completed(
             return
         wid = _resolve_wid(user_id, workflow_id)
         if not wid:
+            return
+        if not assert_internal_service_complete_allowed(wid, "proof_attachment"):
+            _log.info("hook gate: skip proof_attachment complete wf=%s user=%s", wid, user_id)
             return
         _engine().service_complete_step(
             wid,
@@ -449,6 +655,9 @@ def notify_certified_mail_sent(
             )
             return
 
+        if not assert_internal_service_complete_allowed(wid, "mail"):
+            _log.info("hook gate: skip mail+track complete (mail head) wf=%s user=%s", wid, user_id)
+            return
         eng.service_complete_step(
             wid,
             "mail",
@@ -456,6 +665,13 @@ def notify_certified_mail_sent(
             audit_source="lob",
             audit_user_id=user_id,
         )
+        if not assert_internal_service_complete_allowed(wid, "track"):
+            _log.warning(
+                "hook gate: mail completed but track head mismatch wf=%s user=%s",
+                wid,
+                user_id,
+            )
+            return
         eng.service_complete_step(
             wid,
             "track",
@@ -490,6 +706,13 @@ def notify_mail_send_failed(
             )
         except Exception:
             _log.debug("record_mail_attempt_failed skipped", exc_info=True)
+        if not assert_internal_service_fail_allowed(wid, "mail"):
+            _log.info(
+                "hook gate: skip mail service_fail (head/status) wf=%s user=%s",
+                wid,
+                user_id,
+            )
+            return
         _engine().service_fail_step(
             wid,
             "mail",

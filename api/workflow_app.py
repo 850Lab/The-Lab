@@ -1,6 +1,11 @@
 """
 FastAPI app: authoritative workflow HTTP API.
 
+**Product surface:** This module is the forward build target for customer and operator
+HTTP contracts. Streamlit (`app.py`) is legacy reference/fallback until
+``docs/STREAMLIT_RETIREMENT.md`` parity criteria are met — new endpoints and workflow
+rules belong here (or in ``services/``), not in Streamlit session state.
+
 Authentication:
   - User endpoints: ``Authorization: Bearer <session_token>`` (see ``auth.validate_session``).
   - Customer session creation: ``POST /api/auth/login``, ``POST /api/auth/signup`` (same ``sessions`` table as Streamlit).
@@ -8,12 +13,18 @@ Authentication:
     ``Authorization: Bearer <WORKFLOW_INTERNAL_API_SECRET>``.
 
 Environment:
-  - ``DATABASE_URL`` — Postgres (default when set). If unset in non-production, workflow storage uses SQLite (see below).
-  - ``DB_BACKEND`` — ``auto`` (default), ``postgres``, or ``sqlite``. Production-like hosts never use SQLite.
-  - ``WORKFLOW_SQLITE_PATH`` — SQLite file for local workflow + Mission Control (default: ``lab_truth/dev_workflow.sqlite``).
+  - ``DATABASE_URL`` — Postgres connection string for **all** app data (auth, org, reports, workflow).
+    Required whenever ``REPLIT_DEPLOYMENT=1`` or ``ENVIRONMENT=production``; startup fails if missing.
+  - ``DB_BACKEND`` — ``auto`` (default) or ``postgres`` → workflow uses the same Postgres pool as ``database.get_db``.
+    ``sqlite`` is **dev/tests only** (``DB_BACKEND=sqlite`` + ``WORKFLOW_SQLITE_PATH``); **forbidden** in production-like env.
+  - ``WORKFLOW_SQLITE_PATH`` — optional SQLite file when ``DB_BACKEND=sqlite`` only (never used when deployed as production).
   - ``WORKFLOW_INTERNAL_API_SECRET`` — workers / reminder delivery batch (non-admin internal routes).
   - ``WORKFLOW_ADMIN_API_SECRET`` — required for ``/internal/admin/...`` routes.
-  - ``WORKFLOW_REMINDER_FALLBACK_STUB=1`` — after email failure, mark sent with channel ``stub`` (logged).
+  - ``WORKFLOW_REMINDER_FALLBACK_STUB=1`` — dev only: after email failure, mark sent with channel ``stub``.
+    Ignored when ``REPLIT_DEPLOYMENT=1`` or ``ENVIRONMENT=production`` (reminders stay ``failed`` with audit).
+  - ``RESEND_API_KEY`` + ``RESEND_FROM_EMAIL`` — verification and password emails (local: add to ``.env``).
+  - ``WORKFLOW_DEV_EMAIL_HINTS=1`` — append Resend exception text to 503 ``messageSafe`` (local debug only).
+  - Repo-root ``.env`` — loaded automatically when this module starts (before routes run). Gitignored.
 
 Public clients cannot complete or fail steps over HTTP; use ``/internal/.../service-*``
 with the internal secret from trusted workers.
@@ -21,13 +32,41 @@ with the internal secret from trusted workers.
 
 from __future__ import annotations
 
+
+def _load_repo_dotenv() -> None:
+    """Load permanent local secrets from repo-root ``.env`` (see ``.env.example``)."""
+    import logging as _logging
+
+    _env_log = _logging.getLogger(__name__)
+    try:
+        from pathlib import Path
+
+        from dotenv import load_dotenv
+
+        root = Path(__file__).resolve().parent.parent
+        path = root / ".env"
+        loaded_file = load_dotenv(path, override=True)
+        _env_log.info(
+            "Repo .env load: path=%s file_exists=%s load_dotenv_returned=%s",
+            path,
+            path.is_file(),
+            loaded_file,
+        )
+    except ImportError:
+        _env_log.warning("python-dotenv not installed; .env will not be auto-loaded")
+
+
+_load_repo_dotenv()
+
 import logging
 import os
 import re
+import time
 from contextlib import asynccontextmanager
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
-from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, UploadFile
+from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Query, Request, UploadFile
+from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
@@ -42,11 +81,14 @@ from api.workflow_deps import (
     get_session_user,
     require_admin_service,
     require_internal_service,
+    require_platform_admin,
 )
+from services.workflow.workflow_db_config import is_production_like
 from services.workflow import admin_override_service as admin_svc
 from services.workflow import recovery_execution_service as rec_exec
 from services.workflow.engine import WorkflowEngine
 from services.workflow.home_summary_service import build_home_summary
+from services import architect_access_service as architect_access_svc
 from services.workflow import mission_control_service as mcc_svc
 from services.workflow import reminder_service as rem_svc
 from services.customer_response_service import (
@@ -58,52 +100,287 @@ from services.workflow.response_flow_events import (
     emit_response_flow_event,
 )
 from services.workflow.response_intake_service import intake_bureau_response
-from services.workflow.repository import fetch_latest_active_workflow_id
+from services.workflow.repository import fetch_resume_workflow_id_for_user, fetch_session
+from services.workflow.workflow_event_service import list_workflow_events
 from services.workflow.integrity_hints_service import build_integrity_hints
 from services.workflow import hooks as workflow_hooks
 import auth
 import database as db
 from services.customer_intake_summary import build_customer_intake_summary
 from services.customer_letter_service import (
+    build_credit_command_plan_for_workflow,
     get_letter_body_for_user,
     letter_generation_head_state,
     list_letters_for_workflow_customer,
     run_letter_generation,
     selected_review_claim_ids_from_workflow,
 )
-from services.customer_proof_service import (
-    build_proof_context_payload,
-    on_proof_attachment_step,
+from services.workflow.workflow_job_service import (
+    JOB_TYPE_LETTER_GENERATION,
+    create_job,
+    get_job as wf_get_job,
+    list_jobs as wf_list_jobs,
+    public_job_view as wf_public_job_view,
 )
+from services.workflow.workflow_flow_gates import (
+    ACTION_CREDIT_COMMAND_PLAN_VIEW,
+    ACTION_CUSTOMER_UX_EVENT,
+    ACTION_DISPUTES_SELECTION_CONFIRM,
+    ACTION_DISPUTES_SELECTION_DRAFT,
+    ACTION_DISPUTES_STRATEGY_VIEW,
+    ACTION_HOME_SUMMARY_VIEW,
+    ACTION_INTEGRITY_HINTS_VIEW,
+    ACTION_INTAKE_SUMMARY_VIEW,
+    ACTION_LETTER_BODY_READ,
+    ACTION_LETTER_GENERATION_RUN,
+    ACTION_LETTERS_BUNDLE_READ,
+    ACTION_LETTERS_CONTEXT_VIEW,
+    ACTION_MAIL_CONTEXT,
+    ACTION_MAIL_SEND_BUREAU,
+    ACTION_PAYMENT_CHECKOUT,
+    ACTION_PAYMENT_CONTEXT,
+    ACTION_PAYMENT_CONTINUE_CREDITS,
+    ACTION_PAYMENT_RECONCILE,
+    ACTION_PROOF_CONTEXT,
+    ACTION_PROOF_SIGNATURE,
+    ACTION_PROOF_UPLOAD,
+    ACTION_REPORT_PDF_UPLOAD,
+    ACTION_DISPUTES_BEGIN_NEXT_ROUND,
+    ACTION_ESCALATION_LAYER_VIEW,
+    ACTION_ESCALATION_UX_UPDATE,
+    ACTION_RESPONSES_INTAKE,
+    ACTION_RESPONSES_LIST,
+    ACTION_RESPONSES_METRICS,
+    ACTION_REVIEW_CLAIMS_ACK,
+    ACTION_TRACKING_CONTEXT,
+    ACTION_WORKFLOW_JOB_GET,
+    ACTION_WORKFLOW_JOBS_LIST,
+    FlowEnforcementError,
+    INTERNAL_ASYNC_STATE,
+    INTERNAL_REMINDER_CANDIDATES,
+    INTERNAL_SERVICE_COMPLETE,
+    INTERNAL_SERVICE_FAIL,
+    OPERATOR_CLEAR_STALLED,
+    OPERATOR_MC_REMINDER_CANDIDATES,
+    OPERATOR_PAYMENT_WAIVED,
+    OPERATOR_RECOVERY_MAIL_RETRY,
+    OPERATOR_RECOVERY_RECORD,
+    OPERATOR_RECOVERY_RESUME,
+    OPERATOR_RECOVERY_RETRY_STEP,
+    OPERATOR_REOPEN_STEP,
+    TRUST_INTERNAL,
+    TRUST_OPERATOR,
+    enforce_customer_action,
+    enforce_flow_action,
+    enforce_step_start,
+    flow_violation_detail,
+)
+from services.customer_proof_service import build_proof_context_payload
 from services.customer_mail_service import (
     build_mail_context_payload,
     send_certified_letter_for_bureau,
 )
 from services.customer_tracking_service import build_tracking_context_payload
+from services.workflow.escalation_layer_service import build_escalation_layer_payload
+from services.workflow.escalation_ux_payload import persist_escalation_ux_state
 from services.workflow_payment_service import (
     build_payment_context,
     complete_payment_with_existing_letter_entitlements,
     needed_letters_from_workflow_session,
     reconcile_checkout_session_for_user,
     start_checkout_for_workflow,
-    workflow_payment_head_state,
+)
+from services.demo_org_bridge_service import convert_demo_lead_to_org
+from services.org_program_session_service import (
+    create_program_session,
+    list_program_sessions,
+    patch_enrollment_workshop,
+    set_enrollment_session,
+    update_program_session,
+)
+from services.org_workshop_desk_service import build_workshop_desk
+from services.org_program_workflow_service import (
+    advance_org_program_steps,
+    ensure_org_program_workflow,
+)
+from services.org_commerce_service import (
+    build_org_program_billing_snapshot,
+    reconcile_org_program_activation_checkout,
+    start_org_program_activation_checkout,
+)
+from services.org_service import (
+    add_organization_member,
+    create_organization,
+    get_organization,
+    list_organization_members,
+    org_allows_participant_program_access,
+    update_organization,
+    user_is_active_instructor_for_org,
+    user_is_active_org_admin_for_org,
+)
+from services.org_program_visibility_service import (
+    build_org_outcomes_aggregate,
+    build_org_progress_aggregate,
+    get_org_program_participant_detail,
+    list_org_program_participants,
+)
+from services.program_enrollment_service import (
+    build_me_org_program_payload,
+    create_program_enrollment,
+    get_enrollment,
+    list_enrollments_for_org,
+)
+from services.program_progress_service import (
+    apply_instructor_program_override,
+    build_me_program_progress_payload,
+    effective_findings_ready,
+    effective_selections_saved,
+    effective_upload_done,
+    participant_forward_paused,
+)
+from services.public_demo_service import (
+    list_demo_scenarios_public,
+    public_demo_config_error,
+    run_public_fixture_demo,
+)
+from services.me_org_report_service import (
+    build_findings_payload,
+    get_enrolled_org_participant_context,
+)
+from services.me_org_dispute_service import (
+    build_program_dispute_options,
+    get_dispute_selections_response,
+    resolve_report_id_for_participant,
+    run_program_letter_generation,
+    save_program_dispute_selections,
 )
 from services.customer_dispute_strategy import (
     build_dispute_strategy_payload,
+    dispute_selection_context_from_meta,
     estimate_unique_bureaus_for_claims,
     filter_eligible_dispute_items,
     free_mode_bureau_cap_violation,
     load_compressed_review_claims_for_user,
     parse_workflow_metadata_value,
-    previously_disputed_claim_ids_from_meta,
     save_dispute_selection_draft,
     validate_selected_against_eligible,
-    workflow_head_step_id,
 )
 
 _logger = logging.getLogger(__name__)
 
+
+def _log_resend_env_at_startup() -> None:
+    """Log whether Resend-related env is visible in this process (no API key material)."""
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parent.parent
+    env_path = root / ".env"
+    key_set = bool((os.environ.get("RESEND_API_KEY") or "").strip())
+    from_email = (os.environ.get("RESEND_FROM_EMAIL") or "").strip()
+    _logger.info(
+        "Resend env in process: RESEND_API_KEY set=%s | RESEND_FROM_EMAIL=%s | repo .env exists=%s",
+        key_set,
+        repr(from_email) if from_email else "unset",
+        env_path.is_file(),
+    )
+
+
+# Per-chunk ceiling: manual multi-part uploads, and auto-split page ranges.
 _MAX_REPORT_UPLOAD_MB = 25
+_MAX_REPORT_PARTS = 12
+
+# Single PDF upload (e.g. long Equifax export); server may split by pages then merge for parsing.
+try:
+    _MAX_SINGLE_REPORT_UPLOAD_MB = int(
+        (os.environ.get("MAX_SINGLE_REPORT_UPLOAD_MB") or "200").strip()
+    )
+except ValueError:
+    _MAX_SINGLE_REPORT_UPLOAD_MB = 200
+_MAX_SINGLE_REPORT_UPLOAD_MB = max(_MAX_REPORT_UPLOAD_MB, min(_MAX_SINGLE_REPORT_UPLOAD_MB, 500))
+
+try:
+    _MAX_MERGED_REPORT_MB = int((os.environ.get("MAX_MERGED_REPORT_MB") or "250").strip())
+except ValueError:
+    _MAX_MERGED_REPORT_MB = 250
+_MAX_MERGED_REPORT_MB = max(
+    _MAX_SINGLE_REPORT_UPLOAD_MB,
+    min(_MAX_MERGED_REPORT_MB, 500),
+)
+
+_public_demo_hit_times: Dict[str, List[float]] = {}
+_public_demo_lead_hit_times: Dict[str, List[float]] = {}
+
+
+def _public_demo_client_ip(request: Request) -> str:
+    xf = (request.headers.get("x-forwarded-for") or "").split(",")[0].strip()
+    if xf:
+        return xf[:128]
+    if request.client:
+        return request.client.host or "unknown"
+    return "unknown"
+
+
+def _public_demo_lead_rate_ok(request: Request) -> bool:
+    raw = (os.environ.get("PUBLIC_DEMO_LEAD_RATE_PER_MINUTE") or "8").strip()
+    try:
+        limit = max(1, min(30, int(raw)))
+    except ValueError:
+        limit = 8
+    ip = _public_demo_client_ip(request)
+    now = time.time()
+    window = 60.0
+    arr = _public_demo_lead_hit_times.setdefault(ip, [])
+    arr[:] = [t for t in arr if t > now - window]
+    if len(arr) >= limit:
+        return False
+    arr.append(now)
+    return True
+
+
+def _public_demo_rate_ok(request: Request) -> bool:
+    raw = (os.environ.get("PUBLIC_DEMO_RATE_PER_MINUTE") or "12").strip()
+    try:
+        limit = max(1, min(60, int(raw)))
+    except ValueError:
+        limit = 12
+    ip = _public_demo_client_ip(request)
+    now = time.time()
+    window = 60.0
+    arr = _public_demo_hit_times.setdefault(ip, [])
+    arr[:] = [t for t in arr if t > now - window]
+    if len(arr) >= limit:
+        return False
+    arr.append(now)
+    return True
+
+
+def _enforce_public_demo_secret(x_public_demo_secret: Optional[str]) -> None:
+    expected = (os.environ.get("PUBLIC_DEMO_SECRET") or "").strip()
+    if not expected:
+        return
+    got = (x_public_demo_secret or "").strip()
+    if got != expected:
+        raise HTTPException(
+            status_code=403,
+            detail=_http_detail(
+                "DEMO_SECRET_INVALID",
+                "Demo access is restricted.",
+            ),
+        )
+
+
+def _demo_email_looks_valid(email: str) -> bool:
+    s = (email or "").strip().lower()
+    if len(s) < 5 or "@" not in s:
+        return False
+    local, _, domain = s.partition("@")
+    if not local or not domain or "." not in domain:
+        return False
+    return True
+
+
+def _demo_phone_has_digits(phone: str) -> bool:
+    return sum(1 for c in (phone or "") if c.isdigit()) >= 7
 
 
 @asynccontextmanager
@@ -112,16 +389,34 @@ async def _workflow_api_lifespan(_app: FastAPI):
     Align with Streamlit's ``database.init_database()`` so workflow DDL exists.
     Uvicorn-only processes previously skipped this; Mission Control SQL then
     failed with undefined-table errors (HTTP 500).
-    """
-    try:
-        import database as db
 
-        db.init_database()
-    except Exception:
-        _logger.exception(
-            "workflow API: init_database() failed — DB unavailable or misconfigured"
-        )
+    If the database is unreachable (e.g. ``DATABASE_URL`` points at localhost but Postgres is not running),
+    we fail here so operators see a startup error instead of HTTP 500 on the first auth request.
+    """
+    _log_resend_env_at_startup()
+    import database as db
+
+    db.init_database()
+    if is_production_like():
+        _stub = (os.environ.get("WORKFLOW_REMINDER_FALLBACK_STUB") or "").strip().lower()
+        if _stub in ("1", "true", "yes", "on"):
+            _logger.warning(
+                "WORKFLOW_REMINDER_FALLBACK_STUB is enabled in a production-like environment; "
+                "reminder delivery still records failures (stub success is not applied). "
+                "Unset the flag to avoid misleading configuration."
+            )
+    _w = (os.environ.get("WORKFLOW_JOB_WORKER_ENABLED") or "1").strip().lower()
+    if _w not in ("0", "false", "no", "off"):
+        from services.workflow.workflow_job_worker import start_job_worker
+
+        start_job_worker()
     yield
+    try:
+        from services.workflow.workflow_job_worker import stop_job_worker
+
+        stop_job_worker()
+    except Exception:
+        _logger.debug("job worker stop skipped", exc_info=True)
 
 
 app = FastAPI(
@@ -140,6 +435,64 @@ install_strip_workflow_api_prefix_middleware(app)
 register_customer_web_status_route(app)
 
 _engine = WorkflowEngine()
+
+
+def _envelope_with_progression(envelope: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Attach reader-facing progression slices to a workflow resume envelope.
+
+    **Contract:** ``canonicalProgression`` is the authoritative progression JSON for clients;
+    ``progression`` is the slim mirror. Do not return bare envelopes for routes that expose
+    step state to the customer app.
+    """
+    from services.workflow.progression_api import (
+        build_canonical_progression_envelope_from_resume,
+        unified_progression_from_workflow_envelope,
+    )
+
+    return {
+        **envelope,
+        "progression": unified_progression_from_workflow_envelope(envelope),
+        "canonicalProgression": build_canonical_progression_envelope_from_resume(envelope),
+    }
+
+
+def _workflow_payload_with_progression(workflow_id: str) -> Dict[str, Any]:
+    """Resume once; attach ``workflow`` + ``progression`` + ``canonicalProgression`` (authoritative: latter)."""
+    env = _engine.resume(workflow_id)
+    from services.workflow.progression_api import (
+        build_canonical_progression_envelope_from_resume,
+        unified_progression_from_workflow_envelope,
+    )
+
+    return {
+        "workflow": env,
+        "progression": unified_progression_from_workflow_envelope(env),
+        "canonicalProgression": build_canonical_progression_envelope_from_resume(env),
+    }
+
+
+def _me_org_engine_bundle(ctx: Dict[str, Any], uid: int) -> Optional[Dict[str, Any]]:
+    """One resume read → slim progression + full canonical envelope for org participant."""
+    from services.program_enrollment_service import get_program_workflow_id_for_enrollment
+    from services.workflow.progression_api import (
+        build_canonical_progression_envelope_from_resume,
+        unified_progression_from_workflow_envelope,
+    )
+
+    eid = ctx.get("organization_program_enrollment_id")
+    if eid is None:
+        return None
+    wid = get_program_workflow_id_for_enrollment(int(eid))
+    if not wid:
+        return None
+    env = _engine.resume(wid)
+    return {
+        "progression": unified_progression_from_workflow_envelope(env),
+        "canonicalProgression": build_canonical_progression_envelope_from_resume(
+            env, surface_override="org_program"
+        ),
+    }
 
 
 class InitBody(BaseModel):
@@ -182,6 +535,16 @@ _CUSTOMER_UX_REPORT_ACQUISITION_EVENTS = frozenset(
 _CUSTOMER_UX_WHITELIST = _CUSTOMER_UX_RESPONSE_EVENTS | _CUSTOMER_UX_REPORT_ACQUISITION_EVENTS
 
 
+class EscalationUxStateBody(BaseModel):
+    """Mark escalation toolkit steps reviewed / proceeded (metadata only)."""
+
+    action_id: str = Field(..., min_length=4, max_length=80, alias="actionId")
+    reviewed: bool = False
+    proceeded: bool = False
+
+    model_config = {"populate_by_name": True}
+
+
 class ResponseIntakeBody(BaseModel):
     """Structured summary of a bureau/furnisher response (no client-supplied user id)."""
 
@@ -197,7 +560,11 @@ class ResponseIntakeBody(BaseModel):
     )
     parsed_summary: Dict[str, Any] = Field(
         default_factory=dict,
-        description="Safe structured hints, e.g. summary_safe, outcome_keywords",
+        description=(
+            "Safe structured hints: summary_safe, outcome_keywords, claim_outcomes, "
+            "item_outcomes[{reviewClaimId,bureauOutcome}] with bureauOutcome in "
+            "deleted|updated|verified|no_response"
+        ),
     )
     storage_ref: Optional[str] = Field(default=None, description="Blob path or file id")
     linked_mailing_id: Optional[int] = Field(default=None)
@@ -222,6 +589,30 @@ class InternalAsyncStateBody(BaseModel):
 
 class StubBatchBody(BaseModel):
     limit: int = Field(default=20, ge=1, le=500)
+
+
+class PublicDemoRunBody(BaseModel):
+    """Guest demo: run fixture PDF through the real pipeline (dedicated demo DB user)."""
+
+    scenario_id: str = Field(..., alias="scenarioId", min_length=2, max_length=64)
+
+    model_config = {"populate_by_name": True}
+
+
+class PublicDemoLeadBody(BaseModel):
+    """Post-demo lead capture (workshops / follow-up). Stored in ``demo_leads``."""
+
+    name: str = Field(..., min_length=2, max_length=200)
+    email: str = Field(..., min_length=5, max_length=255)
+    phone: str = Field(..., min_length=7, max_length=40)
+    scenario_id: Optional[str] = Field(None, alias="scenarioId", max_length=64)
+    workflow_id: Optional[str] = Field(None, alias="workflowId", max_length=80)
+    intent: Optional[str] = Field(None, max_length=64)
+    organization_name: Optional[str] = Field(None, alias="organizationName", max_length=200)
+    audience_note: Optional[str] = Field(None, alias="audienceNote", max_length=500)
+    referrer_name: Optional[str] = Field(None, alias="referrerName", max_length=200)
+
+    model_config = {"populate_by_name": True}
 
 
 class ReminderFailedBody(BaseModel):
@@ -263,6 +654,15 @@ class RecoveryRetryStepBody(RecoveryExecutionBody):
     step_id: str = Field(..., max_length=64)
 
 
+class ArchitectAccessApplyBody(BaseModel):
+    """Admin-only: seed real state and return a normal session token for the fixture user."""
+
+    model_config = {"populate_by_name": True}
+
+    scenario_id: str = Field(..., alias="scenarioId", min_length=4, max_length=80)
+    reset_consumer_workflow: bool = Field(default=True, alias="resetConsumerWorkflow")
+
+
 class IntakeAcknowledgeReviewBody(BaseModel):
     """Optional echo of how many claims the user acknowledged (audit only)."""
 
@@ -287,6 +687,17 @@ class PaymentCheckoutBody(BaseModel):
 
 class PaymentReconcileBody(BaseModel):
     stripe_checkout_session_id: str = Field(..., min_length=8, max_length=255)
+
+
+class OrgProgramBillingReconcileBody(BaseModel):
+    stripe_checkout_session_id: str = Field(
+        ...,
+        min_length=8,
+        max_length=255,
+        alias="stripeCheckoutSessionId",
+    )
+
+    model_config = {"populate_by_name": True}
 
 
 class MailFromAddressBody(BaseModel):
@@ -318,19 +729,23 @@ def post_init(
     user: Dict[str, Any] = Depends(get_session_user),
 ) -> Dict[str, Any]:
     """Create a new workflow for the authenticated user."""
-    return _engine.init_workflow(
+    env = _engine.init_workflow(
         user_id=int(user["user_id"]),
         workflow_type=body.workflow_type,
         metadata=body.metadata or None,
     )
+    return _envelope_with_progression(env)
 
 
 @app.get("/api/workflows/active")
 def get_active_workflow(
     user: Dict[str, Any] = Depends(get_session_user),
 ) -> Dict[str, Any]:
-    """Most recent active or failed workflow for the session user (for React resume)."""
-    wid = fetch_latest_active_workflow_id(int(user["user_id"]))
+    """
+    Workflow id for React resume: prefers active/failed, else latest completed (same program family)
+    so tracking, responses, and follow-on dispute rounds stay addressable.
+    """
+    wid = fetch_resume_workflow_id_for_user(int(user["user_id"]))
     return {"workflowId": wid}
 
 
@@ -339,7 +754,7 @@ def get_state(
     workflow_id: str,
     _session: Dict[str, Any] = Depends(get_owned_workflow),
 ) -> Dict[str, Any]:
-    return _engine.get_state(workflow_id)
+    return _envelope_with_progression(_engine.get_state(workflow_id))
 
 
 @app.get("/api/workflows/{workflow_id}/resume")
@@ -347,7 +762,7 @@ def get_resume(
     workflow_id: str,
     _session: Dict[str, Any] = Depends(get_owned_workflow),
 ) -> Dict[str, Any]:
-    return _engine.resume(workflow_id)
+    return _envelope_with_progression(_engine.resume(workflow_id))
 
 
 @app.get("/api/workflows/{workflow_id}/integrity-hints")
@@ -359,6 +774,10 @@ def get_integrity_hints(
     Deterministic drift hints from DB + entitlements + proof + Lob + mail ledger.
     Used for recovery banners and next-action copy; not inferred on the client.
     """
+    try:
+        enforce_customer_action(workflow_id, ACTION_INTEGRITY_HINTS_VIEW)
+    except FlowEnforcementError as e:
+        _raise_flow_violation(e)
     uid = int(session["user_id"])
     return build_integrity_hints(uid, workflow_id)
 
@@ -368,6 +787,10 @@ def get_home_summary(
     workflow_id: str,
     _session: Dict[str, Any] = Depends(get_owned_workflow),
 ) -> Dict[str, Any]:
+    try:
+        enforce_customer_action(workflow_id, ACTION_HOME_SUMMARY_VIEW)
+    except FlowEnforcementError as e:
+        _raise_flow_violation(e)
     return build_home_summary(workflow_id)
 
 
@@ -380,9 +803,13 @@ def get_intake_summary(
     Parsed report + claims summary for the authenticated user (same pipeline as Streamlit).
     Bundled with current workflow resume envelope for React analyze/review.
     """
+    try:
+        enforce_customer_action(workflow_id, ACTION_INTAKE_SUMMARY_VIEW)
+    except FlowEnforcementError as e:
+        _raise_flow_violation(e)
     uid = int(session["user_id"])
     return {
-        "workflow": _engine.resume(workflow_id),
+        **_workflow_payload_with_progression(workflow_id),
         "intake": build_customer_intake_summary(uid),
     }
 
@@ -397,6 +824,10 @@ def post_intake_acknowledge_review(
     Customer finished reviewing parsed claims; completes workflow step ``review_claims``
     (same hook as Streamlit battle plan).
     """
+    try:
+        enforce_customer_action(workflow_id, ACTION_REVIEW_CLAIMS_ACK)
+    except FlowEnforcementError as e:
+        _raise_flow_violation(e)
     uid = int(session["user_id"])
     workflow_hooks.notify_review_claims_completed(
         uid,
@@ -404,11 +835,260 @@ def post_intake_acknowledge_review(
         item_count=body.item_count,
         audit_source="api",
     )
-    return {"workflow": _engine.resume(workflow_id)}
+    return _workflow_payload_with_progression(workflow_id)
 
 
 def _http_detail(code: str, message_safe: str) -> Dict[str, Any]:
     return {"code": code, "messageSafe": message_safe}
+
+
+def _normalize_one_large_pdf_to_pipeline_bytes(fname: str, raw: bytes) -> tuple[str, bytes]:
+    """
+    If ``raw`` is under the chunk ceiling, return as-is. Otherwise split by page ranges
+    under the chunk ceiling, merge into one PDF, and return that (same bureau, one report).
+    """
+    from services.report_pdf_merge import merge_pdf_parts
+    from services.report_pdf_split import split_pdf_by_max_serialized_bytes
+
+    chunk_max = _MAX_REPORT_UPLOAD_MB * 1024 * 1024
+    max_single = _MAX_SINGLE_REPORT_UPLOAD_MB * 1024 * 1024
+    max_merged = _MAX_MERGED_REPORT_MB * 1024 * 1024
+
+    if len(raw) > max_single:
+        raise HTTPException(
+            status_code=413,
+            detail=_http_detail(
+                "FILE_TOO_LARGE",
+                f"Maximum upload size is {_MAX_SINGLE_REPORT_UPLOAD_MB} MB.",
+            ),
+        )
+    if len(raw) <= chunk_max:
+        if len(raw) > max_merged:
+            raise HTTPException(
+                status_code=413,
+                detail=_http_detail(
+                    "MERGED_TOO_LARGE",
+                    f"PDF exceeds {_MAX_MERGED_REPORT_MB} MB.",
+                ),
+            )
+        return fname, raw
+
+    stem = fname.rsplit(".", 1)[0] if fname.lower().endswith(".pdf") else fname
+    try:
+        chunks = split_pdf_by_max_serialized_bytes(
+            raw,
+            stem=stem,
+            chunk_max_bytes=chunk_max,
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=_http_detail(
+                "PDF_SPLIT_FAILED",
+                (str(e) or "Could not split PDF into processable chunks.")[:280],
+            ),
+        ) from e
+
+    try:
+        merged_name, merged = merge_pdf_parts(chunks)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=_http_detail(
+                "PDF_MERGE_FAILED",
+                (str(e) or "Could not merge PDF after splitting.")[:240],
+            ),
+        ) from e
+
+    if len(merged) > max_merged:
+        raise HTTPException(
+            status_code=413,
+            detail=_http_detail(
+                "MERGED_TOO_LARGE",
+                f"Merged PDF exceeds {_MAX_MERGED_REPORT_MB} MB after processing.",
+            ),
+        )
+    return merged_name, merged
+
+
+async def _load_and_maybe_merge_report_pdfs(
+    *,
+    file: Optional[UploadFile],
+    files: Optional[List[UploadFile]],
+) -> tuple[str, bytes]:
+    """
+    - One PDF: up to ``MAX_SINGLE_REPORT_UPLOAD_MB``; if over the chunk size, split by pages
+      server-side, merge to one PDF, then parse.
+    - Several PDFs (``files``): each part at most chunk size; merged in request order.
+    """
+    from services.report_pdf_merge import merge_pdf_parts
+
+    uploads: List[UploadFile] = []
+    if files:
+        uploads = [u for u in files if u is not None][: _MAX_REPORT_PARTS]
+    elif file is not None:
+        uploads = [file]
+    if not uploads:
+        raise HTTPException(
+            status_code=400,
+            detail=_http_detail("NO_FILE", "A PDF file is required."),
+        )
+    if len(uploads) > _MAX_REPORT_PARTS:
+        raise HTTPException(
+            status_code=400,
+            detail=_http_detail(
+                "TOO_MANY_PARTS",
+                f"At most {_MAX_REPORT_PARTS} PDF parts per upload.",
+            ),
+        )
+
+    chunk_max = _MAX_REPORT_UPLOAD_MB * 1024 * 1024
+    max_single = _MAX_SINGLE_REPORT_UPLOAD_MB * 1024 * 1024
+    max_merged = _MAX_MERGED_REPORT_MB * 1024 * 1024
+    parts: List[tuple[str, bytes]] = []
+    for uf in uploads:
+        raw = await uf.read()
+        if len(uploads) > 1 and len(raw) > chunk_max:
+            raise HTTPException(
+                status_code=413,
+                detail=_http_detail(
+                    "FILE_TOO_LARGE",
+                    f"Each PDF part must be at most {_MAX_REPORT_UPLOAD_MB} MB when uploading multiple parts.",
+                ),
+            )
+        if len(uploads) == 1 and len(raw) > max_single:
+            raise HTTPException(
+                status_code=413,
+                detail=_http_detail(
+                    "FILE_TOO_LARGE",
+                    f"Maximum upload size is {_MAX_SINGLE_REPORT_UPLOAD_MB} MB.",
+                ),
+            )
+        if not raw:
+            raise HTTPException(
+                status_code=400,
+                detail=_http_detail("EMPTY_FILE", "Empty file."),
+            )
+        fname = (uf.filename or "part.pdf").replace("\\", "/").split("/")[-1]
+        if not fname.lower().endswith(".pdf"):
+            raise HTTPException(
+                status_code=400,
+                detail=_http_detail("NOT_PDF", "A PDF file is required."),
+            )
+        parts.append((fname, raw))
+
+    if len(parts) == 1:
+        return _normalize_one_large_pdf_to_pipeline_bytes(parts[0][0], parts[0][1])
+
+    try:
+        merged_name, merged = merge_pdf_parts(parts)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=_http_detail(
+                "PDF_MERGE_FAILED",
+                (str(e) or "Could not merge PDF parts.")[:240],
+            ),
+        ) from e
+
+    if len(merged) > max_merged:
+        raise HTTPException(
+            status_code=413,
+            detail=_http_detail(
+                "MERGED_TOO_LARGE",
+                f"Merged PDF exceeds {_MAX_MERGED_REPORT_MB} MB. Use fewer or smaller parts.",
+            ),
+        )
+    return merged_name, merged
+
+
+def _raise_flow_violation(e: FlowEnforcementError) -> None:
+    """Flow gate failure: 404 when workflow missing, else 409 with structured detail."""
+    status = 404 if e.code == "NOT_FOUND" else 409
+    raise HTTPException(status_code=status, detail=flow_violation_detail(e)) from None
+
+
+def _dev_email_error_hint(exc: Exception) -> str:
+    """Optional short hint for local debugging (set WORKFLOW_DEV_EMAIL_HINTS=1)."""
+    if (os.environ.get("WORKFLOW_DEV_EMAIL_HINTS") or "").strip().lower() not in (
+        "1",
+        "true",
+        "yes",
+    ):
+        return ""
+    msg = str(exc).strip().replace("\n", " ")
+    return msg[:280] + ("..." if len(msg) > 280 else "")
+
+
+def _public_organization_record(org: Dict[str, Any]) -> Dict[str, Any]:
+    """CamelCase org payload for /api/orgs responses."""
+    return {
+        "id": int(org["id"]),
+        "name": org.get("name"),
+        "status": org.get("status"),
+        "contactEmail": org.get("contact_email"),
+        "contactPhone": org.get("contact_phone"),
+        "programCode": org.get("program_code"),
+        "onboardingStage": org.get("onboarding_stage"),
+        "paymentAccess": org.get("payment_access"),
+        "programAccessActivatedAt": org.get("program_access_activated_at"),
+        "createdAt": org.get("created_at"),
+        "updatedAt": org.get("updated_at"),
+    }
+
+
+def _public_org_membership_record(m: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "id": int(m["id"]),
+        "organizationId": int(m["organization_id"]),
+        "userId": int(m["user_id"]),
+        "role": m.get("role"),
+        "status": m.get("status"),
+        "createdAt": m.get("created_at"),
+        "updatedAt": m.get("updated_at"),
+        "email": m.get("email"),
+        "displayName": m.get("display_name"),
+    }
+
+
+def _public_org_enrollment_record(e: Dict[str, Any]) -> Dict[str, Any]:
+    """CamelCase enrollment for list/create (instructor/admin; may include email)."""
+    out: Dict[str, Any] = {
+        "id": int(e["id"]),
+        "organizationId": int(e["organization_id"]),
+        "userId": int(e["user_id"]),
+        "status": e.get("status"),
+        "enrolledAt": e.get("enrolled_at"),
+        "activatedAt": e.get("activated_at"),
+        "completedAt": e.get("completed_at"),
+        "createdAt": e.get("created_at"),
+        "updatedAt": e.get("updated_at"),
+    }
+    if "session_id" in e:
+        out["sessionId"] = e.get("session_id")
+    if "session_checked_in_at" in e:
+        out["sessionCheckedInAt"] = e.get("session_checked_in_at")
+    if "session_workshop_complete_at" in e:
+        out["sessionWorkshopCompleteAt"] = e.get("session_workshop_complete_at")
+    if "email" in e:
+        out["email"] = e.get("email")
+    if "display_name" in e:
+        out["displayName"] = e.get("display_name")
+    return out
+
+
+def _public_org_session_record(s: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "id": int(s["id"]),
+        "organizationId": int(s["organization_id"]),
+        "name": s.get("name"),
+        "state": s.get("state"),
+        "scheduledStartsAt": s.get("scheduled_starts_at"),
+        "startedAt": s.get("started_at"),
+        "endedAt": s.get("ended_at"),
+        "createdAt": s.get("created_at"),
+        "updatedAt": s.get("updated_at"),
+    }
 
 
 def _auth_public_user_from_db_row(u: Dict[str, Any]) -> Dict[str, Any]:
@@ -445,11 +1125,282 @@ class AuthLoginBody(BaseModel):
 class AuthSignupBody(BaseModel):
     email: str = Field(..., min_length=3, max_length=255)
     password: str = Field(..., min_length=8, max_length=256)
-    display_name: str = Field(..., min_length=1, max_length=255)
+    display_name: str = Field(
+        ...,
+        min_length=1,
+        max_length=255,
+        alias="displayName",
+    )
+
+    model_config = {"populate_by_name": True}
 
 
 class AuthVerifyEmailBody(BaseModel):
     code: str = Field(..., min_length=4, max_length=12)
+
+
+class AuthForgotPasswordBody(BaseModel):
+    email: str = Field(..., min_length=3, max_length=255)
+
+
+class AuthResetPasswordBody(BaseModel):
+    email: str = Field(..., min_length=3, max_length=255)
+    code: str = Field(..., min_length=4, max_length=12)
+    password: str = Field(..., min_length=8, max_length=256)
+
+
+class OrgCreateBody(BaseModel):
+    name: str = Field(..., min_length=1, max_length=255)
+
+
+class OrgMemberCreateBody(BaseModel):
+    """Attach an existing account to the org. Provide ``userId`` or ``email`` (not both required; userId wins)."""
+
+    user_id: Optional[int] = Field(default=None, gt=0, alias="userId")
+    email: Optional[str] = Field(default=None, max_length=255)
+    role: Literal["org_instructor", "org_user", "org_admin"]
+    enroll_in_program: bool = Field(
+        default=True,
+        alias="enrollInProgram",
+        description="For org_user: create program enrollment if missing (default true).",
+    )
+
+    model_config = {"populate_by_name": True}
+
+
+class OrgPatchBody(BaseModel):
+    name: Optional[str] = Field(default=None, min_length=1, max_length=255)
+    contact_email: Optional[str] = Field(default=None, max_length=255, alias="contactEmail")
+    contact_phone: Optional[str] = Field(default=None, max_length=80, alias="contactPhone")
+    program_code: Optional[str] = Field(default=None, max_length=64, alias="programCode")
+    onboarding_stage: Optional[str] = Field(default=None, max_length=32, alias="onboardingStage")
+    payment_access: Optional[Literal["full", "locked", "trial"]] = Field(
+        default=None, alias="paymentAccess"
+    )
+    status: Optional[str] = Field(default=None, max_length=32)
+
+    model_config = {"populate_by_name": True}
+
+
+class OrgProgramSessionCreateBody(BaseModel):
+    name: str = Field(..., min_length=1, max_length=255)
+
+
+class OrgProgramSessionPatchBody(BaseModel):
+    name: Optional[str] = Field(default=None, min_length=1, max_length=255)
+    state: Optional[Literal["draft", "scheduled", "active", "completed"]] = None
+
+
+class OrgEnrollmentSessionBody(BaseModel):
+    session_id: Optional[int] = Field(default=None, alias="sessionId")
+
+    model_config = {"populate_by_name": True}
+
+
+class OrgEnrollmentWorkshopBody(BaseModel):
+    checked_in: Optional[bool] = Field(default=None, alias="checkedIn")
+    workshop_complete: Optional[bool] = Field(default=None, alias="workshopComplete")
+
+    model_config = {"populate_by_name": True}
+
+
+class DemoLeadConvertToOrgBody(BaseModel):
+    organization_name: str = Field(..., min_length=1, max_length=255, alias="organizationName")
+
+
+class OrgProgramEnrollmentCreateBody(BaseModel):
+    user_id: int = Field(..., gt=0, alias="userId")
+    status: Literal[
+        "enrolled", "active", "paused", "completed", "withdrawn"
+    ] = Field(default="enrolled")
+
+    model_config = {"populate_by_name": True}
+
+
+class MeDisputeSelectionsBody(BaseModel):
+    report_id: int = Field(..., gt=0, alias="reportId")
+    selected_review_claim_ids: List[str] = Field(
+        ...,
+        min_length=1,
+        max_length=500,
+        alias="selectedReviewClaimIds",
+    )
+
+    model_config = {"populate_by_name": True}
+
+
+class MeGenerateLettersBody(BaseModel):
+    report_id: Optional[int] = Field(default=None, gt=0, alias="reportId")
+
+    model_config = {"populate_by_name": True}
+
+
+class InstructorProgramOverrideBody(BaseModel):
+    action: Literal["pause", "resume", "advance", "reset"] = Field(
+        ...,
+        description="pause | resume | advance | reset (advance/reset require targetStep).",
+    )
+    target_step: Optional[str] = Field(
+        default=None,
+        alias="targetStep",
+        description="One of enrollment, upload, findings_ready, selections_saved, letters_generated.",
+    )
+    reason_safe: Optional[str] = Field(
+        default=None,
+        max_length=500,
+        alias="reasonSafe",
+    )
+
+    model_config = {"populate_by_name": True}
+
+
+def _require_org_read_access(user: Dict[str, Any], org_id: int) -> None:
+    """platform_admin, org_instructor, or org_admin (buyer visibility) for this org."""
+    if (user.get("role") or "").strip() == "admin":
+        return
+    uid = int(user["user_id"])
+    if user_is_active_instructor_for_org(uid, org_id):
+        return
+    if user_is_active_org_admin_for_org(uid, org_id):
+        return
+    raise HTTPException(
+        status_code=403,
+        detail=_http_detail(
+            "ORG_ACCESS_DENIED",
+            "You do not have access to this organization.",
+        ),
+    )
+
+
+def _require_org_program_operator(user: Dict[str, Any], org_id: int) -> None:
+    """Platform admin, org instructor, or org admin (rosters, sessions, assignments)."""
+    if (user.get("role") or "").strip() == "admin":
+        return
+    uid = int(user["user_id"])
+    if user_is_active_instructor_for_org(uid, org_id):
+        return
+    if user_is_active_org_admin_for_org(uid, org_id):
+        return
+    raise HTTPException(
+        status_code=403,
+        detail=_http_detail(
+            "ORG_INSTRUCTOR_REQUIRED",
+            "Active organization instructor or admin role is required.",
+        ),
+    )
+
+
+def _require_org_billing_admin(user: Dict[str, Any], org_id: int) -> None:
+    """Platform admin or org buyer (org_admin seat) for org Stripe activation checkout."""
+    if (user.get("role") or "").strip() == "admin":
+        return
+    uid = int(user["user_id"])
+    if user_is_active_org_admin_for_org(uid, org_id):
+        return
+    raise HTTPException(
+        status_code=403,
+        detail=_http_detail(
+            "ORG_BILLING_ADMIN_REQUIRED",
+            "Organization billing requires an organization admin seat (or platform admin).",
+        ),
+    )
+
+
+def _require_org_program_payment_access(ctx: Dict[str, Any]) -> None:
+    org = get_organization(int(ctx["organization_id"]))
+    if not org_allows_participant_program_access(org):
+        raise HTTPException(
+            status_code=403,
+            detail=_http_detail(
+                "PROGRAM_ACCESS_LOCKED",
+                "Organization program access is not active. Contact your organization.",
+            ),
+        )
+
+
+def _require_enrolled_org_participant(user: Dict[str, Any]) -> Dict[str, Any]:
+    """S3/S4: active org_user + program enrollment row."""
+    ctx = get_enrolled_org_participant_context(int(user["user_id"]))
+    if not ctx:
+        raise HTTPException(
+            status_code=403,
+            detail=_http_detail(
+                "ORG_PROGRAM_PARTICIPANT_REQUIRED",
+                "Active program enrollment as an organization participant is required.",
+            ),
+        )
+    uid = int(user["user_id"])
+    ensure_org_program_workflow(
+        uid,
+        int(ctx["organization_id"]),
+        int(ctx["organization_program_enrollment_id"]),
+    )
+    return ctx
+
+
+def _require_org_program_upload_done(user: Dict[str, Any], ctx: Dict[str, Any]) -> None:
+    uid = int(user["user_id"])
+    eid = int(ctx["organization_program_enrollment_id"])
+    if not effective_upload_done(uid, eid):
+        raise HTTPException(
+            status_code=400,
+            detail=_http_detail(
+                "PROGRAM_UPLOAD_REQUIRED",
+                "Upload a credit report before running analyze.",
+            ),
+        )
+
+
+def _require_org_program_findings_ready(user: Dict[str, Any], ctx: Dict[str, Any]) -> None:
+    uid = int(user["user_id"])
+    eid = int(ctx["organization_program_enrollment_id"])
+    if not effective_findings_ready(uid, eid):
+        raise HTTPException(
+            status_code=400,
+            detail=_http_detail(
+                "PROGRAM_FINDINGS_NOT_READY",
+                "Complete report upload and analysis before using dispute options.",
+            ),
+        )
+
+
+def _require_org_program_selections_saved(user: Dict[str, Any], ctx: Dict[str, Any]) -> None:
+    uid = int(user["user_id"])
+    eid = int(ctx["organization_program_enrollment_id"])
+    if not effective_selections_saved(uid, eid):
+        raise HTTPException(
+            status_code=400,
+            detail=_http_detail(
+                "PROGRAM_SELECTIONS_REQUIRED",
+                "Save dispute selections before generating letters.",
+            ),
+        )
+
+
+def _require_org_instructor_only(user: Dict[str, Any], org_id: int) -> None:
+    """S5B: instructor endpoints — not platform admin unless also org instructor."""
+    uid = int(user["user_id"])
+    if not user_is_active_instructor_for_org(uid, org_id):
+        raise HTTPException(
+            status_code=403,
+            detail=_http_detail(
+                "ORG_INSTRUCTOR_REQUIRED",
+                "Active organization instructor role is required.",
+            ),
+        )
+
+
+def _require_org_program_not_paused(user: Dict[str, Any], ctx: Dict[str, Any]) -> None:
+    uid = int(user["user_id"])
+    eid = int(ctx["organization_program_enrollment_id"])
+    if participant_forward_paused(uid, eid):
+        raise HTTPException(
+            status_code=403,
+            detail=_http_detail(
+                "PROGRAM_PAUSED_BY_INSTRUCTOR",
+                "This program is paused by your instructor. Contact your organization.",
+            ),
+        )
 
 
 @app.post("/api/auth/login")
@@ -505,6 +1456,42 @@ def post_auth_signup(body: AuthSignupBody) -> Dict[str, Any]:
     except Exception:
         _logger.debug("log_activity signup skipped", exc_info=True)
     row["email_verified"] = False
+    _logger.info(
+        "signup verification path entered: user_id=%s email=%s",
+        uid,
+        row.get("email", email),
+    )
+    try:
+        code = auth.set_verification_code(uid)
+        if not code:
+            _logger.warning(
+                "signup verification email not sent: set_verification_code returned None "
+                "(likely rate limit on action email_send for user_id=%s)",
+                uid,
+            )
+        else:
+            from resend_client import send_verification_email
+
+            _logger.info(
+                "signup verification: sending Resend email to=%s from_env=RESEND_FROM_EMAIL",
+                row.get("email", email),
+            )
+            result = send_verification_email(
+                row.get("email", email),
+                code,
+                body.display_name.strip() or None,
+            )
+            _logger.info(
+                "signup verification email send finished: user_id=%s resend_result=%s",
+                uid,
+                result,
+            )
+    except Exception as exc:
+        _logger.exception(
+            "signup verification email failed: user_id=%s error=%s",
+            uid,
+            exc,
+        )
     return {"token": token, "user": _auth_public_user_from_db_row(row)}
 
 
@@ -525,6 +1512,929 @@ def get_auth_me(user: Dict[str, Any] = Depends(get_session_user)) -> Dict[str, A
         )
     full["email_verified"] = bool(user.get("email_verified"))
     return {"user": _auth_public_user_from_db_row(full)}
+
+
+@app.post("/api/orgs")
+def post_api_orgs(
+    body: OrgCreateBody,
+    _admin: Dict[str, Any] = Depends(require_platform_admin),
+) -> Dict[str, Any]:
+    """Create an organization (platform admin session only)."""
+    row = create_organization(body.name.strip())
+    if row.get("error"):
+        raise HTTPException(
+            status_code=400,
+            detail=_http_detail("ORG_CREATE_FAILED", str(row["error"])),
+        )
+    return {"organization": _public_organization_record(row)}
+
+
+@app.get("/api/orgs/{org_id}")
+def get_api_org(
+    org_id: int,
+    user: Dict[str, Any] = Depends(get_session_user),
+) -> Dict[str, Any]:
+    _require_org_read_access(user, org_id)
+    org = get_organization(org_id)
+    if not org:
+        raise HTTPException(
+            status_code=404,
+            detail=_http_detail("NOT_FOUND", "Organization not found."),
+        )
+    return {"organization": _public_organization_record(org)}
+
+
+@app.patch("/api/orgs/{org_id}")
+def patch_api_org(
+    org_id: int,
+    body: OrgPatchBody,
+    user: Dict[str, Any] = Depends(get_session_user),
+) -> Dict[str, Any]:
+    """Org profile / onboarding fields; billing fields (payment_access, status) are admin-only."""
+    _require_org_read_access(user, org_id)
+    if not get_organization(org_id):
+        raise HTTPException(
+            status_code=404,
+            detail=_http_detail("NOT_FOUND", "Organization not found."),
+        )
+    is_admin = (user.get("role") or "").strip() == "admin"
+    data = body.model_dump(exclude_unset=True, exclude_none=True, by_alias=False)
+    if not is_admin:
+        data.pop("payment_access", None)
+        data.pop("status", None)
+    if not data:
+        raise HTTPException(
+            status_code=400,
+            detail=_http_detail("NO_CHANGES", "No allowed fields to update."),
+        )
+    row = update_organization(org_id, **data)
+    if row.get("error"):
+        raise HTTPException(
+            status_code=400,
+            detail=_http_detail("ORG_UPDATE_FAILED", str(row["error"])),
+        )
+    return {"organization": _public_organization_record(row)}
+
+
+@app.post("/api/orgs/{org_id}/members")
+def post_api_org_members(
+    org_id: int,
+    body: OrgMemberCreateBody,
+    user: Dict[str, Any] = Depends(get_session_user),
+) -> Dict[str, Any]:
+    """
+    Attach an existing account to the org (participant, co-guide, or — platform admin only — buyer seat).
+
+    Org instructors and org admins may add ``org_user`` and ``org_instructor`` by email or user id.
+    Self-serve: no platform admin required for roster / co-guide setup.
+    """
+    is_platform = (user.get("role") or "").strip() == "admin"
+    if not is_platform:
+        _require_org_program_operator(user, org_id)
+    if not get_organization(org_id):
+        raise HTTPException(
+            status_code=404,
+            detail=_http_detail("NOT_FOUND", "Organization not found."),
+        )
+    if body.role == "org_admin" and not is_platform:
+        raise HTTPException(
+            status_code=403,
+            detail=_http_detail(
+                "ORG_ADMIN_SEAT_RESTRICTED",
+                "Only a platform administrator can assign an organization billing-admin seat.",
+            ),
+        )
+    target_uid: Optional[int] = body.user_id
+    em = (body.email or "").strip().lower()
+    if target_uid is None or target_uid <= 0:
+        if not em:
+            raise HTTPException(
+                status_code=400,
+                detail=_http_detail(
+                    "ORG_MEMBER_IDENTIFIER_REQUIRED",
+                    "Provide userId or email for an existing account.",
+                ),
+            )
+        u = auth.get_user_by_email(em)
+        if not u:
+            raise HTTPException(
+                status_code=404,
+                detail=_http_detail(
+                    "USER_NOT_FOUND",
+                    "No account exists for that email. They need to sign up first, then you can add them.",
+                ),
+            )
+        target_uid = int(u["id"])
+    row = add_organization_member(
+        org_id,
+        int(target_uid),
+        body.role,
+        allow_org_admin_seat=is_platform,
+    )
+    if row.get("error"):
+        raise HTTPException(
+            status_code=400,
+            detail=_http_detail("ORG_MEMBER_FAILED", str(row["error"])),
+        )
+    out: Dict[str, Any] = {"membership": _public_org_membership_record(row)}
+    if str(body.role) == "org_user" and body.enroll_in_program:
+        if not get_enrollment(org_id, int(target_uid)):
+            en = create_program_enrollment(org_id, int(target_uid), "enrolled")
+            if not en.get("error"):
+                out["enrollment"] = _public_org_enrollment_record(en)
+    return out
+
+
+@app.get("/api/orgs/{org_id}/members")
+def get_api_org_members(
+    org_id: int,
+    user: Dict[str, Any] = Depends(get_session_user),
+) -> Dict[str, Any]:
+    _require_org_read_access(user, org_id)
+    if not get_organization(org_id):
+        raise HTTPException(
+            status_code=404,
+            detail=_http_detail("NOT_FOUND", "Organization not found."),
+        )
+    members = list_organization_members(org_id)
+    return {
+        "members": [_public_org_membership_record(m) for m in members],
+    }
+
+
+@app.post("/api/orgs/{org_id}/enrollments")
+def post_api_org_enrollments(
+    org_id: int,
+    body: OrgProgramEnrollmentCreateBody,
+    user: Dict[str, Any] = Depends(get_session_user),
+) -> Dict[str, Any]:
+    """
+    Create a program enrollment for an existing org_user (platform admin or org instructor).
+    """
+    _require_org_program_operator(user, org_id)
+    if not get_organization(org_id):
+        raise HTTPException(
+            status_code=404,
+            detail=_http_detail("NOT_FOUND", "Organization not found."),
+        )
+    row = create_program_enrollment(
+        org_id, int(body.user_id), status=str(body.status)
+    )
+    if row.get("error"):
+        raise HTTPException(
+            status_code=400,
+            detail=_http_detail("ENROLLMENT_CREATE_FAILED", str(row["error"])),
+        )
+    return {"enrollment": _public_org_enrollment_record(row)}
+
+
+@app.get("/api/orgs/{org_id}/enrollments")
+def get_api_org_enrollments(
+    org_id: int,
+    user: Dict[str, Any] = Depends(get_session_user),
+) -> Dict[str, Any]:
+    """List program enrollments for an org (platform admin or org instructor)."""
+    _require_org_read_access(user, org_id)
+    if not get_organization(org_id):
+        raise HTTPException(
+            status_code=404,
+            detail=_http_detail("NOT_FOUND", "Organization not found."),
+        )
+    rows = list_enrollments_for_org(org_id)
+    return {
+        "enrollments": [_public_org_enrollment_record(r) for r in rows],
+    }
+
+
+@app.get("/api/orgs/{org_id}/participants")
+def get_org_program_participants(
+    org_id: int,
+    user: Dict[str, Any] = Depends(get_session_user),
+) -> Dict[str, Any]:
+    """List enrolled participants with roster fields (instructor / org_admin read)."""
+    _require_org_read_access(user, org_id)
+    if not get_organization(org_id):
+        raise HTTPException(
+            status_code=404,
+            detail=_http_detail("NOT_FOUND", "Organization not found."),
+        )
+    raw = list_org_program_participants(org_id)
+    participants = []
+    for r in raw:
+        uid = int(r["user_id"])
+        eid = int(r["enrollment_id"])
+        name = (r.get("display_name") or "").strip() or None
+        email = (r.get("email") or "").strip() or None
+        participants.append(
+            {
+                "userId": uid,
+                "enrollmentId": eid,
+                "displayName": name,
+                "email": email,
+                "displayLabel": name or email or f"User #{uid}",
+                "enrollmentStatus": r.get("status"),
+                "enrolledAt": r.get("enrolled_at"),
+                "activatedAt": r.get("activated_at"),
+                "completedAt": r.get("completed_at"),
+                "sessionId": r.get("session_id"),
+                "sessionCheckedInAt": r.get("session_checked_in_at"),
+                "sessionWorkshopCompleteAt": r.get("session_workshop_complete_at"),
+                "programCurrentStep": r.get("program_current_step"),
+            }
+        )
+    return {"participants": participants}
+
+
+@app.get("/api/orgs/{org_id}/participants/{participant_user_id}")
+def get_org_program_participant(
+    org_id: int,
+    participant_user_id: int,
+    user: Dict[str, Any] = Depends(get_session_user),
+) -> Dict[str, Any]:
+    """Single participant progress (dual-state, non-PII). Instructor or org_admin (read-only)."""
+    _require_org_read_access(user, org_id)
+    if not get_organization(org_id):
+        raise HTTPException(
+            status_code=404,
+            detail=_http_detail("NOT_FOUND", "Organization not found."),
+        )
+    detail = get_org_program_participant_detail(org_id, participant_user_id)
+    if not detail:
+        raise HTTPException(
+            status_code=404,
+            detail=_http_detail("NOT_FOUND", "Participant enrollment not found."),
+        )
+    return detail
+
+
+@app.post("/api/orgs/{org_id}/participants/{participant_user_id}/override")
+def post_org_program_participant_override(
+    org_id: int,
+    participant_user_id: int,
+    body: InstructorProgramOverrideBody,
+    user: Dict[str, Any] = Depends(get_session_user),
+) -> Dict[str, Any]:
+    """S5B: instructor pause / resume / advance / reset (minimal override row)."""
+    _require_org_instructor_only(user, org_id)
+    if not get_organization(org_id):
+        raise HTTPException(
+            status_code=404,
+            detail=_http_detail("NOT_FOUND", "Organization not found."),
+        )
+    enr = get_enrollment(org_id, participant_user_id)
+    if not enr:
+        raise HTTPException(
+            status_code=404,
+            detail=_http_detail("NOT_FOUND", "Participant enrollment not found."),
+        )
+    eid = int(enr["id"])
+    row, err = apply_instructor_program_override(
+        eid,
+        participant_user_id,
+        int(user["user_id"]),
+        str(body.action),
+        body.target_step,
+        body.reason_safe,
+    )
+    if err:
+        raise HTTPException(
+            status_code=400,
+            detail=_http_detail("OVERRIDE_INVALID", str(err)),
+        )
+    from services.workflow.progression_api import build_org_participant_progression_bundle
+
+    canon = build_org_participant_progression_bundle(participant_user_id, eid) or {}
+    return {
+        "ok": True,
+        "enrollmentId": eid,
+        "userId": participant_user_id,
+        "instructorState": {
+            "paused": bool(row.get("instructor_paused")),
+            "overrideKind": row.get("instructor_override_kind"),
+            "overrideStep": row.get("instructor_override_step"),
+            "overrideAt": row.get("instructor_override_at"),
+            "overrideByUserId": row.get("instructor_override_by_user_id"),
+            "overrideReasonSafe": row.get("instructor_override_reason_safe"),
+        },
+        **canon,
+    }
+
+
+@app.get("/api/orgs/{org_id}/progress")
+def get_org_program_progress_summary(
+    org_id: int,
+    user: Dict[str, Any] = Depends(get_session_user),
+) -> Dict[str, Any]:
+    """S6: aggregate program step distribution (non-PII)."""
+    _require_org_read_access(user, org_id)
+    if not get_organization(org_id):
+        raise HTTPException(
+            status_code=404,
+            detail=_http_detail("NOT_FOUND", "Organization not found."),
+        )
+    return build_org_progress_aggregate(org_id)
+
+
+@app.get("/api/orgs/{org_id}/outcomes")
+def get_org_program_outcomes_summary(
+    org_id: int,
+    user: Dict[str, Any] = Depends(get_session_user),
+) -> Dict[str, Any]:
+    """S6: aggregate activity counts (non-PII)."""
+    _require_org_read_access(user, org_id)
+    if not get_organization(org_id):
+        raise HTTPException(
+            status_code=404,
+            detail=_http_detail("NOT_FOUND", "Organization not found."),
+        )
+    return build_org_outcomes_aggregate(org_id)
+
+
+@app.get("/api/orgs/{org_id}/sessions")
+def get_org_program_sessions(
+    org_id: int,
+    user: Dict[str, Any] = Depends(get_session_user),
+) -> Dict[str, Any]:
+    _require_org_read_access(user, org_id)
+    if not get_organization(org_id):
+        raise HTTPException(
+            status_code=404,
+            detail=_http_detail("NOT_FOUND", "Organization not found."),
+        )
+    rows = list_program_sessions(org_id)
+    return {"sessions": [_public_org_session_record(r) for r in rows]}
+
+
+@app.post("/api/orgs/{org_id}/sessions")
+def post_org_program_session(
+    org_id: int,
+    body: OrgProgramSessionCreateBody,
+    user: Dict[str, Any] = Depends(get_session_user),
+) -> Dict[str, Any]:
+    _require_org_program_operator(user, org_id)
+    if not get_organization(org_id):
+        raise HTTPException(
+            status_code=404,
+            detail=_http_detail("NOT_FOUND", "Organization not found."),
+        )
+    row = create_program_session(org_id, body.name.strip())
+    if row.get("error"):
+        raise HTTPException(
+            status_code=400,
+            detail=_http_detail("SESSION_CREATE_FAILED", str(row["error"])),
+        )
+    return {"session": _public_org_session_record(row)}
+
+
+@app.patch("/api/orgs/{org_id}/sessions/{session_id}")
+def patch_org_program_session(
+    org_id: int,
+    session_id: int,
+    body: OrgProgramSessionPatchBody,
+    user: Dict[str, Any] = Depends(get_session_user),
+) -> Dict[str, Any]:
+    _require_org_program_operator(user, org_id)
+    if not get_organization(org_id):
+        raise HTTPException(
+            status_code=404,
+            detail=_http_detail("NOT_FOUND", "Organization not found."),
+        )
+    row = update_program_session(
+        org_id,
+        int(session_id),
+        name=body.name,
+        state=body.state,
+    )
+    if row.get("error"):
+        raise HTTPException(
+            status_code=400,
+            detail=_http_detail("SESSION_UPDATE_FAILED", str(row["error"])),
+        )
+    return {"session": _public_org_session_record(row)}
+
+
+@app.post("/api/orgs/{org_id}/enrollments/{enrollment_id}/session")
+def post_org_enrollment_session(
+    org_id: int,
+    enrollment_id: int,
+    body: OrgEnrollmentSessionBody,
+    user: Dict[str, Any] = Depends(get_session_user),
+) -> Dict[str, Any]:
+    _require_org_program_operator(user, org_id)
+    if not get_organization(org_id):
+        raise HTTPException(
+            status_code=404,
+            detail=_http_detail("NOT_FOUND", "Organization not found."),
+        )
+    row = set_enrollment_session(org_id, int(enrollment_id), body.session_id)
+    if row.get("error"):
+        raise HTTPException(
+            status_code=400,
+            detail=_http_detail("ENROLLMENT_SESSION_FAILED", str(row["error"])),
+        )
+    return {"enrollment": _public_org_enrollment_record(row)}
+
+
+@app.patch("/api/orgs/{org_id}/enrollments/{enrollment_id}/workshop")
+def patch_org_enrollment_workshop(
+    org_id: int,
+    enrollment_id: int,
+    body: OrgEnrollmentWorkshopBody,
+    user: Dict[str, Any] = Depends(get_session_user),
+) -> Dict[str, Any]:
+    _require_org_program_operator(user, org_id)
+    if not get_organization(org_id):
+        raise HTTPException(
+            status_code=404,
+            detail=_http_detail("NOT_FOUND", "Organization not found."),
+        )
+    row = patch_enrollment_workshop(
+        org_id,
+        int(enrollment_id),
+        checked_in=body.checked_in,
+        workshop_complete=body.workshop_complete,
+    )
+    if row.get("error"):
+        raise HTTPException(
+            status_code=400,
+            detail=_http_detail("ENROLLMENT_WORKSHOP_FAILED", str(row["error"])),
+        )
+    return {"enrollment": _public_org_enrollment_record(row)}
+
+
+@app.get("/api/orgs/{org_id}/sessions/{session_id}/workshop-desk")
+def get_org_session_workshop_desk(
+    org_id: int,
+    session_id: int,
+    user: Dict[str, Any] = Depends(get_session_user),
+) -> Dict[str, Any]:
+    _require_org_read_access(user, org_id)
+    if not get_organization(org_id):
+        raise HTTPException(
+            status_code=404,
+            detail=_http_detail("NOT_FOUND", "Organization not found."),
+        )
+    payload = build_workshop_desk(org_id, int(session_id))
+    if payload.get("error"):
+        raise HTTPException(
+            status_code=404,
+            detail=_http_detail("NOT_FOUND", str(payload["error"])),
+        )
+    return payload
+
+
+@app.get("/api/orgs/{org_id}/program/billing")
+def get_org_program_billing(
+    org_id: int,
+    user: Dict[str, Any] = Depends(get_session_user),
+) -> Dict[str, Any]:
+    """Billing status, catalog price, and cohort usage for org admins and guides."""
+    _require_org_read_access(user, org_id)
+    if not get_organization(org_id):
+        raise HTTPException(
+            status_code=404,
+            detail=_http_detail("NOT_FOUND", "Organization not found."),
+        )
+    snap = build_org_program_billing_snapshot(org_id)
+    if snap.get("error"):
+        raise HTTPException(
+            status_code=404,
+            detail=_http_detail("NOT_FOUND", str(snap["error"])),
+        )
+    return snap
+
+
+@app.post("/api/orgs/{org_id}/program/checkout")
+def post_org_program_checkout(
+    org_id: int,
+    user: Dict[str, Any] = Depends(get_session_user),
+) -> Dict[str, Any]:
+    """Stripe Checkout to unlock cohort program access (org admin or platform admin)."""
+    _require_org_billing_admin(user, org_id)
+    if not get_organization(org_id):
+        raise HTTPException(
+            status_code=404,
+            detail=_http_detail("NOT_FOUND", "Organization not found."),
+        )
+    origin = _payment_public_origin()
+    if not origin:
+        raise HTTPException(
+            status_code=503,
+            detail=_http_detail(
+                "CHECKOUT_RETURN_ORIGIN_MISSING",
+                "Set WORKFLOW_CUSTOMER_APP_ORIGIN or PUBLIC_APP_ORIGIN to your customer app base URL.",
+            ),
+        )
+    email = (user.get("email") or "").strip()
+    if not email:
+        raise HTTPException(
+            status_code=400,
+            detail=_http_detail("EMAIL_REQUIRED", "Account email is required for checkout."),
+        )
+    uid = int(user["user_id"])
+    success_url = f"{origin}/program/setup?payment=success&session_id={{CHECKOUT_SESSION_ID}}"
+    cancel_url = f"{origin}/program/setup?payment=cancelled"
+    result = start_org_program_activation_checkout(
+        user_id=uid,
+        user_email=email,
+        org_id=org_id,
+        success_url=success_url,
+        cancel_url=cancel_url,
+    )
+    err = result.get("error")
+    if err:
+        if err == "not_org_billing_admin":
+            raise HTTPException(
+                status_code=403,
+                detail=_http_detail("ORG_BILLING_ADMIN_REQUIRED", str(err)),
+            )
+        raise HTTPException(
+            status_code=400,
+            detail=_http_detail("ORG_CHECKOUT_FAILED", str(err)[:220]),
+        )
+    return {
+        "checkoutUrl": result.get("url"),
+        "stripeCheckoutSessionId": result.get("session_id"),
+    }
+
+
+@app.post("/api/orgs/{org_id}/program/billing/reconcile")
+def post_org_program_billing_reconcile(
+    org_id: int,
+    body: OrgProgramBillingReconcileBody,
+    user: Dict[str, Any] = Depends(get_session_user),
+) -> Dict[str, Any]:
+    """After Stripe redirect, verify session and unlock program access (idempotent)."""
+    _require_org_billing_admin(user, org_id)
+    if not get_organization(org_id):
+        raise HTTPException(
+            status_code=404,
+            detail=_http_detail("NOT_FOUND", "Organization not found."),
+        )
+    uid = int(user["user_id"])
+    email = (user.get("email") or "").strip()
+    out = reconcile_org_program_activation_checkout(
+        checkout_session_id=body.stripe_checkout_session_id.strip(),
+        user_id=uid,
+        user_email=email,
+    )
+    if not out.get("ok"):
+        raise HTTPException(
+            status_code=400,
+            detail=_http_detail(
+                "ORG_BILLING_RECONCILE_FAILED",
+                str(out.get("error", "reconcile_failed")),
+            ),
+        )
+    if int(out.get("organizationId") or 0) != int(org_id):
+        raise HTTPException(
+            status_code=400,
+            detail=_http_detail(
+                "ORG_MISMATCH",
+                "That checkout session is not for this organization.",
+            ),
+        )
+    org = get_organization(org_id)
+    return {
+        "ok": True,
+        "reconcile": out,
+        "programUnlockVerified": bool(out.get("programUnlockVerified")),
+        "organization": _public_organization_record(org) if org else None,
+    }
+
+
+@app.get("/api/me/org-program")
+def get_me_org_program(
+    user: Dict[str, Any] = Depends(get_session_user),
+) -> Dict[str, Any]:
+    """Org membership + enrollment; includes ``canonicalProgression`` when a program workflow exists."""
+    uid = int(user["user_id"])
+    return build_me_org_program_payload(uid)
+
+
+@app.get("/api/me/progress")
+def get_me_program_progress(
+    user: Dict[str, Any] = Depends(get_session_user),
+) -> Dict[str, Any]:
+    """
+    Participant milestones (delivery / instructor overlay) plus **authoritative**
+    ``canonicalProgression`` when a program workflow is bound. Prefer ``canonicalProgression``
+    for engine head and next actions; see ``progressionReadContract`` on milestone fields.
+    """
+    ctx = _require_enrolled_org_participant(user)
+    uid = int(user["user_id"])
+    eid = int(ctx["organization_program_enrollment_id"])
+    payload = build_me_program_progress_payload(uid, eid)
+    org = get_organization(int(ctx["organization_id"]))
+    payload["programAccess"] = {
+        "allowed": org_allows_participant_program_access(org),
+    }
+    bundle = _me_org_engine_bundle(ctx, uid)
+    if bundle:
+        payload.update(bundle)
+    return payload
+
+
+@app.post("/api/me/report")
+async def post_me_report(
+    user: Dict[str, Any] = Depends(get_session_user),
+    file: Optional[UploadFile] = File(None),
+    files: Optional[List[UploadFile]] = File(None),
+    privacy_consent: str = Form("false"),
+) -> Dict[str, Any]:
+    """
+    Enrolled org participant: upload one bureau PDF (or multiple parts merged server-side);
+    full parse via ``process_uploaded_reports``.
+    Advances ``org_program_v1`` workflow steps (``workflow_sessions``) for this enrollment.
+    """
+    ctx = _require_enrolled_org_participant(user)
+    _require_org_program_payment_access(ctx)
+    _require_org_program_not_paused(user, ctx)
+    consent = (privacy_consent or "").strip().lower()
+    if consent not in ("1", "true", "yes", "on"):
+        raise HTTPException(
+            status_code=400,
+            detail=_http_detail(
+                "PRIVACY_CONSENT_REQUIRED",
+                "Privacy consent is required before upload.",
+            ),
+        )
+
+    fname, raw = await _load_and_maybe_merge_report_pdfs(file=file, files=files)
+
+    uid = int(user["user_id"])
+    try:
+        from services.report_pipeline import process_uploaded_reports
+
+        result = process_uploaded_reports(
+            [(fname, raw)],
+            {
+                "user_id": uid,
+                "organization_id": ctx["organization_id"],
+                "organization_program_enrollment_id": ctx[
+                    "organization_program_enrollment_id"
+                ],
+                "mutation_channel": "workflow_http",
+            },
+        )
+    except Exception:
+        _logger.exception("me report upload pipeline failed for user %s", uid)
+        raise HTTPException(
+            status_code=500,
+            detail=_http_detail(
+                "PARSE_PIPELINE_ERROR",
+                "Report processing failed. Try again or use a different PDF.",
+            ),
+        ) from None
+
+    skips = result.get("file_skips") or []
+    processed = int(result.get("reports_processed") or 0)
+    report_ids: List[int] = []
+    for _k, rep in (result.get("uploaded_reports") or {}).items():
+        rid = rep.get("report_id")
+        if rid is not None:
+            report_ids.append(int(rid))
+
+    ok = processed > 0 and len(skips) == 0
+    if ok:
+        eid = int(ctx["organization_program_enrollment_id"])
+        oid = int(ctx["organization_id"])
+        steps_done = ["orgprog_upload"]
+        if report_ids:
+            fp = build_findings_payload(uid, report_id=report_ids[0])
+            if fp.get("processingStatus") == "complete":
+                steps_done.append("orgprog_findings_ready")
+        advance_org_program_steps(uid, oid, eid, steps_done, audit_source="api:me_report")
+    out = {
+        "ok": ok,
+        "processingStatus": "complete" if ok else "failed",
+        "reportsProcessed": processed,
+        "reportIds": report_ids,
+        "fileSkips": skips,
+    }
+    bundle = _me_org_engine_bundle(ctx, uid)
+    if bundle:
+        out.update(bundle)
+    return out
+
+
+@app.post("/api/me/report/analyze")
+def post_me_report_analyze(
+    user: Dict[str, Any] = Depends(get_session_user),
+    report_id: Optional[int] = Query(
+        None,
+        description="Specific report id; defaults to latest for this user.",
+    ),
+) -> Dict[str, Any]:
+    """
+    Rebuild findings from stored parse (extract_claims → compress_claims).
+    Does not re-read the PDF; use after POST /api/me/report.
+    """
+    ctx = _require_enrolled_org_participant(user)
+    _require_org_program_payment_access(ctx)
+    _require_org_program_not_paused(user, ctx)
+    _require_org_program_upload_done(user, ctx)
+    uid = int(user["user_id"])
+    payload = build_findings_payload(uid, report_id=report_id)
+    if payload.get("processingStatus") == "no_report":
+        raise HTTPException(
+            status_code=400,
+            detail=_http_detail(
+                "NO_REPORT",
+                "No saved report found. Upload a report first.",
+            ),
+        )
+    if payload.get("processingStatus") == "complete":
+        advance_org_program_steps(
+            uid,
+            int(ctx["organization_id"]),
+            int(ctx["organization_program_enrollment_id"]),
+            ["orgprog_findings_ready"],
+            audit_source="api:me_report_analyze",
+        )
+    bundle = _me_org_engine_bundle(ctx, uid)
+    if bundle:
+        payload = {**payload, **bundle}
+    return payload
+
+
+@app.get("/api/me/report/findings")
+def get_me_report_findings(
+    user: Dict[str, Any] = Depends(get_session_user),
+    report_id: Optional[int] = Query(
+        None,
+        description="Specific report id; defaults to latest for this user.",
+    ),
+) -> Dict[str, Any]:
+    """Participant findings: reviewClaims + DB violations + summary (latest report by default)."""
+    ctx = _require_enrolled_org_participant(user)
+    _require_org_program_payment_access(ctx)
+    uid = int(user["user_id"])
+    payload = build_findings_payload(uid, report_id=report_id)
+    bundle = _me_org_engine_bundle(ctx, uid)
+    if bundle:
+        payload = {**payload, **bundle}
+    return payload
+
+
+@app.get("/api/me/dispute-options")
+def get_me_dispute_options(
+    user: Dict[str, Any] = Depends(get_session_user),
+    report_id: Optional[int] = Query(
+        None,
+        alias="reportId",
+        description="Target report; defaults to latest for this user.",
+    ),
+) -> Dict[str, Any]:
+    """Round-1 eligible dispute items for one report (workflow-shaped ``disputeStrategy``)."""
+    ctx = _require_enrolled_org_participant(user)
+    _require_org_program_payment_access(ctx)
+    _require_org_program_not_paused(user, ctx)
+    _require_org_program_findings_ready(user, ctx)
+    uid = int(user["user_id"])
+    payload = build_program_dispute_options(uid, report_id, session_user=user)
+    bundle = _me_org_engine_bundle(ctx, uid)
+    if bundle:
+        payload = {**payload, **bundle}
+    return payload
+
+
+@app.get("/api/me/dispute-selections")
+def get_me_dispute_selections(
+    user: Dict[str, Any] = Depends(get_session_user),
+    report_id: Optional[int] = Query(
+        None,
+        alias="reportId",
+        description="Defaults to latest report when omitted.",
+    ),
+) -> Dict[str, Any]:
+    ctx = _require_enrolled_org_participant(user)
+    _require_org_program_payment_access(ctx)
+    _require_org_program_not_paused(user, ctx)
+    _require_org_program_findings_ready(user, ctx)
+    uid = int(user["user_id"])
+    payload = get_dispute_selections_response(uid, report_id)
+    bundle = _me_org_engine_bundle(ctx, uid)
+    if bundle:
+        payload = {**payload, **bundle}
+    return payload
+
+
+@app.post("/api/me/dispute-selections")
+def post_me_dispute_selections(
+    body: MeDisputeSelectionsBody,
+    user: Dict[str, Any] = Depends(get_session_user),
+) -> Dict[str, Any]:
+    ctx = _require_enrolled_org_participant(user)
+    _require_org_program_payment_access(ctx)
+    _require_org_program_not_paused(user, ctx)
+    _require_org_program_findings_ready(user, ctx)
+    uid = int(user["user_id"])
+    rid = int(body.report_id)
+    row = db.get_report(rid, user_id=uid)
+    if not row:
+        raise HTTPException(
+            status_code=404,
+            detail=_http_detail("NOT_FOUND", "Report not found."),
+        )
+    out = save_program_dispute_selections(
+        uid,
+        rid,
+        ctx.get("organization_program_enrollment_id"),
+        list(body.selected_review_claim_ids),
+    )
+    if out.get("error"):
+        raise HTTPException(
+            status_code=400,
+            detail=_http_detail("INVALID_SELECTION", str(out["error"])),
+        )
+    advance_org_program_steps(
+        uid,
+        int(ctx["organization_id"]),
+        int(ctx["organization_program_enrollment_id"]),
+        ["orgprog_selections_saved"],
+        audit_source="api:me_dispute_selections",
+    )
+    sel_out = {
+        "reportId": rid,
+        "selectedReviewClaimIds": out.get("selectedReviewClaimIds") or [],
+        "updatedAt": out.get("updated_at"),
+    }
+    bundle = _me_org_engine_bundle(ctx, uid)
+    if bundle:
+        sel_out.update(bundle)
+    return sel_out
+
+
+@app.post("/api/me/generate-letters")
+def post_me_generate_letters(
+    body: MeGenerateLettersBody,
+    user: Dict[str, Any] = Depends(get_session_user),
+) -> Dict[str, Any]:
+    """
+    Generate bureau letters from saved program dispute selections (same letter pipeline;
+    completes ``orgprog_letters_generated`` on the enrollment ``org_program_v1`` workflow).
+    """
+    ctx = _require_enrolled_org_participant(user)
+    _require_org_program_payment_access(ctx)
+    _require_org_program_not_paused(user, ctx)
+    _require_org_program_findings_ready(user, ctx)
+    _require_org_program_selections_saved(user, ctx)
+    uid = int(user["user_id"])
+    rid = body.report_id
+    if rid is None:
+        rid = resolve_report_id_for_participant(uid, None)
+        if rid is None:
+            raise HTTPException(
+                status_code=400,
+                detail=_http_detail("NO_REPORT", "No report found."),
+            )
+        saved = get_dispute_selections_response(uid, rid)
+        if not (saved.get("selectedReviewClaimIds") or []):
+            raise HTTPException(
+                status_code=400,
+                detail=_http_detail(
+                    "NO_SELECTION",
+                    "Save dispute selections first or pass reportId.",
+                ),
+            )
+    else:
+        rid = int(rid)
+
+    result, err_safe = run_program_letter_generation(
+        uid, rid, is_admin=auth.is_admin(user), session_user=user
+    )
+    serialized = result.pop("_serialized_letters", []) if isinstance(result, dict) else []
+    selected_n = (
+        int(result.pop("_selected_item_count", 0)) if isinstance(result, dict) else 0
+    )
+
+    if err_safe:
+        raise HTTPException(
+            status_code=400,
+            detail=_http_detail("LETTER_GENERATION_FAILED", err_safe),
+        )
+
+    billing = (result or {}).get("billing") or {}
+    advance_org_program_steps(
+        uid,
+        int(ctx["organization_id"]),
+        int(ctx["organization_program_enrollment_id"]),
+        ["orgprog_letters_generated"],
+        audit_source="api:me_generate_letters",
+    )
+    gen_out = {
+        "generationStatus": "success",
+        "reportId": rid,
+        "selectedItemCount": selected_n,
+        "billing": billing,
+        "letters": serialized,
+        "bureauKeys": list((result.get("letters") or {}).keys()),
+    }
+    bundle = _me_org_engine_bundle(ctx, uid)
+    if bundle:
+        gen_out.update(bundle)
+    return gen_out
 
 
 @app.post("/api/auth/verify-email")
@@ -566,14 +2476,86 @@ def post_auth_resend_verification(
             code,
             user.get("display_name"),
         )
-    except Exception:
+    except Exception as exc:
         _logger.exception("resend verification email failed")
+        hint = _dev_email_error_hint(exc)
+        msg = "Could not send verification email. Please try again later."
+        if hint:
+            msg = f"{msg} ({hint})"
         raise HTTPException(
             status_code=503,
-            detail=_http_detail(
-                "EMAIL_UNAVAILABLE",
-                "Could not send verification email. Please try again later.",
-            ),
+            detail=_http_detail("EMAIL_UNAVAILABLE", msg),
+        )
+    return {"ok": True}
+
+
+@app.post("/api/auth/forgot-password")
+def post_auth_forgot_password(body: AuthForgotPasswordBody) -> Dict[str, Any]:
+    """
+    Request a password reset code by email. Response is generic so addresses cannot be enumerated.
+    """
+    email = body.email.strip()
+    if not re.match(
+        r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$",
+        email,
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail=_http_detail("INVALID_EMAIL", "Please enter a valid email address."),
+        )
+    result = auth.send_password_reset_code(email)
+    if not result.get("success"):
+        return {"ok": True}
+    uid = result.get("user_id")
+    if uid is not None and result.get("code"):
+        try:
+            from resend_client import send_password_reset_email
+
+            send_password_reset_email(
+                email.lower().strip(),
+                str(result["code"]),
+                result.get("display_name"),
+            )
+        except Exception as exc:
+            _logger.exception("password reset email send failed")
+            hint = _dev_email_error_hint(exc)
+            msg = "Could not send reset email. Please try again later."
+            if hint:
+                msg = f"{msg} ({hint})"
+            raise HTTPException(
+                status_code=503,
+                detail=_http_detail("EMAIL_UNAVAILABLE", msg),
+            )
+    return {"ok": True}
+
+
+@app.post("/api/auth/reset-password")
+def post_auth_reset_password(body: AuthResetPasswordBody) -> Dict[str, Any]:
+    """Verify emailed code and set a new password (invalidates existing sessions)."""
+    email = body.email.strip()
+    if not re.match(
+        r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$",
+        email,
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail=_http_detail("INVALID_EMAIL", "Please enter a valid email address."),
+        )
+    pw_err = _signup_password_errors(body.password)
+    if pw_err:
+        raise HTTPException(
+            status_code=400,
+            detail=_http_detail("INVALID_PASSWORD", pw_err),
+        )
+    out = auth.verify_reset_code_and_set_password(
+        email,
+        body.code.strip(),
+        body.password,
+    )
+    if out.get("error"):
+        raise HTTPException(
+            status_code=400,
+            detail=_http_detail("RESET_FAILED", str(out["error"])),
         )
     return {"ok": True}
 
@@ -587,10 +2569,14 @@ def get_disputes_strategy(
     """
     Eligible dispute items grouped like Streamlit DISPUTES, plus entitlement hints and draft defaults.
     """
+    try:
+        enforce_customer_action(workflow_id, ACTION_DISPUTES_STRATEGY_VIEW)
+    except FlowEnforcementError as e:
+        _raise_flow_violation(e)
     uid = int(session["user_id"])
     payload = build_dispute_strategy_payload(uid, workflow_id, session_user=user)
     return {
-        "workflow": _engine.resume(workflow_id),
+        **_workflow_payload_with_progression(workflow_id),
         **payload,
     }
 
@@ -603,21 +2589,19 @@ def put_dispute_selection_draft(
     user: Dict[str, Any] = Depends(get_session_user),
 ) -> Dict[str, Any]:
     """Persist checkbox draft under workflow metadata (does not advance the engine)."""
-    head, phase = workflow_head_step_id(workflow_id)
-    if phase == "done" or head != "select_disputes":
-        raise HTTPException(
-            status_code=409,
-            detail=_http_detail(
-                "WRONG_WORKFLOW_STEP",
-                "Dispute selection is not open for this workflow.",
-            ),
-        )
+    try:
+        enforce_customer_action(workflow_id, ACTION_DISPUTES_SELECTION_DRAFT)
+    except FlowEnforcementError as e:
+        _raise_flow_violation(e)
     uid = int(session["user_id"])
     claims = load_compressed_review_claims_for_user(uid)
     meta = parse_workflow_metadata_value(session.get("metadata") if session else {})
-    prev = previously_disputed_claim_ids_from_meta(meta)
+    rnd, cumulative, outcomes = dispute_selection_context_from_meta(meta)
     eligible = filter_eligible_dispute_items(
-        claims, round_number=1, previously_disputed_ids=prev
+        claims,
+        round_number=rnd,
+        cumulative_disputed_ids=cumulative,
+        claim_outcomes=outcomes,
     )
     eligible_ids = {rc.review_claim_id for rc in eligible}
     ok, err = validate_selected_against_eligible(
@@ -629,7 +2613,7 @@ def put_dispute_selection_draft(
             detail=_http_detail("INVALID_SELECTION", err),
         )
     save_dispute_selection_draft(workflow_id, list(body.draft_selected_review_claim_ids))
-    return {"workflow": _engine.resume(workflow_id)}
+    return _workflow_payload_with_progression(workflow_id)
 
 
 @app.post("/api/workflows/{workflow_id}/disputes/selection/confirm")
@@ -643,15 +2627,10 @@ def post_dispute_selection_confirm(
     Validate selection, persist ids on the session, complete ``select_disputes`` (same engine hook
     as Streamlit), and return the updated resume envelope.
     """
-    head, phase = workflow_head_step_id(workflow_id)
-    if phase == "done" or head != "select_disputes":
-        raise HTTPException(
-            status_code=409,
-            detail=_http_detail(
-                "WRONG_WORKFLOW_STEP",
-                "Dispute selection is not open for this workflow.",
-            ),
-        )
+    try:
+        enforce_customer_action(workflow_id, ACTION_DISPUTES_SELECTION_CONFIRM)
+    except FlowEnforcementError as e:
+        _raise_flow_violation(e)
     ids = [str(x).strip() for x in body.selected_review_claim_ids if str(x).strip()]
     if not ids:
         raise HTTPException(
@@ -664,9 +2643,12 @@ def post_dispute_selection_confirm(
     uid = int(session["user_id"])
     claims = load_compressed_review_claims_for_user(uid)
     meta = parse_workflow_metadata_value(session.get("metadata") if session else {})
-    prev = previously_disputed_claim_ids_from_meta(meta)
+    rnd, cumulative, outcomes = dispute_selection_context_from_meta(meta)
     eligible = filter_eligible_dispute_items(
-        claims, round_number=1, previously_disputed_ids=prev
+        claims,
+        round_number=rnd,
+        cumulative_disputed_ids=cumulative,
+        claim_outcomes=outcomes,
     )
     eligible_by_id = {rc.review_claim_id: rc for rc in eligible}
     eligible_ids = set(eligible_by_id.keys())
@@ -709,7 +2691,38 @@ def post_dispute_selection_confirm(
                 "Could not advance dispute selection. Refresh and try again.",
             ),
         )
-    return {"workflow": _engine.resume(workflow_id)}
+    return _workflow_payload_with_progression(workflow_id)
+
+
+@app.post("/api/workflows/{workflow_id}/disputes/begin-next-round")
+def post_disputes_begin_next_round(
+    workflow_id: str,
+    session: Dict[str, Any] = Depends(get_owned_workflow),
+    user: Dict[str, Any] = Depends(get_session_user),
+) -> Dict[str, Any]:
+    """
+    After the linear workflow is complete, reopen dispute selection through tracking
+    for another round in the same program (same uploads and account).
+    """
+    try:
+        enforce_customer_action(workflow_id, ACTION_DISPUTES_BEGIN_NEXT_ROUND)
+    except FlowEnforcementError as e:
+        _raise_flow_violation(e)
+    uid = int(session["user_id"])
+    ok = _engine.service_begin_next_dispute_round(
+        workflow_id,
+        audit_source="api:begin_next_dispute_round",
+        audit_user_id=uid,
+    )
+    if not ok:
+        raise HTTPException(
+            status_code=409,
+            detail=_http_detail(
+                "BEGIN_NEXT_ROUND_FAILED",
+                "Could not start another dispute round. Refresh and try again.",
+            ),
+        )
+    return _workflow_payload_with_progression(workflow_id)
 
 
 @app.get("/api/workflows/{workflow_id}/payment/context")
@@ -719,9 +2732,13 @@ def get_payment_context(
     user: Dict[str, Any] = Depends(get_session_user),
 ) -> Dict[str, Any]:
     """Letter counts, catalog recommendation, entitlements, and payment step status for React."""
+    try:
+        enforce_customer_action(workflow_id, ACTION_PAYMENT_CONTEXT)
+    except FlowEnforcementError as e:
+        _raise_flow_violation(e)
     uid = int(session["user_id"])
     ctx = build_payment_context(workflow_id, uid, is_admin=auth.is_admin(user))
-    return {"workflow": _engine.resume(workflow_id), "payment": ctx}
+    return {**_workflow_payload_with_progression(workflow_id), "payment": ctx}
 
 
 @app.post("/api/workflows/{workflow_id}/payment/checkout")
@@ -732,15 +2749,10 @@ def post_payment_checkout(
     user: Dict[str, Any] = Depends(get_session_user),
 ) -> Dict[str, Any]:
     """Create a Stripe Checkout session with ``workflow_id`` in metadata (same as Streamlit)."""
-    head, phase, _ = workflow_payment_head_state(workflow_id)
-    if phase == "done" or head != "payment":
-        raise HTTPException(
-            status_code=409,
-            detail=_http_detail(
-                "WRONG_WORKFLOW_STEP",
-                "Payment is not the current step for this workflow.",
-            ),
-        )
+    try:
+        enforce_customer_action(workflow_id, ACTION_PAYMENT_CHECKOUT)
+    except FlowEnforcementError as e:
+        _raise_flow_violation(e)
     origin = _payment_public_origin()
     if not origin:
         raise HTTPException(
@@ -778,7 +2790,7 @@ def post_payment_checkout(
     return {
         "checkoutUrl": result.get("url"),
         "stripeCheckoutSessionId": result.get("session_id"),
-        "workflow": _engine.resume(workflow_id),
+        **_workflow_payload_with_progression(workflow_id),
     }
 
 
@@ -793,6 +2805,10 @@ def post_payment_reconcile(
     After Stripe redirects back with ``session_id``, verify the session and apply entitlements +
     workflow payment completion (idempotent; same rules as Streamlit ``?payment=success``).
     """
+    try:
+        enforce_customer_action(workflow_id, ACTION_PAYMENT_RECONCILE)
+    except FlowEnforcementError as e:
+        _raise_flow_violation(e)
     uid = int(session["user_id"])
     email = (user.get("email") or "").strip()
     out = reconcile_checkout_session_for_user(
@@ -817,7 +2833,7 @@ def post_payment_reconcile(
                 "This payment is tied to a different workflow.",
             ),
         )
-    return {"workflow": _engine.resume(workflow_id), "reconcile": out}
+    return {**_workflow_payload_with_progression(workflow_id), "reconcile": out}
 
 
 @app.post("/api/workflows/{workflow_id}/payment/continue-with-credits")
@@ -827,15 +2843,10 @@ def post_payment_continue_with_credits(
     user: Dict[str, Any] = Depends(get_session_user),
 ) -> Dict[str, Any]:
     """Complete the payment step without Stripe when letter balance already covers this round."""
-    head, phase, _ = workflow_payment_head_state(workflow_id)
-    if phase == "done" or head != "payment":
-        raise HTTPException(
-            status_code=409,
-            detail=_http_detail(
-                "WRONG_WORKFLOW_STEP",
-                "Payment is not the current step for this workflow.",
-            ),
-        )
+    try:
+        enforce_customer_action(workflow_id, ACTION_PAYMENT_CONTINUE_CREDITS)
+    except FlowEnforcementError as e:
+        _raise_flow_violation(e)
     uid = int(session["user_id"])
     needed = needed_letters_from_workflow_session(session)
     ok = complete_payment_with_existing_letter_entitlements(workflow_id, uid, needed)
@@ -847,7 +2858,7 @@ def post_payment_continue_with_credits(
                 "Not enough letter credits to continue without purchasing.",
             ),
         )
-    return {"workflow": _engine.resume(workflow_id)}
+    return _workflow_payload_with_progression(workflow_id)
 
 
 @app.get("/api/workflows/{workflow_id}/letters/context")
@@ -857,12 +2868,16 @@ def get_letters_context(
     user: Dict[str, Any] = Depends(get_session_user),
 ) -> Dict[str, Any]:
     """Letter rows from DB + workflow step state for the React /letters step."""
+    try:
+        enforce_customer_action(workflow_id, ACTION_LETTERS_CONTEXT_VIEW)
+    except FlowEnforcementError as e:
+        _raise_flow_violation(e)
     uid = int(session["user_id"])
     head, phase, lg_row = letter_generation_head_state(workflow_id)
     letters = list_letters_for_workflow_customer(uid)
     sel_ids = selected_review_claim_ids_from_workflow(session)
     return {
-        "workflow": _engine.resume(workflow_id),
+        **_workflow_payload_with_progression(workflow_id),
         "letters": letters,
         "lettersUi": {
             "workflowHeadStepId": head,
@@ -875,6 +2890,237 @@ def get_letters_context(
     }
 
 
+@app.get("/api/workflows/{workflow_id}/credit-command-plan")
+def get_credit_command_plan(
+    workflow_id: str,
+    session: Dict[str, Any] = Depends(get_owned_workflow),
+    user: Dict[str, Any] = Depends(get_session_user),
+) -> Dict[str, Any]:
+    """
+    Deterministic 72-hour tactical plan from dispute selection + parsed reports
+    (same ``build_credit_command_plan`` as Streamlit). Always 200; null plan if context is missing.
+    """
+    try:
+        enforce_customer_action(workflow_id, ACTION_CREDIT_COMMAND_PLAN_VIEW)
+    except FlowEnforcementError as e:
+        _raise_flow_violation(e)
+    uid = int(session["user_id"])
+    plan, err = build_credit_command_plan_for_workflow(
+        uid,
+        workflow_id,
+        session_row=session,
+        is_admin=auth.is_admin(user),
+    )
+    return {
+        **_workflow_payload_with_progression(workflow_id),
+        "creditCommandPlan": plan,
+        "unavailableReason": err,
+    }
+
+
+@app.get("/api/public/demo/scenarios")
+def get_public_demo_scenarios() -> Dict[str, Any]:
+    """
+    List fixture-backed demo scenarios (PDFs under ``samples/``).
+    No auth. Production-like deploys need ``PUBLIC_DEMO_ENABLED=1``. Demo runs use a
+    dedicated DB user (auto-created unless ``PUBLIC_DEMO_USER_ID`` is set).
+    """
+    err = public_demo_config_error()
+    if err:
+        raise HTTPException(
+            status_code=503,
+            detail=_http_detail("PUBLIC_DEMO_UNAVAILABLE", err),
+        )
+    scenarios = list_demo_scenarios_public()
+    if not scenarios:
+        raise HTTPException(
+            status_code=503,
+            detail=_http_detail(
+                "PUBLIC_DEMO_NO_FIXTURES",
+                "No demo fixture PDFs found on the server.",
+            ),
+        )
+    return {"scenarios": scenarios}
+
+
+@app.post("/api/public/demo/run")
+def post_public_demo_run(
+    request: Request,
+    body: PublicDemoRunBody,
+    x_public_demo_secret: Optional[str] = Header(None, alias="X-Public-Demo-Secret"),
+) -> Dict[str, Any]:
+    """
+    One-shot truthful demo: new workflow for the dedicated demo user (env id or auto-created
+    system row), ingest fixture, deterministic strongest-path selection, payment waiver or
+    existing credits, letter generation, 72-hour command plan. **Does not use the visitor's account.**
+
+    Optional: set ``PUBLIC_DEMO_SECRET`` and send matching ``X-Public-Demo-Secret`` header.
+    """
+    err = public_demo_config_error()
+    if err:
+        raise HTTPException(
+            status_code=503,
+            detail=_http_detail("PUBLIC_DEMO_UNAVAILABLE", err),
+        )
+    _enforce_public_demo_secret(x_public_demo_secret)
+    if not _public_demo_rate_ok(request):
+        raise HTTPException(
+            status_code=429,
+            detail=_http_detail(
+                "PUBLIC_DEMO_RATE_LIMIT",
+                "Too many demo runs. Try again in a minute.",
+            ),
+        )
+    try:
+        out = run_public_fixture_demo(body.scenario_id)
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=_http_detail("PUBLIC_DEMO_MISCONFIGURED", str(exc)),
+        ) from None
+    if not out.get("ok"):
+        raise HTTPException(
+            status_code=400,
+            detail=_http_detail(
+                "PUBLIC_DEMO_FAILED",
+                str(out.get("error") or "Demo run failed."),
+            ),
+        )
+    wid = str(out.get("workflowId") or "").strip()
+    if wid:
+        out = {**out, **_workflow_payload_with_progression(wid)}
+    return out
+
+
+@app.post("/api/public/demo/lead")
+def post_public_demo_lead(
+    request: Request,
+    body: PublicDemoLeadBody,
+    x_public_demo_secret: Optional[str] = Header(None, alias="X-Public-Demo-Secret"),
+) -> Dict[str, Any]:
+    """
+    Lead capture after the guided demo. Stored in ``demo_leads`` with ``source=react_demo``.
+    Does not require the visitor to be logged in. Rate-limited per IP.
+    """
+    _enforce_public_demo_secret(x_public_demo_secret)
+    if not _public_demo_lead_rate_ok(request):
+        raise HTTPException(
+            status_code=429,
+            detail=_http_detail(
+                "DEMO_LEAD_RATE_LIMIT",
+                "Too many submissions. Please try again shortly.",
+            ),
+        )
+    if not _demo_email_looks_valid(body.email):
+        raise HTTPException(
+            status_code=400,
+            detail=_http_detail(
+                "INVALID_EMAIL",
+                "Please enter a valid email address.",
+            ),
+        )
+    phone = body.phone.strip()
+    if not _demo_phone_has_digits(phone):
+        raise HTTPException(
+            status_code=400,
+            detail=_http_detail(
+                "INVALID_PHONE",
+                "Please enter a phone number we can use to follow up.",
+            ),
+        )
+    meta_lead: Dict[str, Any] = {"clientIp": _public_demo_client_ip(request)}
+    if (body.intent or "").strip():
+        meta_lead["intent"] = (body.intent or "").strip()[:64]
+    if (body.organization_name or "").strip():
+        meta_lead["organizationName"] = (body.organization_name or "").strip()[:200]
+    if (body.audience_note or "").strip():
+        meta_lead["audienceNote"] = (body.audience_note or "").strip()[:500]
+    if (body.referrer_name or "").strip():
+        meta_lead["referrerName"] = (body.referrer_name or "").strip()[:200]
+    try:
+        lead_id = db.insert_demo_lead(
+            body.name.strip(),
+            body.email.strip(),
+            phone,
+            source="react_demo",
+            scenario_id=(body.scenario_id or "").strip() or None,
+            workflow_id=(body.workflow_id or "").strip() or None,
+            meta=meta_lead,
+        )
+    except Exception:
+        _logger.exception("demo_lead insert failed")
+        raise HTTPException(
+            status_code=503,
+            detail=_http_detail(
+                "DEMO_LEAD_STORAGE_UNAVAILABLE",
+                "We could not save your details. Please try again later.",
+            ),
+        ) from None
+
+    if lead_id:
+        try:
+            from resend_client import send_demo_lead_operator_notification
+
+            send_demo_lead_operator_notification(
+                lead_id=lead_id,
+                name=body.name.strip(),
+                email=body.email.strip(),
+                phone=phone,
+                scenario_id=body.scenario_id,
+                workflow_id=body.workflow_id,
+            )
+        except Exception:
+            _logger.debug("demo lead notification skipped or failed", exc_info=True)
+
+    return {"ok": True, "leadId": lead_id}
+
+
+@app.get("/internal/admin/demo-leads")
+def get_internal_demo_leads(
+    limit: int = Query(50, ge=1, le=200),
+    _: None = Depends(require_admin_service),
+) -> Dict[str, Any]:
+    """Operator-only: recent rows from ``demo_leads`` (Bearer ``WORKFLOW_ADMIN_API_SECRET``)."""
+    return jsonable_encoder({"demoLeads": db.list_demo_leads(limit=limit)})
+
+
+@app.post("/internal/admin/demo-leads/{lead_id}/convert-to-org")
+def post_internal_demo_lead_convert_to_org(
+    lead_id: int,
+    body: DemoLeadConvertToOrgBody,
+    _: None = Depends(require_admin_service),
+) -> Dict[str, Any]:
+    """
+    Create a new organization from a demo lead and link the row for continuity.
+    Memberships and enrollments still use standard admin/instructor APIs.
+    """
+    out = convert_demo_lead_to_org(int(lead_id), body.organization_name.strip())
+    if out.get("error"):
+        raise HTTPException(
+            status_code=400,
+            detail=_http_detail("CONVERT_FAILED", str(out["error"])),
+        )
+    org = out["organization"]
+    return {
+        "ok": True,
+        "leadId": out["leadId"],
+        "organization": _public_organization_record(org),
+    }
+
+
+@app.get("/internal/admin/workflows/{workflow_id}/events")
+def get_internal_workflow_events(
+    workflow_id: str,
+    limit: int = Query(500, ge=1, le=2000),
+    _: None = Depends(require_admin_service),
+) -> Dict[str, Any]:
+    """Operator-only: append-only workflow event log (oldest first)."""
+    if not fetch_session(workflow_id):
+        return {"ok": False, "error": {"code": "NOT_FOUND"}}
+    items = list_workflow_events(workflow_id, limit=limit, oldest_first=True)
+    return {"ok": True, "order": "oldest_first", "items": items}
+
+
 @app.post("/api/workflows/{workflow_id}/letters/generate")
 def post_letters_generate(
     workflow_id: str,
@@ -885,6 +3131,10 @@ def post_letters_generate(
     Run ``process_dispute_pipeline`` with DB-backed context (same engine as Streamlit GENERATING).
     Completes workflow step ``letter_generation`` on success.
     """
+    try:
+        enforce_customer_action(workflow_id, ACTION_LETTER_GENERATION_RUN)
+    except FlowEnforcementError as e:
+        _raise_flow_violation(e)
     uid = int(session["user_id"])
     result, err = run_letter_generation(
         uid,
@@ -900,7 +3150,7 @@ def post_letters_generate(
     letters_out = result.get("letters") or {}
     readiness = result.get("readiness") or {}
     return {
-        "workflow": _engine.resume(workflow_id),
+        **_workflow_payload_with_progression(workflow_id),
         "generation": {
             "bureaus": [str(b).lower() for b in letters_out.keys() if b],
             "billing": result.get("billing"),
@@ -912,6 +3162,71 @@ def post_letters_generate(
     }
 
 
+@app.post("/api/workflows/{workflow_id}/letters/generate-async")
+def post_letters_generate_async(
+    workflow_id: str,
+    session: Dict[str, Any] = Depends(get_owned_workflow),
+    user: Dict[str, Any] = Depends(get_session_user),
+) -> Dict[str, Any]:
+    """
+    Enqueue letter generation for background processing (same pipeline as sync generate).
+    Returns immediately with ``jobId``; poll ``GET .../jobs/{jobId}`` for status.
+    """
+    try:
+        enforce_customer_action(workflow_id, ACTION_LETTER_GENERATION_RUN)
+    except FlowEnforcementError as e:
+        _raise_flow_violation(e)
+    uid = int(session["user_id"])
+    jid = create_job(
+        workflow_id,
+        JOB_TYPE_LETTER_GENERATION,
+        {"userId": uid, "isAdmin": auth.is_admin(user)},
+        dedupe_pending=True,
+    )
+    return {
+        **_workflow_payload_with_progression(workflow_id),
+        "ok": True,
+        "jobId": jid,
+        "status": "pending",
+    }
+
+
+@app.get("/api/workflows/{workflow_id}/jobs")
+def get_workflow_jobs_list(
+    workflow_id: str,
+    session: Dict[str, Any] = Depends(get_owned_workflow),
+    limit: int = Query(25, ge=1, le=100),
+) -> Dict[str, Any]:
+    try:
+        enforce_customer_action(workflow_id, ACTION_WORKFLOW_JOBS_LIST)
+    except FlowEnforcementError as e:
+        _raise_flow_violation(e)
+    rows = wf_list_jobs(workflow_id, limit=limit)
+    return {
+        "ok": True,
+        "items": [wf_public_job_view(r) for r in rows],
+    }
+
+
+@app.get("/api/workflows/{workflow_id}/jobs/{job_id}")
+def get_workflow_job_single(
+    workflow_id: str,
+    job_id: str,
+    _session: Dict[str, Any] = Depends(get_owned_workflow),
+) -> Dict[str, Any]:
+    try:
+        enforce_customer_action(workflow_id, ACTION_WORKFLOW_JOB_GET)
+    except FlowEnforcementError as e:
+        _raise_flow_violation(e)
+    row = wf_get_job(job_id)
+    if not row or str(row.get("workflow_id")) != str(workflow_id):
+        raise HTTPException(
+            status_code=404,
+            detail=_http_detail("JOB_NOT_FOUND", "Job not found for this workflow."),
+        )
+    return {"ok": True, "job": wf_public_job_view(row)}
+
+
 @app.get("/api/workflows/{workflow_id}/letters/{letter_id}/content")
 def get_letter_content(
     workflow_id: str,
@@ -919,6 +3234,10 @@ def get_letter_content(
     session: Dict[str, Any] = Depends(get_owned_workflow),
 ) -> Dict[str, Any]:
     """Full letter body for the signed-in owner (for preview modal)."""
+    try:
+        enforce_customer_action(workflow_id, ACTION_LETTER_BODY_READ)
+    except FlowEnforcementError as e:
+        _raise_flow_violation(e)
     uid = int(session["user_id"])
     text = get_letter_body_for_user(uid, letter_id)
     if text is None:
@@ -937,6 +3256,10 @@ def get_letters_bundle_txt(
     """Plain-text download of all current letters for the user (deduped per report+bureau)."""
     from fastapi.responses import PlainTextResponse
 
+    try:
+        enforce_customer_action(workflow_id, ACTION_LETTERS_BUNDLE_READ)
+    except FlowEnforcementError as e:
+        _raise_flow_violation(e)
     uid = int(session["user_id"])
     rows = db.get_all_letters_for_user(uid)
     if not rows:
@@ -967,9 +3290,13 @@ def get_proof_context(
     user: Dict[str, Any] = Depends(get_session_user),
 ) -> Dict[str, Any]:
     """Proof document + signature flags and workflow step state (same DB rules as Streamlit proof page)."""
+    try:
+        enforce_customer_action(workflow_id, ACTION_PROOF_CONTEXT)
+    except FlowEnforcementError as e:
+        _raise_flow_violation(e)
     uid = int(session["user_id"])
     return {
-        "workflow": _engine.resume(workflow_id),
+        **_workflow_payload_with_progression(workflow_id),
         "proof": build_proof_context_payload(uid, workflow_id),
     }
 
@@ -986,14 +3313,10 @@ async def post_proof_upload(
     Upload government ID or address proof; runs ``doc_validator.validate_proof_document`` like Streamlit.
     Persists via ``database.save_proof_upload`` (triggers proof workflow hook when all requirements are met).
     """
-    if not on_proof_attachment_step(workflow_id):
-        raise HTTPException(
-            status_code=409,
-            detail=_http_detail(
-                "WRONG_WORKFLOW_STEP",
-                "Proof upload is not available for the current workflow step.",
-            ),
-        )
+    try:
+        enforce_customer_action(workflow_id, ACTION_PROOF_UPLOAD)
+    except FlowEnforcementError as e:
+        _raise_flow_violation(e)
     raw = await file.read()
     max_size = 5 * 1024 * 1024
     if len(raw) > max_size:
@@ -1040,7 +3363,7 @@ async def post_proof_upload(
         workflow_id=workflow_id,
     )
     return {
-        "workflow": _engine.resume(workflow_id),
+        **_workflow_payload_with_progression(workflow_id),
         "proof": build_proof_context_payload(uid, workflow_id),
     }
 
@@ -1053,14 +3376,10 @@ async def post_proof_signature(
     user: Dict[str, Any] = Depends(get_session_user),
 ) -> Dict[str, Any]:
     """Store a PNG signature (same ``user_signatures`` row as Streamlit); completes proof when ID+address+sig exist."""
-    if not on_proof_attachment_step(workflow_id):
-        raise HTTPException(
-            status_code=409,
-            detail=_http_detail(
-                "WRONG_WORKFLOW_STEP",
-                "Signature upload is not available for the current workflow step.",
-            ),
-        )
+    try:
+        enforce_customer_action(workflow_id, ACTION_PROOF_SIGNATURE)
+    except FlowEnforcementError as e:
+        _raise_flow_violation(e)
     raw = await file.read()
     max_sig = 2 * 1024 * 1024
     if len(raw) > max_sig:
@@ -1081,7 +3400,7 @@ async def post_proof_signature(
     uid = int(session["user_id"])
     db.save_user_signature(uid, raw, workflow_id=workflow_id)
     return {
-        "workflow": _engine.resume(workflow_id),
+        **_workflow_payload_with_progression(workflow_id),
         "proof": build_proof_context_payload(uid, workflow_id),
     }
 
@@ -1093,9 +3412,13 @@ def get_mail_context(
     user: Dict[str, Any] = Depends(get_session_user),
 ) -> Dict[str, Any]:
     """Mail readiness, Lob config, bureau send rows, and workflow mail-gate metadata (Streamlit send panel parity)."""
+    try:
+        enforce_customer_action(workflow_id, ACTION_MAIL_CONTEXT)
+    except FlowEnforcementError as e:
+        _raise_flow_violation(e)
     uid = int(session["user_id"])
     return {
-        "workflow": _engine.resume(workflow_id),
+        **_workflow_payload_with_progression(workflow_id),
         "mail": build_mail_context_payload(
             uid,
             workflow_id,
@@ -1116,6 +3439,10 @@ def post_mail_send_bureau(
     Send one certified letter via Lob (same stack as Streamlit ``send_mail``).
     Completes workflow ``mail``/``track`` when the mail gate is satisfied.
     """
+    try:
+        enforce_customer_action(workflow_id, ACTION_MAIL_SEND_BUREAU)
+    except FlowEnforcementError as e:
+        _raise_flow_violation(e)
     uid = int(session["user_id"])
     fa = body.from_address.model_dump()
     fa["address_state"] = str(fa.get("address_state") or "").strip().upper()[:2]
@@ -1142,7 +3469,7 @@ def post_mail_send_bureau(
             ),
         )
     return {
-        "workflow": _engine.resume(workflow_id),
+        **_workflow_payload_with_progression(workflow_id),
         "lob": {
             "lobId": result.get("lob_id"),
             "trackingNumber": result.get("tracking_number"),
@@ -1165,15 +3492,63 @@ def get_tracking_context(
     user: Dict[str, Any] = Depends(get_session_user),
 ) -> Dict[str, Any]:
     """Post-send Lob rows per bureau, mail-gate metadata, workflow step flags, and ``build_home_summary`` hints."""
+    try:
+        enforce_customer_action(workflow_id, ACTION_TRACKING_CONTEXT)
+    except FlowEnforcementError as e:
+        _raise_flow_violation(e)
     uid = int(session["user_id"])
     return {
-        "workflow": _engine.resume(workflow_id),
+        **_workflow_payload_with_progression(workflow_id),
         "tracking": build_tracking_context_payload(
             uid,
             workflow_id,
             session_row=session,
         ),
     }
+
+
+@app.get("/api/workflows/{workflow_id}/escalation/layer")
+def get_escalation_layer(
+    workflow_id: str,
+    session: Dict[str, Any] = Depends(get_owned_workflow),
+    user: Dict[str, Any] = Depends(get_session_user),
+) -> Dict[str, Any]:
+    """
+    Deterministic escalation triggers (mail age, response classifications, per-claim outcomes)
+    plus concrete leverage actions: furnisher disputes, follow-up letters, call scripts, CFPB path.
+    """
+    try:
+        enforce_customer_action(workflow_id, ACTION_ESCALATION_LAYER_VIEW)
+    except FlowEnforcementError as e:
+        _raise_flow_violation(e)
+    uid = int(session["user_id"])
+    layer = build_escalation_layer_payload(uid, workflow_id, session_row=session)
+    return {
+        **_workflow_payload_with_progression(workflow_id),
+        "escalationLayer": layer,
+    }
+
+
+@app.post("/api/workflows/{workflow_id}/escalation/ux-state")
+def post_escalation_ux_state(
+    workflow_id: str,
+    body: EscalationUxStateBody,
+    session: Dict[str, Any] = Depends(get_owned_workflow),
+    user: Dict[str, Any] = Depends(get_session_user),
+) -> Dict[str, Any]:
+    """Persist per-action reviewed/proceeded flags under ``dispute_selection.escalation_ux``."""
+    try:
+        enforce_customer_action(workflow_id, ACTION_ESCALATION_UX_UPDATE)
+    except FlowEnforcementError as e:
+        _raise_flow_violation(e)
+    _ = int(user["user_id"])
+    persist_escalation_ux_state(
+        workflow_id,
+        body.action_id,
+        reviewed=bool(body.reviewed),
+        proceeded=bool(body.proceeded),
+    )
+    return _workflow_payload_with_progression(workflow_id)
 
 
 @app.get("/api/workflows/{workflow_id}/responses/metrics")
@@ -1184,9 +3559,13 @@ def get_workflow_response_metrics(
     """
     Compact aggregates from ``workflow_response_intake`` rows (same owner scope as list/intake).
     """
+    try:
+        enforce_customer_action(workflow_id, ACTION_RESPONSES_METRICS)
+    except FlowEnforcementError as e:
+        _raise_flow_violation(e)
     payload = build_customer_response_metrics_payload(workflow_id)
     return {
-        "workflow": _engine.resume(workflow_id),
+        **_workflow_payload_with_progression(workflow_id),
         **payload,
     }
 
@@ -1198,6 +3577,10 @@ def get_workflow_responses(
     limit: int = Query(30, ge=1, le=50),
 ) -> Dict[str, Any]:
     """Recent ``workflow_response_intake`` rows for the owner (classification + escalation snapshot)."""
+    try:
+        enforce_customer_action(workflow_id, ACTION_RESPONSES_LIST)
+    except FlowEnforcementError as e:
+        _raise_flow_violation(e)
     uid = int(session["user_id"])
     try:
         payload = build_customer_responses_list_payload(workflow_id, limit=limit)
@@ -1221,7 +3604,7 @@ def get_workflow_responses(
         metadata={"count": payload["count"], "limit": limit},
     )
     return {
-        "workflow": _engine.resume(workflow_id),
+        **_workflow_payload_with_progression(workflow_id),
         **payload,
     }
 
@@ -1235,6 +3618,10 @@ def post_customer_ux_event(
     """
     Persist lightweight UX milestones for observability (mirrors workflow audit pipeline).
     """
+    try:
+        enforce_customer_action(workflow_id, ACTION_CUSTOMER_UX_EVENT)
+    except FlowEnforcementError as e:
+        _raise_flow_violation(e)
     if body.event_name not in _CUSTOMER_UX_WHITELIST:
         raise HTTPException(
             status_code=400,
@@ -1262,6 +3649,10 @@ def post_response_intake(
     body: ResponseIntakeBody,
     session: Dict[str, Any] = Depends(get_owned_workflow),
 ) -> Dict[str, Any]:
+    try:
+        enforce_customer_action(workflow_id, ACTION_RESPONSES_INTAKE)
+    except FlowEnforcementError as e:
+        _raise_flow_violation(e)
     out = intake_bureau_response(
         workflow_id=workflow_id,
         user_id=int(session["user_id"]),
@@ -1281,7 +3672,7 @@ def post_response_intake(
             status_code=status,
             detail=_http_detail(code, msg),
         )
-    return {**out, "workflow": _engine.resume(workflow_id)}
+    return {**out, **_workflow_payload_with_progression(workflow_id)}
 
 
 @app.post("/api/workflows/{workflow_id}/steps/{step_id}/start")
@@ -1290,11 +3681,17 @@ def post_step_start(
     step_id: str,
     session: Dict[str, Any] = Depends(get_owned_workflow),
 ) -> Dict[str, Any]:
-    return _engine.start_step(
-        workflow_id,
-        step_id,
-        audit_source="api",
-        audit_user_id=int(session["user_id"]),
+    try:
+        enforce_step_start(workflow_id, step_id)
+    except FlowEnforcementError as e:
+        _raise_flow_violation(e)
+    return _envelope_with_progression(
+        _engine.start_step(
+            workflow_id,
+            step_id,
+            audit_source="api",
+            audit_user_id=int(session["user_id"]),
+        )
     )
 
 
@@ -1302,12 +3699,14 @@ def post_step_start(
 async def post_workflow_report_upload(
     workflow_id: str,
     session: Dict[str, Any] = Depends(get_owned_workflow),
-    file: UploadFile = File(...),
+    file: Optional[UploadFile] = File(None),
+    files: Optional[List[UploadFile]] = File(None),
     privacy_consent: str = Form("false"),
 ) -> Dict[str, Any]:
     """
-    Upload one bureau credit-report PDF; runs ``services.report_pipeline.process_uploaded_reports``
-    (same path as Streamlit). On success, workflow hooks complete ``upload`` and ``parse_analyze``.
+    Upload one bureau credit-report PDF, or several parts (``files``) merged server-side into one
+    document, then ``services.report_pipeline.process_uploaded_reports`` (same path as Streamlit).
+    On success, workflow hooks complete ``upload`` and ``parse_analyze``.
     """
     consent = (privacy_consent or "").strip().lower()
     if consent not in ("1", "true", "yes", "on"):
@@ -1319,28 +3718,12 @@ async def post_workflow_report_upload(
             },
         )
 
-    raw = await file.read()
-    max_bytes = _MAX_REPORT_UPLOAD_MB * 1024 * 1024
-    if len(raw) > max_bytes:
-        raise HTTPException(
-            status_code=413,
-            detail={
-                "code": "FILE_TOO_LARGE",
-                "messageSafe": f"Maximum file size is {_MAX_REPORT_UPLOAD_MB} MB.",
-            },
-        )
-    if not raw:
-        raise HTTPException(
-            status_code=400,
-            detail={"code": "EMPTY_FILE", "messageSafe": "Empty file."},
-        )
+    fname, raw = await _load_and_maybe_merge_report_pdfs(file=file, files=files)
 
-    fname = (file.filename or "report.pdf").replace("\\", "/").split("/")[-1]
-    if not fname.lower().endswith(".pdf"):
-        raise HTTPException(
-            status_code=400,
-            detail={"code": "NOT_PDF", "messageSafe": "A PDF file is required."},
-        )
+    try:
+        enforce_customer_action(workflow_id, ACTION_REPORT_PDF_UPLOAD)
+    except FlowEnforcementError as e:
+        _raise_flow_violation(e)
 
     uid = int(session["user_id"])
     try:
@@ -1348,7 +3731,7 @@ async def post_workflow_report_upload(
 
         result = process_uploaded_reports(
             [(fname, raw)],
-            {"user_id": uid, "workflow_id": workflow_id},
+            {"user_id": uid, "workflow_id": workflow_id, "mutation_channel": "workflow_http"},
         )
     except Exception:
         _logger.exception("report upload pipeline failed for workflow %s", workflow_id)
@@ -1360,7 +3743,6 @@ async def post_workflow_report_upload(
             },
         ) from None
 
-    envelope = _engine.resume(workflow_id)
     skips = result.get("file_skips") or []
     processed = int(result.get("reports_processed") or 0)
 
@@ -1368,7 +3750,7 @@ async def post_workflow_report_upload(
         "ok": processed > 0 and len(skips) == 0,
         "reportsProcessed": processed,
         "fileSkips": skips,
-        "workflow": envelope,
+        **_workflow_payload_with_progression(workflow_id),
     }
 
 
@@ -1379,6 +3761,15 @@ def internal_service_complete(
     body: InternalServiceCompleteBody,
     _: None = Depends(require_internal_service),
 ) -> Dict[str, Any]:
+    try:
+        enforce_flow_action(
+            workflow_id,
+            INTERNAL_SERVICE_COMPLETE,
+            trust=TRUST_INTERNAL,
+            step_id_arg=step_id,
+        )
+    except FlowEnforcementError as e:
+        _raise_flow_violation(e)
     ok = _engine.service_complete_step(
         workflow_id,
         step_id,
@@ -1395,6 +3786,15 @@ def internal_service_fail(
     body: InternalServiceFailBody,
     _: None = Depends(require_internal_service),
 ) -> Dict[str, Any]:
+    try:
+        enforce_flow_action(
+            workflow_id,
+            INTERNAL_SERVICE_FAIL,
+            trust=TRUST_INTERNAL,
+            step_id_arg=step_id,
+        )
+    except FlowEnforcementError as e:
+        _raise_flow_violation(e)
     ok = _engine.service_fail_step(
         workflow_id,
         step_id,
@@ -1412,6 +3812,15 @@ def internal_async_state(
     body: InternalAsyncStateBody,
     _: None = Depends(require_internal_service),
 ) -> Dict[str, Any]:
+    try:
+        enforce_flow_action(
+            workflow_id,
+            INTERNAL_ASYNC_STATE,
+            trust=TRUST_INTERNAL,
+            step_id_arg=step_id,
+        )
+    except FlowEnforcementError as e:
+        _raise_flow_violation(e)
     ok = _engine.service_set_async_task_state(
         workflow_id,
         step_id,
@@ -1429,6 +3838,14 @@ def internal_reminder_candidates(
     workflow_id: str,
     _: None = Depends(require_internal_service),
 ) -> Dict[str, Any]:
+    try:
+        enforce_flow_action(
+            workflow_id,
+            INTERNAL_REMINDER_CANDIDATES,
+            trust=TRUST_INTERNAL,
+        )
+    except FlowEnforcementError as e:
+        _raise_flow_violation(e)
     return rem_svc.create_reminder_candidates_for_workflow(workflow_id)
 
 
@@ -1470,6 +3887,14 @@ def internal_reminder_sent_stub(
     reminder_id: str,
     _: None = Depends(require_internal_service),
 ) -> Dict[str, Any]:
+    if is_production_like():
+        raise HTTPException(
+            status_code=403,
+            detail=_http_detail(
+                "REMINDER_STUB_FORBIDDEN",
+                "Stub reminder delivery is disabled in production.",
+            ),
+        )
     return {"ok": rem_svc.mark_reminder_sent_stub(reminder_id)}
 
 
@@ -1531,6 +3956,10 @@ def internal_admin_clear_stalled(
     body: AdminActorReasonBody,
     _: None = Depends(require_admin_service),
 ) -> Dict[str, Any]:
+    try:
+        enforce_flow_action(workflow_id, OPERATOR_CLEAR_STALLED, trust=TRUST_OPERATOR)
+    except FlowEnforcementError as e:
+        _raise_flow_violation(e)
     return admin_svc.clear_stalled_flag(
         workflow_id=workflow_id,
         actor_source=body.actor_source,
@@ -1544,6 +3973,15 @@ def internal_admin_reopen_step(
     body: ReopenStepBody,
     _: None = Depends(require_admin_service),
 ) -> Dict[str, Any]:
+    try:
+        enforce_flow_action(
+            workflow_id,
+            OPERATOR_REOPEN_STEP,
+            trust=TRUST_OPERATOR,
+            operator_target_step_id=body.step_id,
+        )
+    except FlowEnforcementError as e:
+        _raise_flow_violation(e)
     return admin_svc.reopen_failed_step(
         workflow_id=workflow_id,
         step_id=body.step_id,
@@ -1558,8 +3996,10 @@ def internal_admin_payment_waived(
     body: AdminActorReasonBody,
     _: None = Depends(require_admin_service),
 ) -> Dict[str, Any]:
-    from services.workflow.repository import fetch_session
-
+    try:
+        enforce_flow_action(workflow_id, OPERATOR_PAYMENT_WAIVED, trust=TRUST_OPERATOR)
+    except FlowEnforcementError as e:
+        _raise_flow_violation(e)
     row = fetch_session(workflow_id)
     if not row:
         return {"ok": False, "error": {"code": "NOT_FOUND"}}
@@ -1577,6 +4017,10 @@ def internal_admin_recovery_record(
     body: RecoveryRecordBody,
     _: None = Depends(require_admin_service),
 ) -> Dict[str, Any]:
+    try:
+        enforce_flow_action(workflow_id, OPERATOR_RECOVERY_RECORD, trust=TRUST_OPERATOR)
+    except FlowEnforcementError as e:
+        _raise_flow_violation(e)
     return admin_svc.trigger_recovery_action_record(
         workflow_id=workflow_id,
         action_type=body.action_type,
@@ -1591,6 +4035,10 @@ def internal_admin_recovery_retry_step(
     body: RecoveryRetryStepBody,
     _: None = Depends(require_admin_service),
 ) -> Dict[str, Any]:
+    try:
+        enforce_flow_action(workflow_id, OPERATOR_RECOVERY_RETRY_STEP, trust=TRUST_OPERATOR)
+    except FlowEnforcementError as e:
+        _raise_flow_violation(e)
     return rec_exec.execute_retry_step(
         workflow_id=workflow_id,
         user_id=body.user_id,
@@ -1606,6 +4054,10 @@ def internal_admin_recovery_resume_current(
     body: RecoveryExecutionBody,
     _: None = Depends(require_admin_service),
 ) -> Dict[str, Any]:
+    try:
+        enforce_flow_action(workflow_id, OPERATOR_RECOVERY_RESUME, trust=TRUST_OPERATOR)
+    except FlowEnforcementError as e:
+        _raise_flow_violation(e)
     return rec_exec.execute_resume_current_step(
         workflow_id=workflow_id,
         user_id=body.user_id,
@@ -1620,6 +4072,10 @@ def internal_admin_recovery_mail_retry(
     body: RecoveryExecutionBody,
     _: None = Depends(require_admin_service),
 ) -> Dict[str, Any]:
+    try:
+        enforce_flow_action(workflow_id, OPERATOR_RECOVERY_MAIL_RETRY, trust=TRUST_OPERATOR)
+    except FlowEnforcementError as e:
+        _raise_flow_violation(e)
     return rec_exec.execute_re_run_mail_attempt(
         workflow_id=workflow_id,
         user_id=body.user_id,
@@ -1720,6 +4176,32 @@ def mcc_audit(
     )
 
 
+@app.get("/internal/admin/architect-access/scenarios")
+def architect_access_scenarios(_: None = Depends(require_admin_service)) -> Dict[str, Any]:
+    return {"ok": True, "scenarios": architect_access_svc.list_scenarios()}
+
+
+@app.post("/internal/admin/architect-access/apply")
+def architect_access_apply(
+    body: ArchitectAccessApplyBody,
+    _: None = Depends(require_admin_service),
+) -> Dict[str, Any]:
+    try:
+        out = architect_access_svc.apply_scenario(
+            body.scenario_id,
+            reset_consumer_workflow=body.reset_consumer_workflow,
+        )
+    except Exception as ex:
+        _logger.exception("architect_access_apply failed: %s", body.scenario_id)
+        raise HTTPException(
+            status_code=500,
+            detail={"messageSafe": str(ex)[:500], "code": "ARCHITECT_APPLY_FAILED"},
+        ) from ex
+    if not out.get("ok"):
+        raise HTTPException(status_code=400, detail=out.get("error") or {"messageSafe": "Apply failed."})
+    return out
+
+
 @app.post("/internal/admin/mission-control/reminders/{reminder_id}/queue")
 def mcc_admin_mc_reminder_queue(
     reminder_id: str,
@@ -1750,12 +4232,39 @@ def mcc_admin_mc_reminder_candidates(
     workflow_id: str,
     _: None = Depends(require_admin_service),
 ) -> Dict[str, Any]:
+    try:
+        enforce_flow_action(
+            workflow_id,
+            OPERATOR_MC_REMINDER_CANDIDATES,
+            trust=TRUST_OPERATOR,
+        )
+    except FlowEnforcementError as e:
+        _raise_flow_violation(e)
     return rem_svc.create_reminder_candidates_for_workflow(workflow_id)
 
 
 @app.get("/health")
 def health() -> Dict[str, str]:
     return {"status": "ok", "service": "workflow-api"}
+
+
+@app.api_route(
+    "/api/{rest_of_path:path}",
+    methods=["POST", "PUT", "PATCH", "DELETE"],
+    include_in_schema=False,
+)
+def unknown_write_api_path(rest_of_path: str) -> Dict[str, Any]:
+    """
+    Fallback so POST/PUT/PATCH/DELETE under ``/api/`` never hit the SPA ``GET /{path}``
+    catch-all (which would incorrectly return **405 Method Not Allowed**).
+    """
+    raise HTTPException(
+        status_code=404,
+        detail=_http_detail(
+            "API_ROUTE_NOT_FOUND",
+            "Unknown API path or your workflow server needs a restart after updating.",
+        ),
+    )
 
 
 mount_customer_web_dist_if_present(app, _logger)

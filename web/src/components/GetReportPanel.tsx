@@ -78,7 +78,7 @@ export function GetReportPanel({ open, onClose }: Props) {
                     id="get-report-title"
                     className="text-lg font-semibold leading-snug text-lab-text sm:text-xl"
                   >
-                    Get your credit report in minutes
+                    Step 1: get your report, then continue upload
                   </h2>
                   <button
                     type="button"
@@ -95,7 +95,8 @@ export function GetReportPanel({ open, onClose }: Props) {
 
               <div className="space-y-5 px-5 py-5 sm:px-6">
                 <p className="text-sm leading-relaxed text-lab-muted sm:text-[15px]">
-                  The fastest way is to access your 3-bureau report, download it, and upload it here.
+                  You&apos;re still in the same program — this step is about obtaining the PDF. Download
+                  your bureau report, then come back here to upload (Step 2).
                 </p>
 
                 <button

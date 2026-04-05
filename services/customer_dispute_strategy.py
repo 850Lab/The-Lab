@@ -1,20 +1,27 @@
 """
 Dispute strategy / selection payload for the React workflow API.
 
-Eligibility rules mirror ``app.py`` DISPUTES (round 1, high-confidence claims, etc.).
+Eligibility: high-confidence claims; round 1 excludes ownership-only posture; later rounds
+also re-include previously disputed items unless ``claim_outcomes`` marks them resolved
+(``deleted`` or ``verified``).
 """
 
 from __future__ import annotations
 
 import json
 import logging
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, Final, List, Optional, Set, Tuple
 
 import auth
 import database as db
 from claims import extract_claims
 from dispute_strategy import build_deterministic_strategy
 from review_claims import ReviewClaim, ReviewType, compress_claims
+from services.workflow.dispute_round_execution import (
+    normalize_bureau_item_outcome,
+    round_execution_public_view,
+)
+from services.workflow.escalation_engine import escalation_public_view
 from services.workflow.engine import compute_authoritative_step
 from services.workflow.repository import fetch_session, fetch_steps
 
@@ -42,8 +49,16 @@ def _parsed_dict(raw: Any) -> Dict[str, Any]:
     return {}
 
 
-def load_compressed_review_claims_for_user(user_id: int, *, report_limit: int = 25) -> List[ReviewClaim]:
-    rows = db.get_recent_reports_with_parsed_for_user(user_id, limit=report_limit)
+def load_compressed_review_claims_for_user(
+    user_id: int,
+    *,
+    report_limit: int = 25,
+    only_report_ids: Optional[List[int]] = None,
+) -> List[ReviewClaim]:
+    if only_report_ids is not None:
+        rows = db.get_reports_with_parsed_for_user_by_ids(user_id, only_report_ids)
+    else:
+        rows = db.get_recent_reports_with_parsed_for_user(user_id, limit=report_limit)
     all_raw: List[Any] = []
     for row in rows:
         pd = _parsed_dict(row.get("parsed_data"))
@@ -56,30 +71,51 @@ def load_compressed_review_claims_for_user(user_id: int, *, report_limit: int = 
     return compress_claims(all_raw)
 
 
+# User- or operator-supplied per-claim outcomes (see response intake ``claim_outcomes`` /
+# ``item_outcomes``). Normalized buckets: deleted | updated | verified | no_response.
+# Only deleted + verified remove an item from the next round pool; updated / no_response stay eligible.
+RESOLVED_DISPUTE_OUTCOMES: Final = frozenset({"deleted", "verified"})
+
+
 def filter_eligible_dispute_items(
     review_claims: List[ReviewClaim],
     *,
     round_number: int = 1,
+    cumulative_disputed_ids: Optional[Set[str]] = None,
+    claim_outcomes: Optional[Dict[str, str]] = None,
     previously_disputed_ids: Optional[Set[str]] = None,
 ) -> List[ReviewClaim]:
-    prev = previously_disputed_ids or set()
+    """
+    Eligible items for the current dispute round.
+
+    * Never disputed: same high-confidence rules as round 1 (ownership excluded on round 1 only).
+    * Previously disputed: included unless ``claim_outcomes[id]`` is a resolved bucket
+      (``deleted`` or ``verified``). Missing outcome ⇒ still in play (unresolved).
+    """
+    cumulative = cumulative_disputed_ids
+    if cumulative is None:
+        cumulative = previously_disputed_ids or set()
+    outcomes = claim_outcomes or {}
     eligible: List[ReviewClaim] = []
     seen: Set[str] = set()
     for rc in review_claims:
         if rc.review_type == ReviewType.IDENTITY_VERIFICATION:
             continue
-        if round_number == 1 and rc.review_type == ReviewType.ACCOUNT_OWNERSHIP:
+        cid = rc.review_claim_id
+        if cid in cumulative:
+            oc = (outcomes.get(cid) or "").strip().lower()
+            if oc in RESOLVED_DISPUTE_OUTCOMES:
+                continue
+        elif round_number == 1 and rc.review_type == ReviewType.ACCOUNT_OWNERSHIP:
             continue
-        if rc.review_claim_id in prev:
-            continue
-        if rc.review_claim_id in seen:
+        if cid in seen:
             continue
         conf = (
             rc.evidence_summary.claim_confidence_summary if rc.evidence_summary else None
         )
         if not conf or conf.high == 0:
             continue
-        seen.add(rc.review_claim_id)
+        seen.add(cid)
         eligible.append(rc)
     return eligible
 
@@ -107,12 +143,58 @@ def parse_workflow_metadata_value(meta: Any) -> Dict[str, Any]:
     return {}
 
 
-def previously_disputed_claim_ids_from_meta(meta: Dict[str, Any]) -> Set[str]:
+def cumulative_disputed_review_claim_ids_from_meta(meta: Dict[str, Any]) -> Set[str]:
     ds = meta.get("dispute_selection") or {}
-    raw = ds.get("previously_disputed_claim_ids") or []
-    if not isinstance(raw, list):
+    if not isinstance(ds, dict):
         return set()
-    return {str(x) for x in raw if x}
+    raw = ds.get("cumulative_disputed_review_claim_ids")
+    if isinstance(raw, list):
+        return {str(x) for x in raw if x}
+    raw2 = ds.get("previously_disputed_claim_ids") or []
+    if isinstance(raw2, list):
+        return {str(x) for x in raw2 if x}
+    return set()
+
+
+def previously_disputed_claim_ids_from_meta(meta: Dict[str, Any]) -> Set[str]:
+    """Alias: ids selected in any dispute round (legacy metadata key supported)."""
+    return cumulative_disputed_review_claim_ids_from_meta(meta)
+
+
+def dispute_round_number_from_meta(meta: Dict[str, Any]) -> int:
+    ds = meta.get("dispute_selection") or {}
+    if not isinstance(ds, dict):
+        return 1
+    try:
+        return max(1, int(ds.get("dispute_round_number") or 1))
+    except (TypeError, ValueError):
+        return 1
+
+
+def claim_outcomes_from_meta(meta: Dict[str, Any]) -> Dict[str, str]:
+    ds = meta.get("dispute_selection") or {}
+    if not isinstance(ds, dict):
+        return {}
+    raw = ds.get("claim_outcomes") or {}
+    if not isinstance(raw, dict):
+        return {}
+    out: Dict[str, str] = {}
+    for k, v in raw.items():
+        if k is None or v is None:
+            continue
+        key = str(k).strip()
+        if not key:
+            continue
+        out[key] = normalize_bureau_item_outcome(str(v).strip().lower())
+    return out
+
+
+def dispute_selection_context_from_meta(meta: Dict[str, Any]) -> Tuple[int, Set[str], Dict[str, str]]:
+    return (
+        dispute_round_number_from_meta(meta),
+        cumulative_disputed_review_claim_ids_from_meta(meta),
+        claim_outcomes_from_meta(meta),
+    )
 
 
 def build_dispute_strategy_payload(
@@ -139,9 +221,12 @@ def build_dispute_strategy_payload(
     claims = load_compressed_review_claims_for_user(user_id)
     sess = fetch_session(workflow_id)
     meta = parse_workflow_metadata_value(sess.get("metadata") if sess else {})
-    prev = previously_disputed_claim_ids_from_meta(meta)
+    rnd, cumulative, outcomes = dispute_selection_context_from_meta(meta)
     eligible = filter_eligible_dispute_items(
-        claims, round_number=1, previously_disputed_ids=prev
+        claims,
+        round_number=rnd,
+        cumulative_disputed_ids=cumulative,
+        claim_outcomes=outcomes,
     )
 
     eligible_by_id = {rc.review_claim_id: rc for rc in eligible}
@@ -182,16 +267,48 @@ def build_dispute_strategy_payload(
     has_used_free = auth.has_used_free_letters(user_id) if user_id and not is_admin else False
     using_free_mode = not is_admin and letters_balance == 0 and not has_used_free
 
+    esc = escalation_public_view(meta)
+    has_esc = bool(esc.get("actions"))
+    path_guidance = (
+        "escalation_and_next_round"
+        if has_esc and len(eligible) > 0
+        else "escalation_focus"
+        if has_esc
+        else "next_round_primary"
+    )
+    from services.workflow.escalation_ux_payload import build_program_escalation_ux_payload
+
+    program_escalation = build_program_escalation_ux_payload(user_id, meta)
+
     return {
         "selectionAllowed": True,
         "selectionBlockedReason": None,
+        "escalationGuide": {
+            "pathGuidance": path_guidance,
+            "escalation": esc,
+            "programEscalation": program_escalation,
+            "nextRoundDispute": {
+                "eligibleItemCount": len(eligible),
+                "summarySafe": (
+                    "Continue the in-app dispute letter cycle for this same workflow when "
+                    "you are ready for another bureau mailing round."
+                ),
+            },
+            "differentiationNote": (
+                "Escalation actions (MOV, furnisher, CFPB, call outlines) are parallel "
+                "next steps outside or alongside the next bureau letter round; they do "
+                "not replace the canonical workflow engine."
+            ),
+        },
         "disputeStrategy": {
-            "roundNumber": 1,
+            "roundNumber": rnd,
             "eligibleCount": len(eligible),
             "groups": groups,
             "eligibleReviewClaimIds": list(eligible_by_id.keys()),
             "defaultSelectedReviewClaimIds": default_selected,
             "suggestedReviewClaimIds": suggested_ids,
+            "roundExecution": round_execution_public_view(meta),
+            "escalationRecommendations": esc,
             "deterministic": (
                 {
                     "source": det.source,

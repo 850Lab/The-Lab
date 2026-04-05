@@ -1,13 +1,27 @@
 import { motion } from "framer-motion";
 import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
+import { LaunchHubNavLink } from "@/components/LaunchHubNavLink";
 import { TopBarMinimal } from "@/components/TopBarMinimal";
+import { DemoContinuationStrip } from "@/components/DemoContinuationStrip";
+import { ProgramPathContinuationStrip } from "@/components/ProgramPathContinuationStrip";
+import {
+  DEMO_PROGRAM_ENTRY_DEFAULT_NEXT,
+  shouldShowDemoContinuationStrip,
+} from "@/lib/demoProgramBridge";
+import {
+  isProgramOnboardingNext,
+  resolvedProgramNextFromSearch,
+} from "@/lib/programEntryContinuation";
 import { safeAppPath } from "@/lib/postAuthRedirect";
 import { useAuth } from "@/providers/AuthContext";
 
 export function SignupPage() {
   const navigate = useNavigate();
   const location = useLocation();
+  const programEyebrow =
+    shouldShowDemoContinuationStrip(location.search) ||
+    isProgramOnboardingNext(resolvedProgramNextFromSearch(location.search));
   const { signUp } = useAuth();
   const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
@@ -26,9 +40,16 @@ export function SignupPage() {
     setBusy(true);
     try {
       await signUp(email.trim(), password, displayName.trim());
-      const returnTo = safeAppPath(
-        new URLSearchParams(location.search).get("next"),
-      );
+      try {
+        sessionStorage.setItem("850lab_verify_send_initial", "1");
+      } catch {
+        /* ignore */
+      }
+      const q = new URLSearchParams(location.search);
+      let returnTo = safeAppPath(q.get("next"));
+      if (!returnTo && q.get("from") === "demo") {
+        returnTo = DEMO_PROGRAM_ENTRY_DEFAULT_NEXT;
+      }
       navigate("/verify-email", {
         replace: true,
         state: {
@@ -47,16 +68,32 @@ export function SignupPage() {
     <div className="relative min-h-full bg-lab-bg">
       <TopBarMinimal />
       <main className="relative z-10 mx-auto max-w-md px-4 pb-16 pt-24 sm:px-6 sm:pt-28">
+        {programEyebrow ? (
+          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-lab-accent">
+            Your program · Create account
+          </p>
+        ) : null}
         <motion.h1
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
-          className="text-2xl font-semibold text-lab-text"
+          className={`text-2xl font-semibold text-lab-text ${programEyebrow ? "mt-2" : ""}`}
         >
           Create account
         </motion.h1>
-        <p className="mt-2 text-sm text-lab-muted">
-          Same account works across 850 Lab. You’ll verify your email next.
+        <p className="mt-2 text-sm leading-relaxed text-lab-muted">
+          {programEyebrow ? (
+            <>
+              Your program runs on this account — same system before and after you sign in. Next we
+              confirm your email so we can continue securely.
+            </>
+          ) : (
+            <>
+              Create an account to save your progress across 850 Lab. You’ll verify your email next.
+            </>
+          )}
         </p>
+        <DemoContinuationStrip stage="signup" />
+        <ProgramPathContinuationStrip stage="signup" />
 
         <form onSubmit={handleSubmit} className="mt-8 space-y-4">
           {error ? (
@@ -119,6 +156,7 @@ export function SignupPage() {
             Sign in
           </Link>
         </p>
+        <LaunchHubNavLink />
       </main>
     </div>
   );

@@ -48,7 +48,7 @@ export function ReportAcquisitionIdiqBridgePage() {
             to="/get-report"
             className="text-sm font-medium text-lab-accent hover:text-sky-300"
           >
-            ← Back to options
+            ← Back to report options
           </Link>
         </div>
 
@@ -57,17 +57,23 @@ export function ReportAcquisitionIdiqBridgePage() {
           animate={{ opacity: 1, y: 0 }}
           className="rounded-xl border border-white/[0.1] bg-lab-surface/95 px-5 py-6 sm:px-6"
         >
-          <h1 className="text-xl font-semibold tracking-tight text-lab-text">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-lab-accent">
+            Your program · Get report
+          </p>
+          <h1 className="mt-2 text-xl font-semibold tracking-tight text-lab-text">
             Continue to IdentityIQ
           </h1>
           <p className="mt-3 text-sm leading-relaxed text-lab-muted">
-            You’ll open IdentityIQ in a new tab to access your credit report.
+            You&apos;re still in the same program. We&apos;ll open IdentityIQ so you can download your
+            bureau PDF.
           </p>
-          <p className="mt-4 text-sm font-medium text-lab-text">Once you download your report:</p>
-          <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm leading-relaxed text-lab-muted">
-            <li>Come back here</li>
-            <li>Upload the PDF</li>
-            <li>We’ll review it and build your next steps</li>
+          <p className="mt-4 text-sm font-medium text-lab-text">When you have your PDF:</p>
+          <ol className="mt-2 list-decimal space-y-1.5 pl-5 text-sm leading-relaxed text-lab-muted">
+            <li>Come back to 850 Lab</li>
+            <li>
+              Go to <span className="text-lab-text">upload</span> — your next program step
+            </li>
+            <li>We parse the file and guide you through findings and actions</li>
           </ol>
 
           <button
@@ -83,7 +89,7 @@ export function ReportAcquisitionIdiqBridgePage() {
               to="/upload"
               className="text-sm font-medium text-lab-muted hover:text-lab-accent"
             >
-              I already have my report
+              I already have my PDF — go to upload
             </Link>
           </div>
         </motion.div>

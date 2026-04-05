@@ -11,6 +11,7 @@ import type {
 import {
   fetchWorkflowResponseMetrics,
   fetchWorkflowResponses,
+  postBeginNextDisputeRound,
   postCustomerUxEvent,
   postResponseIntake,
 } from "@/lib/workflowApi";
@@ -98,6 +99,27 @@ export function ResponseIntakePage() {
   const [submitBusy, setSubmitBusy] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [lastResult, setLastResult] = useState<ResponseIntakeSubmitResponse | null>(null);
+  const [outcomesJson, setOutcomesJson] = useState("");
+  const [beginNextBusy, setBeginNextBusy] = useState(false);
+  const [beginNextError, setBeginNextError] = useState<string | null>(null);
+
+  const overallComplete =
+    (envelope?.workflowState?.overallStatus ?? "").toLowerCase() === "completed";
+
+  const handleBeginNextRound = useCallback(async () => {
+    if (!token || !workflowId) return;
+    setBeginNextBusy(true);
+    setBeginNextError(null);
+    try {
+      const r = await postBeginNextDisputeRound(token, workflowId);
+      applyWorkflowEnvelope(r.workflow);
+      navigate("/strategy", { replace: false });
+    } catch (e) {
+      setBeginNextError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBeginNextBusy(false);
+    }
+  }, [token, workflowId, applyWorkflowEnvelope, navigate]);
 
   const correlationRef = useRef<string>(
     typeof crypto !== "undefined" && "randomUUID" in crypto
@@ -187,6 +209,25 @@ export function ResponseIntakePage() {
     if (!token || !workflowId || !summaryOk) return;
     setSubmitError(null);
     setLastResult(null);
+    let claimOutcomes: Record<string, string> | undefined;
+    if (outcomesJson.trim()) {
+      try {
+        const parsed = JSON.parse(outcomesJson) as unknown;
+        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+          setSubmitError("Per-item outcomes must be a JSON object, e.g. {\"claim_id\": \"verified\"}.");
+          return;
+        }
+        claimOutcomes = {};
+        for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
+          const key = String(k).trim();
+          if (!key) continue;
+          claimOutcomes[key] = String(v).trim().toLowerCase();
+        }
+      } catch {
+        setSubmitError("Could not parse per-item outcomes JSON.");
+        return;
+      }
+    }
     setSubmitBusy(true);
     void postCustomerUxEvent(token, workflowId, {
       event_name: "response_intake_submit_attempted",
@@ -232,16 +273,16 @@ export function ResponseIntakePage() {
       <TopBarMinimal />
 
       <main className="relative z-10 mx-auto max-w-md px-4 pb-28 pt-24 sm:px-6 sm:pb-32 sm:pt-28">
-        <p className="text-center text-xs font-medium uppercase tracking-[0.14em] text-lab-subtle">
-          After mail
+        <p className="text-center text-[10px] font-semibold uppercase tracking-[0.16em] text-lab-accent">
+          Your program · Responses
         </p>
-        <h1 className="mt-3 text-center text-2xl font-semibold tracking-tight text-lab-text">
+        <h1 className="mt-2 text-center text-2xl font-semibold tracking-tight text-lab-text">
           Bureau &amp; furnisher responses
         </h1>
         <p className="mx-auto mt-3 max-w-sm text-center text-sm leading-relaxed text-lab-muted">
           After mail goes out, bureaus may reply by mail or online. Summarize what you received in
-          your own words — we classify the response and show your next step (same rules as the main
-          app).
+          your own words — we classify it and show your next step in the same program (no separate
+          tool).
         </p>
 
         <div className="mt-4 text-center">
@@ -319,6 +360,20 @@ export function ResponseIntakePage() {
                   onChange={(e) => setKeywords(e.target.value)}
                   placeholder="verified, deleted, investigation complete"
                   className="mt-1 w-full rounded-lg border border-white/[0.1] bg-lab-elevated/80 px-3 py-2.5 text-sm text-lab-text placeholder:text-lab-subtle"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="resp-outcomes" className="text-xs text-lab-subtle">
+                  Per-item outcomes (optional JSON)
+                </label>
+                <textarea
+                  id="resp-outcomes"
+                  value={outcomesJson}
+                  onChange={(e) => setOutcomesJson(e.target.value)}
+                  rows={2}
+                  placeholder='{"review_claim_id": "deleted"} — values: deleted, updated, verified, no_response'
+                  className="mt-1 w-full resize-y rounded-lg border border-white/[0.1] bg-lab-elevated/80 px-3 py-2.5 font-mono text-xs text-lab-text placeholder:text-lab-subtle"
                 />
               </div>
 
@@ -421,6 +476,28 @@ export function ResponseIntakePage() {
                     </li>
                   ) : null}
                 </ul>
+              </div>
+            ) : null}
+
+            {overallComplete ? (
+              <div className="mt-10 rounded-xl border border-lab-accent/25 bg-lab-accent/[0.07] px-5 py-5 sm:px-6">
+                <h2 className="text-[15px] font-semibold text-lab-text sm:text-base">
+                  Next phase: another dispute round
+                </h2>
+                <p className="mt-2 text-sm leading-relaxed text-lab-muted">
+                  Continue in the same program when you are ready to re-dispute unresolved items.
+                </p>
+                <button
+                  type="button"
+                  disabled={beginNextBusy}
+                  onClick={() => void handleBeginNextRound()}
+                  className="mt-4 w-full rounded-lg border border-lab-accent/45 bg-lab-accent/15 py-2.5 text-sm font-semibold text-lab-accent transition-colors hover:bg-lab-accent/25 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {beginNextBusy ? "Opening next round…" : "Continue program — next dispute round"}
+                </button>
+                {beginNextError ? (
+                  <p className="mt-3 text-sm text-amber-200/95">{beginNextError}</p>
+                ) : null}
               </div>
             ) : null}
 

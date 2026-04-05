@@ -25,7 +25,7 @@ export function MailingCTASection({ onTrack, disabled, busy }: Props) {
         whileTap={disabled || busy ? undefined : { scale: 0.985 }}
         transition={{ type: "spring", stiffness: 420, damping: 28 }}
       >
-        {busy ? "Loading…" : "Track my disputes"}
+        {busy ? "Loading…" : "Continue to tracking"}
       </motion.button>
     </div>
   );

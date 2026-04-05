@@ -1,6 +1,22 @@
 import type { FindingGroupCardProps } from "@/components/FindingGroupCard";
 import type { DisputeGroupItem } from "@/components/DisputeGroupCard";
 import type { ReviewClaimJson } from "@/lib/intakeTypes";
+import { findingExpressionForReviewType } from "@/lib/intelligenceExpression";
+
+/** Higher-impact / higher-urgency types first for findings (editorial sort, same data). */
+const FINDINGS_GROUP_PRIORITY: string[] = [
+  "negative_impact",
+  "accuracy_verification",
+  "duplicate_account",
+  "identity_verification",
+  "account_ownership",
+  "unverifiable_information",
+];
+
+function findingsPriorityRank(reviewType: string): number {
+  const i = FINDINGS_GROUP_PRIORITY.indexOf(reviewType);
+  return i === -1 ? FINDINGS_GROUP_PRIORITY.length + 1 : i;
+}
 
 const REVIEW_TYPE_LABELS: Record<string, string> = {
   identity_verification: "Identity verification",
@@ -11,25 +27,8 @@ const REVIEW_TYPE_LABELS: Record<string, string> = {
   unverifiable_information: "Unverifiable information",
 };
 
-const REVIEW_TYPE_EXPLANATIONS: Record<string, string> = {
-  identity_verification:
-    "Personal or identifying details on your report that may need confirmation.",
-  account_ownership: "Accounts where ownership or recognition should be confirmed.",
-  duplicate_account: "Entries that may represent the same obligation more than once.",
-  negative_impact: "Derogatory information that may be affecting your score.",
-  accuracy_verification: "Balances, dates, or status lines that may need verification.",
-  unverifiable_information: "Items that are hard to match to your own records.",
-};
-
 export function labelForReviewType(reviewType: string): string {
   return REVIEW_TYPE_LABELS[reviewType] ?? reviewType.replace(/_/g, " ");
-}
-
-function explanationForReviewType(reviewType: string): string {
-  return (
-    REVIEW_TYPE_EXPLANATIONS[reviewType] ??
-    "Review this group using the questions shown for each item."
-  );
 }
 
 function displayCompany(c: ReviewClaimJson): string {
@@ -49,22 +48,37 @@ export function buildFindingGroupsFromClaims(
     if (!byType.has(k)) byType.set(k, []);
     byType.get(k)!.push(c);
   }
-  const out: FindingGroupCardProps[] = [];
+  type Row = { reviewType: string } & FindingGroupCardProps;
+  const rows: Row[] = [];
   for (const [reviewType, list] of byType) {
+    const expr = findingExpressionForReviewType(reviewType);
     const items = list.map((c) => {
       const line = c.summary?.trim() || c.question?.trim() || c.review_claim_id;
       const bureau = c.entities?.bureau;
       return bureau ? `${line} — ${bureau}` : line;
     });
-    out.push({
+    rows.push({
+      reviewType,
       title: labelForReviewType(reviewType),
       count: list.length,
-      explanation: explanationForReviewType(reviewType),
+      whyItMatters: expr.whyItMatters,
+      whatWeSee: expr.whatWeSee,
+      confidenceFraming: expr.confidenceFraming,
       items,
     });
   }
-  out.sort((a, b) => a.title.localeCompare(b.title));
-  return out;
+  rows.sort(
+    (a, b) =>
+      findingsPriorityRank(a.reviewType) - findingsPriorityRank(b.reviewType) ||
+      a.title.localeCompare(b.title),
+  );
+  return rows.map((r, i) => {
+    const { reviewType: _rt, ...rest } = r;
+    return {
+      ...rest,
+      featured: i === 0 && rest.count > 0,
+    };
+  });
 }
 
 export type DisputeGroupModel = {
@@ -98,6 +112,10 @@ export function buildDisputeGroupsFromClaims(
       })),
     });
   }
-  groups.sort((a, b) => a.title.localeCompare(b.title));
+  groups.sort(
+    (a, b) =>
+      findingsPriorityRank(a.id) - findingsPriorityRank(b.id) ||
+      a.title.localeCompare(b.title),
+  );
   return groups;
 }

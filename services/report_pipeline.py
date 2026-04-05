@@ -77,6 +77,10 @@ class _UploadPipelineContext:
     on_report_saved: Optional[Callable[[str, str], None]]
     # When set (e.g. HTTP upload for a known session), workflow hooks target this id.
     workflow_id: Optional[str] = None
+    organization_id: Optional[int] = None
+    organization_program_enrollment_id: Optional[int] = None
+    # Who invoked persistence (``report_pipeline`` for HTTP/API paths; never ``streamlit`` here).
+    mutation_channel: str = "report_pipeline"
 
     all_claims: List[Any] = field(default_factory=list)
     diagnostic_logs: List[Dict[str, Any]] = field(default_factory=list)
@@ -123,6 +127,9 @@ def _options_dict_to_context(options: Dict[str, Any]) -> _UploadPipelineContext:
     if raw_wid is not None:
         s = str(raw_wid).strip()
         wid = s or None
+    oid = options.get("organization_id")
+    eid = options.get("organization_program_enrollment_id")
+    ch = (options.get("mutation_channel") or "report_pipeline").strip() or "report_pipeline"
     return _UploadPipelineContext(
         user_id=int(user_id),
         use_ocr=bool(options.get("use_ocr", False)),
@@ -130,6 +137,9 @@ def _options_dict_to_context(options: Dict[str, Any]) -> _UploadPipelineContext:
         dev_mode=bool(options.get("dev_mode", False)),
         on_report_saved=options.get("on_report_saved"),
         workflow_id=wid,
+        organization_id=int(oid) if oid is not None else None,
+        organization_program_enrollment_id=int(eid) if eid is not None else None,
+        mutation_channel=ch,
     )
 
 
@@ -331,7 +341,14 @@ def _process_single_pdf(
     progress.write("Storing your parsed report securely...")
     try:
         report_id = db.save_report(
-            bureau, filename, parsed_data, full_text, user_id=ctx.user_id
+            bureau,
+            filename,
+            parsed_data,
+            full_text,
+            user_id=ctx.user_id,
+            organization_id=ctx.organization_id,
+            organization_program_enrollment_id=ctx.organization_program_enrollment_id,
+            mutation_channel=ctx.mutation_channel,
         )
         if ctx.on_report_saved:
             ctx.on_report_saved(bureau, filename)
@@ -578,6 +595,9 @@ class UploadPipelineBatch:
     dev_mode: bool = False
     on_report_saved: Optional[Callable[[str, str], None]] = None
     workflow_id: Optional[str] = None
+    organization_id: Optional[int] = None
+    organization_program_enrollment_id: Optional[int] = None
+    mutation_channel: str = "report_pipeline"
 
     _ctx: _UploadPipelineContext = field(init=False, repr=False)
 
@@ -589,6 +609,9 @@ class UploadPipelineBatch:
             dev_mode=self.dev_mode,
             on_report_saved=self.on_report_saved,
             workflow_id=self.workflow_id,
+            organization_id=self.organization_id,
+            organization_program_enrollment_id=self.organization_program_enrollment_id,
+            mutation_channel=self.mutation_channel,
         )
 
     def reset(self) -> None:
@@ -599,6 +622,9 @@ class UploadPipelineBatch:
             dev_mode=self.dev_mode,
             on_report_saved=self.on_report_saved,
             workflow_id=self.workflow_id,
+            organization_id=self.organization_id,
+            organization_program_enrollment_id=self.organization_program_enrollment_id,
+            mutation_channel=self.mutation_channel,
         )
 
     @property

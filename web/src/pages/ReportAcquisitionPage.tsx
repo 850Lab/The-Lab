@@ -8,8 +8,11 @@ import { useCustomerWorkflow } from "@/providers/CustomerWorkflowContext";
 
 const UX_STEP = "upload";
 
-const cardBase =
-  "flex flex-col rounded-xl border border-white/[0.1] bg-lab-surface/95 p-5 text-left transition-colors hover:border-white/[0.14] sm:p-6";
+const cardPrimary =
+  "flex flex-col rounded-xl border border-lab-accent/30 bg-gradient-to-b from-lab-accent/[0.08] to-lab-surface/95 p-5 text-left shadow-lg shadow-black/15 transition-colors hover:border-lab-accent/40 sm:p-6";
+
+const cardSecondary =
+  "flex flex-col rounded-xl border border-white/[0.08] bg-lab-surface/80 p-5 text-left transition-colors hover:border-white/[0.14] sm:p-6";
 
 export function ReportAcquisitionPage() {
   const navigate = useNavigate();
@@ -43,14 +46,18 @@ export function ReportAcquisitionPage() {
       <TopBarMinimal />
 
       <main className="relative z-10 mx-auto max-w-lg px-4 pb-24 pt-24 sm:px-6 sm:pb-28 sm:pt-28">
-        <p className="text-center text-xs font-medium uppercase tracking-[0.14em] text-lab-subtle">
-          Before you upload
+        <p className="text-center text-[10px] font-semibold uppercase tracking-[0.16em] text-lab-accent">
+          Your program · Get report
         </p>
-        <h1 className="mt-3 text-center text-2xl font-semibold tracking-tight text-lab-text">
-          How would you like to get your credit report?
+        <h1 className="mt-2 text-center text-2xl font-semibold tracking-tight text-lab-text sm:text-[1.65rem]">
+          Get your credit report
         </h1>
         <p className="mx-auto mt-3 max-w-md text-center text-sm leading-relaxed text-lab-muted">
-          Pick an option. You’ll upload a bureau PDF on the next screen when you’re ready.
+          This is what powers your analysis — the same program you&apos;re already in, now with your
+          real bureau file. Choose how you&apos;ll obtain your PDF; your{" "}
+          <strong className="font-medium text-lab-text">next program step</strong> after that is{" "}
+          <strong className="font-medium text-lab-text">upload</strong>, where we parse the report
+          and guide you forward.
         </p>
 
         <div className="mt-10 flex flex-col gap-4">
@@ -61,24 +68,28 @@ export function ReportAcquisitionPage() {
           >
             <Link
               to="/get-report/idiq"
-              className={`${cardBase} relative ring-1 ring-lab-accent/25`}
+              className={cardPrimary}
               onClick={() => fire("idiq_option_selected")}
             >
-              <span className="mb-2 inline-flex w-fit rounded-md bg-lab-accent/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sky-200">
-                Recommended
+              <span className="mb-2 inline-flex w-fit rounded-md bg-lab-accent/20 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sky-200">
+                Primary path
               </span>
               <h2 className="text-[15px] font-semibold text-lab-text">
-                Get your 3-bureau report
+                Get your 3-bureau report (recommended)
               </h2>
               <p className="mt-2 text-sm leading-relaxed text-lab-muted">
-                Use our recommended paid option to access a full 3-bureau credit report through
-                IdentityIQ.
+                Continue through IdentityIQ for full 3-bureau access — then come back here for the
+                next step: upload.
               </p>
               <span className="mt-4 text-sm font-semibold text-lab-accent">
                 Continue to IdentityIQ →
               </span>
             </Link>
           </motion.div>
+
+          <p className="text-center text-xs font-medium uppercase tracking-wide text-lab-subtle">
+            Other ways to get your file
+          </p>
 
           <motion.div
             initial={{ opacity: 0, y: 10 }}
@@ -89,18 +100,18 @@ export function ReportAcquisitionPage() {
               href={ANNUAL_CREDIT_REPORT_URL}
               target="_blank"
               rel="noopener noreferrer"
-              className={cardBase}
+              className={cardSecondary}
               onClick={() => fire("free_report_option_selected")}
             >
               <h2 className="text-[15px] font-semibold text-lab-text">
-                Use the free annual report option
+                Free annual report (AnnualCreditReport.com)
               </h2>
               <p className="mt-2 text-sm leading-relaxed text-lab-muted">
-                You can also request a free report through AnnualCreditReport.com. Some users may
-                receive only part of their bureau data depending on availability.
+                Request a free report; availability varies by bureau. When you have a PDF, return for
+                upload — same program path.
               </p>
               <span className="mt-4 text-sm font-semibold text-lab-accent">
-                Go to AnnualCreditReport.com →
+                Open AnnualCreditReport.com →
               </span>
             </a>
           </motion.div>
@@ -112,26 +123,27 @@ export function ReportAcquisitionPage() {
           >
             <button
               type="button"
-              className={`${cardBase} w-full cursor-pointer`}
+              className={`${cardSecondary} w-full cursor-pointer`}
               onClick={() => {
                 fire("upload_existing_report_selected");
                 navigate("/upload");
               }}
             >
-              <h2 className="text-[15px] font-semibold text-lab-text">
-                I already have my report
-              </h2>
+              <h2 className="text-[15px] font-semibold text-lab-text">I already have my PDF</h2>
               <p className="mt-2 text-sm leading-relaxed text-lab-muted">
-                Upload your credit report PDF and continue your dispute workflow.
+                Skip straight to the next program step — upload — and we&apos;ll run analysis on your
+                file.
               </p>
-              <span className="mt-4 text-sm font-semibold text-lab-accent">Upload my report →</span>
+              <span className="mt-4 text-sm font-semibold text-lab-accent">
+                Go to upload — next step →
+              </span>
             </button>
           </motion.div>
         </div>
 
-        <p className="mt-8 text-center text-xs text-lab-subtle">
-          After you have a PDF, use Upload — then review, choose disputes, pay, generate letters, and
-          mail when ready.
+        <p className="mt-10 text-center text-sm leading-relaxed text-lab-muted">
+          After your PDF is ready, you&apos;re not “navigating away” — you&apos;re moving forward to
+          upload, where your program starts analyzing your report.
         </p>
       </main>
     </div>

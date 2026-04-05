@@ -2,6 +2,7 @@ import { LayoutGroup, motion } from "framer-motion";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { ContinueCTA } from "@/components/ContinueCTA";
+import { ProgramFlowBridge } from "@/components/ProgramFlowBridge";
 import { DisputeGroupCard } from "@/components/DisputeGroupCard";
 import { SummaryCard } from "@/components/SummaryCard";
 import { TopBarMinimal } from "@/components/TopBarMinimal";
@@ -145,25 +146,57 @@ export function ConfirmationPage() {
           <motion.div variants={pageVariants} initial="hidden" animate="show">
             <motion.p
               variants={headerVariants}
-              className="text-center text-xs font-medium uppercase tracking-[0.14em] text-lab-subtle"
+              className="text-center text-[10px] font-semibold uppercase tracking-[0.16em] text-lab-accent"
             >
-              Review
+              Your program · Review
             </motion.p>
 
             <motion.h1
               variants={headerVariants}
-              className="mt-3 text-center text-2xl font-semibold tracking-tight text-lab-text sm:text-3xl"
+              className="mt-2 text-center text-2xl font-semibold tracking-tight text-lab-text sm:text-3xl"
             >
-              We’ve prepared this for you
+              We&apos;ve lined this up for you
             </motion.h1>
+
+            {authoritativeStepId === "review_claims" ? (
+              <motion.div
+                variants={headerVariants}
+                className="mx-auto mt-5 flex max-w-md flex-col items-stretch gap-2 sm:flex-row sm:justify-center sm:gap-3"
+              >
+                <Link
+                  to="/upload"
+                  className="inline-flex items-center justify-center rounded-xl border border-white/[0.14] bg-white/[0.04] px-4 py-2.5 text-center text-sm font-semibold text-lab-text hover:bg-white/[0.07]"
+                >
+                  Add another report
+                </Link>
+                <Link
+                  to="/analyze"
+                  className="inline-flex items-center justify-center rounded-xl px-4 py-2.5 text-center text-sm font-medium text-lab-accent hover:text-sky-300"
+                >
+                  Back to findings
+                </Link>
+              </motion.div>
+            ) : null}
 
             <motion.p
               variants={headerVariants}
-              className="mx-auto mt-3 max-w-md text-center text-sm leading-relaxed text-lab-muted sm:text-[15px]"
+              className={`mx-auto max-w-md text-center text-sm leading-relaxed text-lab-muted sm:text-[15px] ${
+                authoritativeStepId === "review_claims" ? "mt-4" : "mt-3"
+              }`}
             >
-              These items come from your parsed report — not letters yet. Next you’ll choose what to
-              dispute, then pay for letter credits if needed.
+              This is the same list from your findings — grouped and ready. Remove anything that
+              doesn&apos;t belong; you&apos;re refining what the system prepared, not inventing the list
+              from scratch. Next we&apos;ll open your dispute strategy.
             </motion.p>
+
+            <motion.div variants={headerVariants} className="mx-auto mt-5 max-w-md">
+              <ProgramFlowBridge>
+                <span className="font-medium text-lab-text">Now that we&apos;ve walked through your findings,</span>{" "}
+                we&apos;ve prepared this working list for you.{" "}
+                <span className="font-medium text-lab-text">Next, we&apos;ll determine</span> dispute
+                strategy — one continue control when you&apos;re done reviewing below.
+              </ProgramFlowBridge>
+            </motion.div>
 
             {loading && !bundle ? (
               <motion.p variants={headerVariants} className="mt-10 text-center text-sm text-lab-muted">
@@ -183,7 +216,7 @@ export function ConfirmationPage() {
                 className="mt-8 space-y-3 text-center text-sm text-lab-muted"
               >
                 <p>
-                  Review opens when it’s the active step in your workflow.{" "}
+                  Review opens when it’s the active step in your program.{" "}
                   {bundle?.workflow?.userMessage ? `(${bundle.workflow.userMessage})` : ""}
                 </p>
                 <Link
@@ -207,15 +240,21 @@ export function ConfirmationPage() {
                   </motion.div>
                 ) : null}
 
-                <motion.div variants={headerVariants} className="mt-6">
-                  <SummaryCard totalCount={visibleCount} />
-                </motion.div>
+                {visibleCount > 0 ? (
+                  <motion.div variants={headerVariants} className="mt-6">
+                    <SummaryCard
+                      totalCount={visibleCount}
+                      subline="You can trim the list if something doesn’t apply — we’ll use what’s left for strategy."
+                    />
+                  </motion.div>
+                ) : null}
 
                 <motion.p
                   variants={headerVariants}
                   className="mx-auto mt-4 max-w-sm text-center text-xs leading-relaxed text-lab-subtle sm:text-sm"
                 >
-                  Most people continue with these as-is
+                  Most people keep the suggested items — the system already filtered to what’s worth a
+                  look.
                 </motion.p>
 
                 {groups.some((g) => g.items.length > 0) ? (
@@ -270,7 +309,7 @@ export function ConfirmationPage() {
                   <ContinueCTA
                     onClick={() => void handleContinue()}
                     disabled={!canContinue}
-                    label={submitting ? "Continuing…" : undefined}
+                    label={submitting ? "Continuing…" : "Continue to strategy"}
                   />
                 </motion.div>
               </>

@@ -4,6 +4,20 @@ import requests
 
 _resend = None
 
+
+def _load_repo_dotenv_for_resend() -> None:
+    """Ensure repo-root .env is applied before reading RESEND_* (import order / workers)."""
+    try:
+        from pathlib import Path
+
+        from dotenv import load_dotenv
+
+        root = Path(__file__).resolve().parent
+        load_dotenv(root / ".env", override=True)
+    except ImportError:
+        pass
+
+
 def _get_resend():
     global _resend
     if _resend is None:
@@ -14,19 +28,42 @@ def _get_resend():
 
 def _resolve_resend_credentials():
     """
-    Prefer explicit env (local / CI); fall back to Replit connector when configured.
+    Prefer explicit env (local / CI); fall back to Replit connector only on Replit hosts.
     """
+    _load_repo_dotenv_for_resend()
+
     api_key = (os.environ.get("RESEND_API_KEY") or "").strip()
     from_email = (os.environ.get("RESEND_FROM_EMAIL") or "").strip()
     if api_key and from_email:
         return {"api_key": api_key, "from_email": from_email}
-    return _get_resend_credentials()
+
+    # Require connector hostname so stray REPL_* vars (e.g. from IDEs) do not force this path.
+    hostname = (os.environ.get("REPLIT_CONNECTORS_HOSTNAME") or "").strip()
+    repl_identity = (os.environ.get("REPL_IDENTITY") or "").strip()
+    web_repl_renewal = (os.environ.get("WEB_REPL_RENEWAL") or "").strip()
+    if hostname and (repl_identity or web_repl_renewal):
+        try:
+            return _get_resend_credentials()
+        except Exception as e:
+            raise RuntimeError(
+                "Resend not configured: Replit connector failed. "
+                "Set RESEND_API_KEY and RESEND_FROM_EMAIL, or connect Resend in Replit Integrations."
+            ) from e
+
+    missing = [n for n, v in (("RESEND_API_KEY", api_key), ("RESEND_FROM_EMAIL", from_email)) if not v]
+    raise RuntimeError(
+        f"Resend not configured locally: missing {' and '.join(missing)}. "
+        "Add them to the repo-root .env (next to database.py), then restart uvicorn."
+    )
 
 
 def _get_resend_credentials():
-    hostname = os.environ.get("REPLIT_CONNECTORS_HOSTNAME")
-    repl_identity = os.environ.get("REPL_IDENTITY")
-    web_repl_renewal = os.environ.get("WEB_REPL_RENEWAL")
+    hostname = (os.environ.get("REPLIT_CONNECTORS_HOSTNAME") or "").strip()
+    repl_identity = (os.environ.get("REPL_IDENTITY") or "").strip()
+    web_repl_renewal = (os.environ.get("WEB_REPL_RENEWAL") or "").strip()
+
+    if not hostname:
+        raise RuntimeError("Resend connector: REPLIT_CONNECTORS_HOSTNAME not set")
 
     if repl_identity:
         token = "repl " + repl_identity
@@ -108,7 +145,7 @@ def send_workflow_reminder_email(
 
 
 def send_verification_email(to_email: str, code: str, display_name: str = None):
-    creds = _get_resend_credentials()
+    creds = _resolve_resend_credentials()
     _get_resend().api_key = creds["api_key"]
     from_email = creds["from_email"]
 
@@ -145,7 +182,7 @@ def send_verification_email(to_email: str, code: str, display_name: str = None):
 
 
 def send_password_reset_email(to_email: str, code: str, display_name: str = None):
-    creds = _get_resend_credentials()
+    creds = _resolve_resend_credentials()
     _get_resend().api_key = creds["api_key"]
     from_email = creds["from_email"]
 
@@ -182,7 +219,7 @@ def send_password_reset_email(to_email: str, code: str, display_name: str = None
 
 
 def send_reminder_email(to_email: str, display_name: str = None, round_number: int = 1, bureau_names: list = None):
-    creds = _get_resend_credentials()
+    creds = _resolve_resend_credentials()
     _get_resend().api_key = creds["api_key"]
     from_email = creds["from_email"]
 
@@ -229,7 +266,7 @@ def send_reminder_email(to_email: str, display_name: str = None, round_number: i
 
 
 def send_founder_welcome_email(to_email: str, display_name: str = None):
-    creds = _get_resend_credentials()
+    creds = _resolve_resend_credentials()
     _get_resend().api_key = creds["api_key"]
     from_email = creds["from_email"]
 
@@ -298,7 +335,7 @@ def send_founder_welcome_email(to_email: str, display_name: str = None):
 def send_transfer_notification_email(to_email: str, from_display_name: str = None,
                                       ai_rounds: int = 0, letters: int = 0,
                                       recipient_name: str = None):
-    creds = _get_resend_credentials()
+    creds = _resolve_resend_credentials()
     _get_resend().api_key = creds["api_key"]
     from_email = creds["from_email"]
 
@@ -379,7 +416,7 @@ SEVERITY_COLORS_EMAIL = {
 
 def send_nudge_email(to_email: str, nudge_id: str, severity: str, message: str, display_name: str = None, days_elapsed: int = 0):
     try:
-        creds = _get_resend_credentials()
+        creds = _resolve_resend_credentials()
     except Exception:
         return None
     _get_resend().api_key = creds["api_key"]
@@ -427,7 +464,7 @@ def send_nudge_email(to_email: str, nudge_id: str, severity: str, message: str, 
 
 
 def send_upload_link_email(to_email: str, display_name: str = None, upload_url: str = "", letter_count: int = 0, bureau_names: list = None):
-    creds = _get_resend_credentials()
+    creds = _resolve_resend_credentials()
     _get_resend().api_key = creds["api_key"]
     from_email = creds["from_email"]
 
@@ -473,6 +510,60 @@ def send_upload_link_email(to_email: str, display_name: str = None, upload_url: 
         "html": html_body,
     }
 
+    try:
+        return resend_mod.Emails.send(params)
+    except Exception:
+        return None
+
+
+def send_demo_lead_operator_notification(
+    *,
+    lead_id,
+    name,
+    email,
+    phone,
+    scenario_id=None,
+    workflow_id=None,
+):
+    """
+    Optional internal ping when someone submits the React /demo lead form.
+    Set DEMO_LEADS_NOTIFY_EMAIL to a team inbox (comma-separated allowed — first only used).
+    """
+    raw = (os.environ.get("DEMO_LEADS_NOTIFY_EMAIL") or "").strip()
+    if not raw:
+        return None
+    to_email = raw.split(",")[0].strip()
+    if not to_email or "@" not in to_email:
+        return None
+    try:
+        creds = _resolve_resend_credentials()
+    except Exception:
+        return None
+    _get_resend().api_key = creds["api_key"]
+    from_email = creds["from_email"]
+    safe = lambda s: html.escape(str(s or ""), quote=True)
+    scen = safe(scenario_id) or "—"
+    wf = safe(workflow_id) or "—"
+    html_body = f"""
+    <div style="font-family: Inter, Arial, sans-serif; max-width: 520px;">
+      <p style="font-size:15px;color:#111;"><strong>New demo lead</strong> (id {int(lead_id)})</p>
+      <table style="font-size:14px;color:#333;line-height:1.5;">
+        <tr><td style="padding:4px 12px 4px 0;">Name</td><td>{safe(name)}</td></tr>
+        <tr><td style="padding:4px 12px 4px 0;">Email</td><td><a href="mailto:{safe(email)}">{safe(email)}</a></td></tr>
+        <tr><td style="padding:4px 12px 4px 0;">Phone</td><td>{safe(phone)}</td></tr>
+        <tr><td style="padding:4px 12px 4px 0;">Scenario</td><td>{scen}</td></tr>
+        <tr><td style="padding:4px 12px 4px 0;">Workflow</td><td>{wf}</td></tr>
+      </table>
+      <p style="font-size:12px;color:#666;margin-top:16px;">Source: react_demo · Reply to follow up.</p>
+    </div>
+    """
+    resend_mod = _get_resend()
+    params: resend_mod.Emails.SendParams = {
+        "from": f"850 Lab <{from_email}>",
+        "to": [to_email],
+        "subject": f"850 Lab — Demo lead: {safe(name)[:40]}",
+        "html": html_body,
+    }
     try:
         return resend_mod.Emails.send(params)
     except Exception:

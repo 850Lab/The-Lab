@@ -5,7 +5,6 @@ import { GetReportPanel } from "@/components/GetReportPanel";
 import { TopBarMinimal } from "@/components/TopBarMinimal";
 import { UploadDropzoneCard } from "@/components/UploadDropzoneCard";
 import { postReportUpload } from "@/lib/workflowApi";
-import { customerPathFromEnvelope } from "@/lib/workflowStepRoutes";
 import { useAuth } from "@/providers/AuthContext";
 import { useCustomerWorkflow } from "@/providers/CustomerWorkflowContext";
 
@@ -13,16 +12,16 @@ const page = {
   hidden: { opacity: 0 },
   show: {
     opacity: 1,
-    transition: { staggerChildren: 0.09, delayChildren: 0.08 },
+    transition: { staggerChildren: 0.07, delayChildren: 0.05 },
   },
 };
 
 const block = {
-  hidden: { opacity: 0, y: 16 },
+  hidden: { opacity: 0, y: 14 },
   show: {
     opacity: 1,
     y: 0,
-    transition: { duration: 0.45, ease: [0.22, 1, 0.36, 1] },
+    transition: { duration: 0.42, ease: [0.22, 1, 0.36, 1] },
   },
 };
 
@@ -34,6 +33,10 @@ function skipReasonMessage(reason: string): string {
       return "We could not confirm this is an Equifax, Experian, or TransUnion report.";
     case "3bureau":
       return "Combined 3-bureau PDFs are not supported. Upload one bureau at a time.";
+    case "pdf_merge_failed":
+      return "We could not merge those PDF parts. Make sure each part is a valid PDF from the same export, in page order.";
+    case "pdf_split_failed":
+      return "We could not split that PDF into processable pieces. Try re-exporting from the bureau, or split it into smaller PDFs under 25 MB each.";
     default:
       return `This file could not be processed (${reason}).`;
   }
@@ -51,6 +54,7 @@ export function UploadStep() {
     token,
     workflowId,
     loading: wfLoading,
+    authoritativeStepId,
     applyWorkflowEnvelope,
     initWorkflow,
   } = useCustomerWorkflow();
@@ -80,8 +84,8 @@ export function UploadStep() {
   );
   const allowUpload = workspaceReady && privacyAgreed;
 
-  const onUploadPdf = useCallback(
-    async (file: File) => {
+  const onUploadPdfs = useCallback(
+    async (files: File[]) => {
       if (!token || !workflowId) {
         return {
           success: false as const,
@@ -90,7 +94,7 @@ export function UploadStep() {
         };
       }
       try {
-        const r = await postReportUpload(token, workflowId, file, privacyAgreed);
+        const r = await postReportUpload(token, workflowId, files, privacyAgreed);
         applyWorkflowEnvelope(r.workflow);
         if (!r.ok) {
           const first = r.fileSkips[0];
@@ -99,8 +103,13 @@ export function UploadStep() {
             : r.workflow.userMessage || "Upload could not be completed.";
           return { success: false as const, message: msg };
         }
-        const nextPath = customerPathFromEnvelope(r.workflow);
-        navigate(nextPath, { replace: true });
+        navigate("/analyze", {
+          replace: true,
+          state: {
+            uploadedReportFileName:
+              files.length === 1 ? files[0].name : `${files.length} merged parts`,
+          },
+        });
         return { success: true as const };
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
@@ -110,10 +119,16 @@ export function UploadStep() {
     [token, workflowId, privacyAgreed, applyWorkflowEnvelope, navigate],
   );
 
+  const isAddAnother = authoritativeStepId === "review_claims";
+
   return (
-    <div className="relative min-h-full bg-lab-bg">
+    <div className="relative flex min-h-[100dvh] flex-col bg-lab-bg">
       <div
-        className="pointer-events-none absolute left-1/2 top-[32%] z-0 h-[min(70vw,520px)] w-[min(70vw,520px)] -translate-x-1/2 -translate-y-1/2 rounded-full bg-lab-accent/[0.08] blur-[100px]"
+        className="pointer-events-none absolute left-1/2 top-[28%] z-0 h-[min(90vw,560px)] w-[min(90vw,560px)] -translate-x-1/2 -translate-y-1/2 rounded-full bg-lab-accent/[0.1] blur-[110px]"
+        aria-hidden
+      />
+      <div
+        className="pointer-events-none absolute bottom-[15%] right-[-10%] z-0 h-[min(60vw,320px)] w-[min(60vw,320px)] rounded-full bg-sky-500/[0.05] blur-[90px]"
         aria-hidden
       />
 
@@ -121,35 +136,30 @@ export function UploadStep() {
 
       <TopBarMinimal />
 
-      <main className="relative z-10 mx-auto flex min-h-full max-w-2xl flex-col px-4 pb-20 pt-24 sm:px-6 sm:pb-24 sm:pt-28">
-        <motion.div
-          className="flex flex-1 flex-col items-center"
-          variants={page}
-          initial="hidden"
-          animate="show"
-        >
+      <main className="relative z-10 mx-auto flex w-full max-w-xl flex-1 flex-col justify-center px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-[calc(3.5rem+0.35rem)] sm:max-w-2xl sm:px-6 sm:pb-4 sm:pt-[calc(3.5rem+0.5rem)]">
+        <motion.div className="flex w-full flex-col items-center" variants={page} initial="hidden" animate="show">
           {guestExplore ? (
             <motion.div
               variants={block}
-              className="mb-6 w-full max-w-lg rounded-xl border border-sky-500/25 bg-sky-500/10 px-4 py-3 text-left text-sm text-sky-100/95"
+              className="mb-3 w-full rounded-xl border border-sky-400/20 bg-gradient-to-b from-sky-500/15 to-lab-surface/40 px-4 py-3 text-left shadow-lg shadow-black/20 sm:mb-4"
             >
-              <p className="font-medium text-sky-50">Save your progress</p>
-              <p className="mt-1 text-sky-100/85">
-                Create a free account when you&apos;re ready to upload — we&apos;ll keep your
-                report and dispute work tied to your account.
+              <p className="text-xs font-bold uppercase tracking-[0.14em] text-sky-300/90">Account required</p>
+              <p className="mt-2 text-sm font-medium text-lab-text">Your program is waiting on an account</p>
+              <p className="mt-1 text-sm leading-relaxed text-lab-muted">
+                Create a free account to save upload → findings → letters in one path.
               </p>
-              <div className="mt-3 flex flex-wrap gap-3">
+              <div className="mt-3 flex flex-wrap gap-2">
                 <Link
                   to={`/signup?next=${authReturn}`}
                   state={{ from: location.pathname }}
-                  className="inline-flex rounded-lg bg-lab-accent px-3 py-1.5 text-sm font-semibold text-white hover:bg-sky-500"
+                  className="inline-flex rounded-xl bg-lab-accent px-4 py-2.5 text-sm font-bold text-white shadow-md shadow-lab-accent/25 hover:brightness-110"
                 >
                   Create account
                 </Link>
                 <Link
                   to={`/login?next=${authReturn}`}
                   state={{ from: location.pathname }}
-                  className="text-sm font-medium text-sky-200 underline-offset-2 hover:underline"
+                  className="inline-flex items-center rounded-xl border border-white/15 px-4 py-2.5 text-sm font-semibold text-lab-text hover:bg-white/[0.04]"
                 >
                   Sign in
                 </Link>
@@ -160,88 +170,104 @@ export function UploadStep() {
           {setupError ? (
             <motion.p
               variants={block}
-              className="mb-4 max-w-lg rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-center text-sm text-red-200/95"
+              className="mb-2 w-full rounded-lg border border-red-500/35 bg-red-500/10 px-3 py-2 text-center text-sm text-red-100/95"
             >
               {setupError}
             </motion.p>
           ) : null}
 
           {!guestExplore && authToken && emailVerified && !workflowId && wfLoading ? (
-            <motion.p
-              variants={block}
-              className="mb-4 text-center text-sm text-lab-muted"
-            >
-              Setting up your workspace…
+            <motion.p variants={block} className="mb-2 text-center text-sm font-medium text-lab-muted">
+              Starting your program workspace…
             </motion.p>
           ) : null}
 
-          <motion.div variants={block} className="max-w-lg text-center">
-            <h1 className="text-2xl font-semibold tracking-tight text-lab-text sm:text-3xl md:text-[1.75rem]">
-              Upload your credit report
-            </h1>
-            <p className="mt-3 text-pretty text-sm leading-relaxed text-lab-muted sm:text-base">
-              Next we parse the PDF and extract reviewable items. After that you choose what to
-              dispute, then pay for letter credits if needed — certified mail is a later step.
-            </p>
-            <p className="mt-3 text-sm text-lab-muted">
-              Have your report downloaded? Upload one bureau PDF to continue.
-            </p>
-            <p className="mt-1 text-xs text-lab-subtle">
-              If you only received part of your bureau data, upload what you have.
-            </p>
-            <p className="mt-3 text-center text-sm">
-              <Link
-                to="/get-report"
-                className="font-medium text-lab-accent hover:text-sky-300"
-              >
-                Need to get a report first?
-              </Link>
-            </p>
-          </motion.div>
-
-          <motion.label
-            variants={block}
-            className={`mt-8 flex max-w-lg items-start gap-3 text-left text-sm text-lab-muted ${
-              guestExplore ? "cursor-not-allowed opacity-60" : "cursor-pointer"
-            }`}
-          >
-            <input
-              type="checkbox"
-              disabled={guestExplore}
-              className="mt-1 h-4 w-4 shrink-0 rounded border-white/20 bg-lab-surface text-lab-accent focus:ring-lab-accent/40 disabled:opacity-50"
-              checked={privacyAgreed}
-              onChange={(e) => setPrivacyAgreed(e.target.checked)}
-            />
-            <span>
-              I agree to secure processing of my report data (same terms as the main 850 Lab
-              upload experience).
-            </span>
-          </motion.label>
-
-          <motion.div variants={block} className="mt-8 w-full sm:mt-10">
-            <UploadDropzoneCard
-              disabled={!allowUpload}
-              onUploadPdf={onUploadPdf}
-            />
-          </motion.div>
-
           <motion.div
             variants={block}
-            className="mt-10 flex w-full max-w-lg flex-col items-center gap-3 sm:mt-12"
+            className="w-full rounded-2xl border border-white/[0.1] bg-lab-surface/45 p-4 shadow-[0_28px_90px_-36px_rgba(0,0,0,0.65)] backdrop-blur-md sm:p-5"
           >
-            <motion.button
-              type="button"
-              onClick={() => setGetReportOpen(true)}
-              className="text-center text-sm text-lab-subtle transition-colors hover:text-lab-muted"
-              whileHover={{ y: -1 }}
-              transition={{ type: "spring", stiffness: 400, damping: 28 }}
+            <div className="text-center">
+              <span className="inline-flex rounded-full border border-lab-accent/25 bg-lab-accent/[0.1] px-2.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.18em] text-lab-accent sm:px-3 sm:py-1 sm:text-[10px] sm:tracking-[0.2em]">
+                {isAddAnother ? "Add report" : "Step · Upload"}
+              </span>
+              <h1 className="mt-2 text-balance text-xl font-bold leading-snug tracking-tight text-lab-text sm:mt-2.5 sm:text-2xl sm:leading-tight">
+                {isAddAnother ? "Add another bureau PDF" : "Upload your bureau report"}
+              </h1>
+              <p className="mx-auto mt-1.5 max-w-md text-pretty text-xs font-medium leading-snug text-lab-muted sm:mt-2 sm:text-sm sm:leading-relaxed">
+                {isAddAnother ? (
+                  <>
+                    We&apos;ll parse and refresh your findings. When you&apos;re done adding files, open{" "}
+                    <span className="font-bold text-lab-text">Findings</span> and tap{" "}
+                    <span className="font-bold text-lab-text">Begin review</span>.
+                  </>
+                ) : (
+                  <>
+                    Everything below becomes <span className="font-bold text-lab-text">one report</span> for this
+                    round — then findings, review, strategy, same engine end to end.
+                  </>
+                )}
+              </p>
+            </div>
+
+            {!isAddAnother ? (
+              <div className="mt-3 grid gap-2 sm:grid-cols-2 sm:mt-3.5">
+                <div className="rounded-lg border border-white/[0.08] bg-gradient-to-br from-lab-accent/[0.07] to-transparent px-3 py-2 text-left sm:px-3.5 sm:py-2.5">
+                  <p className="text-[9px] font-bold uppercase tracking-[0.14em] text-lab-accent sm:text-[10px]">Path A</p>
+                  <p className="mt-0.5 text-xs font-bold text-lab-text sm:text-sm">One big PDF</p>
+                  <p className="mt-0.5 text-[11px] leading-snug text-lab-muted sm:text-xs">Up to 200 MB. Split, merge, parse.</p>
+                </div>
+                <div className="rounded-lg border border-white/[0.08] bg-white/[0.02] px-3 py-2 text-left sm:px-3.5 sm:py-2.5">
+                  <p className="text-[9px] font-bold uppercase tracking-[0.14em] text-lab-muted sm:text-[10px]">Path B</p>
+                  <p className="mt-0.5 text-xs font-bold text-lab-text sm:text-sm">Multiple parts</p>
+                  <p className="mt-0.5 text-[11px] leading-snug text-lab-muted sm:text-xs">Each ≤25 MB. Combine, then parse.</p>
+                </div>
+              </div>
+            ) : null}
+
+            <label
+              className={`mt-3 flex cursor-pointer items-start gap-2.5 rounded-lg border px-3 py-2 text-left transition-colors sm:mt-3.5 sm:gap-3 sm:px-3.5 sm:py-2.5 ${
+                guestExplore
+                  ? "cursor-not-allowed border-white/[0.05] opacity-50"
+                  : privacyAgreed
+                    ? "border-lab-accent/30 bg-lab-accent/[0.06]"
+                    : "border-white/[0.08] bg-black/15 hover:border-white/[0.12]"
+              }`}
             >
-              Don’t have your report?
-            </motion.button>
-            <p className="text-center text-xs text-lab-subtle/80">
-              Continue without a report is not available in the web app yet — use a bureau PDF to
-              proceed.
-            </p>
+              <input
+                type="checkbox"
+                disabled={guestExplore}
+                className="mt-0.5 h-4 w-4 shrink-0 rounded border-white/25 bg-lab-surface text-lab-accent focus:ring-lab-accent/50 disabled:opacity-50"
+                checked={privacyAgreed}
+                onChange={(e) => setPrivacyAgreed(e.target.checked)}
+              />
+              <span className="text-xs font-medium leading-snug text-lab-muted sm:text-sm">
+                I agree to secure processing of my credit report data (same terms as the main 850 Lab
+                experience).
+              </span>
+            </label>
+
+            <div className="mt-3 sm:mt-3.5">
+              <UploadDropzoneCard disabled={!allowUpload} onUploadPdfs={onUploadPdfs} />
+            </div>
+
+            <div className="mt-3 flex flex-col items-center gap-1 border-t border-white/[0.06] pt-3 text-center sm:mt-3.5 sm:gap-1.5 sm:pt-3.5">
+              <Link
+                to="/get-report"
+                className="text-xs font-semibold text-lab-accent hover:text-sky-300 sm:text-sm"
+              >
+                Need a report first? Get your credit report
+              </Link>
+              <button
+                type="button"
+                onClick={() => setGetReportOpen(true)}
+                className="text-[11px] font-medium text-lab-subtle transition-colors hover:text-lab-muted"
+              >
+                Don&apos;t have your report yet?
+              </button>
+              <p className="max-w-sm pt-1 text-center text-[10px] leading-snug text-lab-subtle/90 sm:text-[11px]">
+                Bureau PDF required — no upload-free path in the web app yet.
+              </p>
+            </div>
           </motion.div>
         </motion.div>
       </main>

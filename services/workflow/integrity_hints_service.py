@@ -14,6 +14,7 @@ import auth
 import database as db
 import lob_client
 from services.workflow.engine import compute_authoritative_step
+from services.workflow.registry import WORKFLOW_TYPE_DEFAULT, linear_order_for
 from services.workflow.repository import fetch_session, fetch_steps
 from services.workflow_payment_service import (
     needed_letters_from_workflow_session,
@@ -100,9 +101,6 @@ def _mailing_debit_without_mailed_send(user_id: int) -> bool:
 def build_integrity_hints(user_id: int, workflow_id: str) -> Dict[str, Any]:
     uid = int(user_id)
     wid = str(workflow_id).strip()
-    steps: List[Dict[str, Any]] = fetch_steps(wid)
-    smap = {s["step_id"]: s for s in steps}
-    head, phase = compute_authoritative_step(smap)
     sess = fetch_session(wid)
     if not sess:
         # Owned-workflow routes should not hit this; keep deterministic defaults.
@@ -115,6 +113,11 @@ def build_integrity_hints(user_id: int, workflow_id: str) -> Dict[str, Any]:
             "workflowStepMismatch": False,
             "nextRequiredAction": "track",
         }
+    steps: List[Dict[str, Any]] = fetch_steps(wid)
+    smap = {s["step_id"]: s for s in steps}
+    wt = str(sess.get("workflow_type") or WORKFLOW_TYPE_DEFAULT)
+    order = linear_order_for(wt)
+    head, phase = compute_authoritative_step(smap, order)
 
     pay_row = smap.get("payment")
     payment_completed = bool(pay_row and pay_row.get("status") == "completed")

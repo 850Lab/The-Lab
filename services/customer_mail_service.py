@@ -141,105 +141,106 @@ def _build_mail_status(
     credits_block = not is_admin and not has_credits and has_letters and proof_both
 
     primary = "ready_to_send"
-    title = "Certified mail"
+    title = "Certified mail status"
     message = ""
     block_detail = (customer_block_reason or "").strip() if customer_block_reason else ""
 
     if mail_step_failed:
         primary = "sending_failed"
-        title = "Send step needs attention"
+        title = "Certified send needs attention"
         message = (
-            "A previous send attempt failed for this workflow."
+            "A previous certified-mail submission did not complete."
             + (
-                f" Last detail: {mail_gate_last_failure[:320]}"
+                f" Detail: {mail_gate_last_failure[:320]}"
                 if mail_gate_last_failure
                 else " Retry from this page or contact support if it keeps failing."
             )
         )
     elif is_blocked:
         primary = "send_blocked"
-        title = "Sending is blocked"
+        title = "Certified mail is blocked"
         if not lob_configured:
             message = (
-                "Certified mail is not configured on the server (Lob API key missing). "
-                "Nothing can be submitted until this is fixed."
+                "USPS certified mail is not wired up on this server (mail API missing). "
+                "Nothing official can be submitted until this is fixed."
             )
         else:
-            message = block_detail or "Sending is not available right now."
+            message = block_detail or "Certified mail is not available right now."
     elif not has_letters:
         primary = "no_letters"
-        title = "Letters not ready for mail"
+        title = "Letters not ready to mail"
         message = (
-            "Dispute letters are not on file for your selected bureaus yet. "
-            "Finish letter generation first — generating does not send mail."
+            "Dispute letters are not on file for your bureaus yet. "
+            "Finish the letters step first — drafts do not trigger certified mail."
         )
     elif not proof_both:
         primary = "proof_required"
-        title = "Proof required before sending"
+        title = "Finalize proof before certified send"
         message = (
-            "Government ID and proof of address must be on file before certified mail can go out. "
-            "Complete the proof step first."
+            "Government ID and proof of address must be on file before official certified mail. "
+            "Complete the proof step (including signature) first."
         )
     elif credits_block:
         primary = "send_blocked"
-        title = "No mailing credits"
+        title = "Add mailings for the send step"
         message = (
-            "You need at least one mailing credit to send. "
-            "Purchase mailings or upgrade your pack in the main app."
+            "Certified mail uses mailing balance at submit time — one credit per live bureau after the "
+            "processor accepts. Add mailings to your account or ask your organization if mailings are "
+            "bundled with your seat, then try again."
         )
     elif target_count > 0 and mailed_ct >= target_count and pending_ct == 0:
         all_test = all(b.get("isTest") for b in per_bureau)
         all_live = all(not b.get("isTest") for b in per_bureau)
         if all_test:
             primary = "sent_test"
-            title = "Test sends only (no USPS mail)"
+            title = "Test sends only — no USPS certified mail"
             message = (
-                "Every recorded send used Lob test mode. "
-                "No physical letters were mailed through USPS."
+                "Recorded sends used test mode only. "
+                "No physical certified letters entered the USPS mailstream."
             )
         elif all_live:
             primary = "tracking_available" if has_tracking_any else "sent_live"
             title = (
-                "Letters submitted for mailing"
+                "Certified letters submitted — tracking may follow"
                 if primary == "sent_live"
-                else "Tracking available"
+                else "Certified mail in motion"
             )
             message = (
-                "Live sends were accepted by the mail processor. "
-                "USPS tracking shows handoff and transit — it is not a guarantee of delivery."
+                "Live certified sends were accepted by the mail processor. "
+                "USPS tracking shows handoff and transit — not proof the bureau finished review."
                 if primary == "tracking_available"
                 else (
-                    "Live sends were accepted by the mail processor. "
-                    "Open each bureau below for tracking when a USPS number is on file."
+                    "Live certified sends were accepted by the mail processor. "
+                    "Open each bureau below when a USPS tracking number appears."
                 )
             )
         else:
             primary = "sent_mixed"
-            title = "Mix of test and live sends"
+            title = "Mix of test and live certified sends"
             message = (
-                "Some bureaus were sent in Lob test mode (no USPS mail); "
-                "others used live mail. Check each bureau row for details."
+                "Some bureaus used test mode (no USPS letter); others used live certified mail. "
+                "Check each row below."
             )
     elif mailed_ct > 0 and pending_ct > 0:
         primary = "partially_sent"
-        title = "Some letters sent, some waiting"
+        title = "Some certified sends done, others waiting"
         message = (
-            "One or more bureaus are already on file with the mail processor; "
-            "finish the rest from this page when you are ready."
+            "One or more bureaus are already with the mail processor; "
+            "submit the rest when you are ready — each live send is a real mailing action."
         )
     else:
         primary = "ready_to_send"
-        title = "Ready to send your letters"
+        title = "Ready for certified send"
         if lob_test_mode:
             message = (
-                "Your letters are generated and proof is on file. "
-                "The server is using a Lob test key — if you send now, Lob may accept the request "
-                "but USPS will not receive a real letter."
+                "Letters and proof are on file. "
+                "This server uses a test mail key — submits may succeed in the vendor sandbox but "
+                "no official USPS certified letter is produced."
             )
         else:
             message = (
-                "Your letters are generated and proof is on file. "
-                "Each bureau send uses one mailing credit after the processor accepts the request."
+                "Letters and proof are on file. "
+                "Each bureau uses one mailing credit after the processor accepts the certified send."
             )
 
     if (
@@ -249,10 +250,10 @@ def _build_mail_status(
         and not is_blocked
     ):
         primary = "send_blocked"
-        title = "Live mail required"
+        title = "Live certified mail required"
         message = (
-            "This server requires a live Lob key for customer sends. "
-            "Test keys cannot be used to submit real certified mail here."
+            "This environment requires a live mail key for customer sends. "
+            "Test keys cannot submit real USPS certified mail here."
         )
 
     done_all = (
@@ -500,7 +501,7 @@ def send_certified_letter_for_bureau(
         return None, lob_block
 
     if not is_admin and not auth.has_entitlement(user_id, "mailings", 1):
-        return None, "No mailing credits remaining."
+        return None, "No mailing balance — add mailings before certified send, or ask your org if mailings are included with your program."
 
     v = lob_client.validate_address(from_address)
     if not v.get("valid"):
@@ -553,6 +554,29 @@ def send_certified_letter_for_bureau(
 
     err_msg = str(result.get("error") or "Certified mail could not be sent.")[:500]
     try:
+        db.save_lob_send(
+            user_id=user_id,
+            report_id=rid,
+            bureau=bureau,
+            lob_id="",
+            tracking_number="",
+            status="error",
+            from_address=from_address,
+            to_address=lob_client.get_bureau_address(bureau) or {},
+            cost_cents=int(cost.get("total_cents") or 0),
+            return_receipt=return_receipt,
+            is_test=bool(result.get("is_test", False)),
+            expected_delivery="",
+            error_message=err_msg[:2000],
+            workflow_id=workflow_id,
+        )
+    except Exception:
+        _log.exception(
+            "customer_mail: failed to persist lob_sends error row user=%s bureau=%s",
+            user_id,
+            bureau,
+        )
+    try:
         from services.workflow import hooks as workflow_hooks
 
         workflow_hooks.notify_mail_send_failed(
@@ -563,4 +587,4 @@ def send_certified_letter_for_bureau(
         )
     except Exception:
         _log.debug("notify_mail_send_failed skipped", exc_info=True)
-    return result, None
+    return result, err_msg

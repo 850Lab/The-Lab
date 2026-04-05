@@ -19,17 +19,17 @@ function rowHeadline(
 ): { label: string; tone: "muted" | "amber" | "sky" | "red" | "emerald" } {
   switch (mailRowState) {
     case "pending":
-      return { label: "Not submitted", tone: "muted" };
+      return { label: "Awaiting certified send", tone: "muted" };
     case "processing":
-      return { label: "Submitted — processing", tone: "sky" };
+      return { label: "Submitting to mail processor…", tone: "sky" };
     case "sending_failed":
-      return { label: "Send failed", tone: "red" };
+      return { label: "Certified send failed", tone: "red" };
     case "sent_test":
-      return { label: "Test — no USPS mail", tone: "amber" };
+      return { label: "Test — no USPS letter", tone: "amber" };
     case "sent_live":
-      return { label: "Live — submitted (tracking may be pending)", tone: "sky" };
+      return { label: "Live — in USPS pipeline", tone: "sky" };
     case "tracking_available":
-      return { label: "Live — tracking active", tone: "emerald" };
+      return { label: "In transit — tracking live", tone: "emerald" };
     default:
       return { label: "Unknown", tone: "muted" };
   }
@@ -122,14 +122,18 @@ export function BureauSendStatusRow({
               {bureauDisplay}
             </p>
             {isTestSend && mailRowState !== "pending" ? (
-              <p className="mt-0.5 text-xs text-amber-200/85">Lob test mode</p>
+              <p className="mt-0.5 text-xs text-amber-200/85">
+                Test environment — no official certified letter
+              </p>
             ) : null}
             {trackingNumber && mailRowState !== "sent_test" ? (
-              <p className="mt-0.5 text-xs text-lab-subtle">USPS tracking {trackingNumber}</p>
+              <p className="mt-0.5 text-xs text-lab-subtle">
+                Certified mail · USPS {trackingNumber}
+              </p>
             ) : null}
             {expectedDelivery && mailRowState === "tracking_available" ? (
               <p className="text-xs text-lab-muted">
-                Est. delivery (processor estimate, not guaranteed): {expectedDelivery}
+                Est. delivery (mail processor; not guaranteed): {expectedDelivery}
               </p>
             ) : null}
             {mailRowState === "sending_failed" && lobErrorMessageSafe ? (
@@ -147,7 +151,7 @@ export function BureauSendStatusRow({
       </div>
       {showProcessorDetail ? (
         <p className="text-xs text-lab-subtle">
-          Processor reference (Lob):{" "}
+          Official send reference (certified mail vendor):{" "}
           <span className="font-mono text-lab-muted">{lobId}</span>
         </p>
       ) : null}
@@ -158,7 +162,7 @@ export function BureauSendStatusRow({
           rel="noopener noreferrer"
           className="text-sm font-medium text-lab-accent hover:underline"
         >
-          Open USPS tracking
+          Track certified mail (USPS)
         </a>
       ) : null}
       {actionSlot ? <div className="pt-1">{actionSlot}</div> : null}

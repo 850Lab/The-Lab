@@ -3,6 +3,7 @@ import { WorkflowIntegrityBanner } from "@/components/WorkflowIntegrityBanner";
 import {
   CUSTOMER_WORKFLOW_GUARD_PATHS,
   isEscalationPath,
+  isOrgProgramPath,
 } from "@/lib/workflowStepRoutes";
 import { useAuth } from "@/providers/AuthContext";
 import { useCustomerWorkflow } from "@/providers/CustomerWorkflowContext";
@@ -12,6 +13,7 @@ const PUBLIC_UNAUTH_PATHS = new Set([
   "/",
   "/login",
   "/signup",
+  "/forgot-password",
   "/get-report",
   "/get-report/idiq",
   "/upload",
@@ -39,7 +41,7 @@ export function CustomerWorkflowShell() {
   if (auth.authBootstrapping) {
     return (
       <div className="flex min-h-[50vh] flex-col items-center justify-center gap-2 px-4 text-center text-sm text-white/70">
-        <p>Loading…</p>
+        <p>Loading your account…</p>
       </div>
     );
   }
@@ -72,7 +74,7 @@ export function CustomerWorkflowShell() {
   if (auth.token && auth.emailVerified && ctx.loading) {
     return (
       <div className="flex min-h-[50vh] flex-col items-center justify-center gap-2 px-4 text-center text-sm text-white/70">
-        <p>Loading…</p>
+        <p>Loading your program…</p>
       </div>
     );
   }
@@ -87,7 +89,7 @@ export function CustomerWorkflowShell() {
   }
 
   if (!ctx.workflowId) {
-    if (!PRE_WORKFLOW_PATHS.has(path)) {
+    if (!PRE_WORKFLOW_PATHS.has(path) && !isOrgProgramPath(path)) {
       return <Navigate to="/" replace />;
     }
     return <Outlet />;
@@ -97,9 +99,24 @@ export function CustomerWorkflowShell() {
     return <Outlet />;
   }
 
+  if (isOrgProgramPath(path)) {
+    return (
+      <>
+        <WorkflowIntegrityBanner />
+        <Outlet />
+      </>
+    );
+  }
+
+  const intakeHubPaths = new Set(["/analyze", "/upload"]);
+  const onReviewStep = ctx.authoritativeStepId === "review_claims";
+  const allowIntakeHub =
+    onReviewStep && intakeHubPaths.has(path);
+
   if (
     CUSTOMER_WORKFLOW_GUARD_PATHS.has(path) &&
-    path !== ctx.canonicalCustomerPath
+    path !== ctx.canonicalCustomerPath &&
+    !allowIntakeHub
   ) {
     return <Navigate to={ctx.canonicalCustomerPath} replace />;
   }

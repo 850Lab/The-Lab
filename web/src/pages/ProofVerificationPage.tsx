@@ -2,6 +2,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { AddressHelpDisclosure } from "@/components/AddressHelpDisclosure";
+import { ProgramFlowBridge } from "@/components/ProgramFlowBridge";
 import { SignatureCard } from "@/components/SignatureCard";
 import { TopBarMinimal } from "@/components/TopBarMinimal";
 import { UploadRequirementCard } from "@/components/UploadRequirementCard";
@@ -275,24 +276,36 @@ export function ProofVerificationPage() {
           >
             <motion.p
               variants={headerVariants}
-              className="text-center text-xs font-medium uppercase tracking-[0.14em] text-lab-subtle"
+              className="text-center text-[10px] font-semibold uppercase tracking-[0.16em] text-lab-accent"
             >
-              Verify
+              Your program · Proof
             </motion.p>
             <motion.h1
               variants={headerVariants}
-              className="mt-3 text-center text-2xl font-semibold tracking-tight text-lab-text sm:text-[1.65rem]"
+              className="mt-2 text-center text-2xl font-semibold tracking-tight text-lab-text sm:text-[1.65rem]"
             >
-              One quick step before we send everything
+              Finalize your documents
             </motion.h1>
             <motion.p
               variants={headerVariants}
               className="mx-auto mt-3 max-w-sm text-center text-sm leading-relaxed text-lab-muted sm:text-[15px]"
             >
-              Government ID, proof of address, and your signature are stored on your account and are
-              required before the send step — the mail processor will not accept certified sends
-              without them (same rules as the main app).
+              Before certified mail can go out, we need to show{" "}
+              <strong className="font-medium text-lab-text">who is disputing</strong> (government
+              ID), <strong className="font-medium text-lab-text">where you live</strong> (address
+              proof), and <strong className="font-medium text-lab-text">your authorization</strong>{" "}
+              (signature on file). The mail processor requires this for official sends — it&apos;s not
+              optional paperwork; it&apos;s what makes the next step real and attributable to you.
             </motion.p>
+            <motion.div variants={headerVariants} className="mx-auto mt-5 max-w-sm">
+              <ProgramFlowBridge>
+                <span className="font-medium text-lab-text">Now that your letters exist,</span> this
+                step locks identity and signature to them. Nothing mails until the next screen — but
+                what you upload here is what allows that send to be{" "}
+                <span className="font-medium text-lab-text">legitimate and irreversible</span> once you
+                trigger it.
+              </ProgramFlowBridge>
+            </motion.div>
 
             <motion.p
               variants={headerVariants}

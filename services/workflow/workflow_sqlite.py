@@ -137,6 +137,37 @@ def ensure_schema() -> None:
             created_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP)
         );
         CREATE INDEX IF NOT EXISTS idx_wf_admin_audit_workflow ON workflow_admin_audit(workflow_id);
+
+        CREATE TABLE IF NOT EXISTS workflow_events (
+            id TEXT PRIMARY KEY,
+            workflow_id TEXT NOT NULL REFERENCES workflow_sessions(workflow_id) ON DELETE CASCADE,
+            event_type TEXT NOT NULL,
+            step_id TEXT,
+            previous_state TEXT,
+            new_state TEXT,
+            actor TEXT NOT NULL DEFAULT 'system',
+            source TEXT NOT NULL DEFAULT 'engine',
+            metadata TEXT NOT NULL DEFAULT '{}',
+            created_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP)
+        );
+        CREATE INDEX IF NOT EXISTS idx_workflow_events_wf_created ON workflow_events(workflow_id, created_at ASC);
+
+        CREATE TABLE IF NOT EXISTS workflow_jobs (
+            id TEXT PRIMARY KEY,
+            workflow_id TEXT NOT NULL REFERENCES workflow_sessions(workflow_id) ON DELETE CASCADE,
+            job_type TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            attempt_count INTEGER NOT NULL DEFAULT 0,
+            max_attempts INTEGER NOT NULL DEFAULT 3,
+            payload TEXT NOT NULL DEFAULT '{}',
+            result TEXT,
+            error TEXT,
+            created_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP),
+            updated_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP),
+            run_at TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_workflow_jobs_wf ON workflow_jobs(workflow_id, created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_workflow_jobs_pending ON workflow_jobs(status, run_at, created_at);
         """
     )
     conn.commit()

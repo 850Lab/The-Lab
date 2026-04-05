@@ -1,7 +1,10 @@
 """
-Workflow engine: authoritative progression, validation, resume hints.
+Workflow engine: **authoritative** progression on ``workflow_sessions`` / ``workflow_steps``.
 
-Route handlers should delegate here — keep orchestration out of HTTP layer.
+Trusted transitions use ``service_complete_step`` / internal ``mutate_step`` paths.
+Do not mark steps completed from org projection tables or ad-hoc SQL — delegate here
+(or ``advance_org_program_steps`` / ``services.workflow.hooks``), then mirror into
+projections if needed.
 """
 
 from __future__ import annotations
@@ -17,14 +20,20 @@ from services.workflow.repository import (
     create_workflow_with_steps,
     fetch_session,
     fetch_steps,
-    update_session_fields,
     update_step_fields,
     utcnow,
 )
 from services.workflow import lifecycle_rules as lr_mod
+from services.workflow import workflow_instance_service as wf_inst
 from services.workflow.responses import safe_error, workflow_envelope
 
 _log = logging.getLogger(__name__)
+
+
+def _linear_order_from_session(session: Optional[Dict[str, Any]]) -> Tuple[str, ...]:
+    if not session:
+        return reg.LINEAR_STEP_ORDER
+    return reg.linear_order_for(str(session.get("workflow_type") or reg.WORKFLOW_TYPE_DEFAULT))
 
 
 def _steps_by_id(rows: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
@@ -90,11 +99,12 @@ def repair_linear_availability_tx(
     cur,
     workflow_id: str,
     smap: Dict[str, Dict[str, Any]],
+    linear_order: Tuple[str, ...],
 ) -> bool:
     """Single-transaction repair: unlock `not_started` steps after a completed prefix."""
     changed = False
     prev_done = True
-    for sid in reg.LINEAR_STEP_ORDER:
+    for sid in linear_order:
         row = smap.get(sid)
         if not row:
             continue
@@ -103,7 +113,14 @@ def repair_linear_availability_tx(
             prev_done = True
             continue
         if prev_done and st == "not_started":
-            update_step_fields(conn, cur, workflow_id, sid, status="available")
+            wf_inst.mutate_step(
+                conn,
+                cur,
+                workflow_id,
+                sid,
+                prior_step_status="not_started",
+                status="available",
+            )
             row["status"] = "available"
             changed = True
         prev_done = False
@@ -112,12 +129,14 @@ def repair_linear_availability_tx(
 
 def compute_authoritative_step(
     steps_map: Dict[str, Dict[str, Any]],
+    linear_order: Optional[Tuple[str, ...]] = None,
 ) -> Tuple[Optional[str], str]:
     """
     First linear step that is not completed.
     Returns (step_id, phase) where phase is 'done' if all completed.
     """
-    for sid in reg.LINEAR_STEP_ORDER:
+    order = linear_order if linear_order is not None else reg.LINEAR_STEP_ORDER
+    for sid in order:
         row = steps_map.get(sid)
         if not row:
             continue
@@ -125,6 +144,27 @@ def compute_authoritative_step(
             continue
         return sid, "active"
     return None, "done"
+
+
+def _first_open_step_after(
+    completed_step_id: str,
+    smap: Dict[str, Dict[str, Any]],
+) -> Tuple[Optional[str], bool]:
+    """
+    After ``completed_step_id`` is (being) marked completed, find the next linear step
+    whose row is not already ``completed``. If the chain ends, return (None, True).
+    """
+    cursor = completed_step_id
+    while True:
+        defn = reg.STEP_REGISTRY.get(cursor)
+        if not defn or not defn.next_steps:
+            return None, True
+        nid = defn.next_steps[0]
+        row = smap.get(nid) or {}
+        st = str(row.get("status") or "not_started")
+        if st != "completed":
+            return nid, False
+        cursor = nid
 
 
 def build_next_actions(
@@ -144,7 +184,8 @@ def build_next_actions(
     if session_row["overall_status"] == "completed":
         return []
 
-    head, phase = compute_authoritative_step(steps_map)
+    order = _linear_order_from_session(session_row)
+    head, phase = compute_authoritative_step(steps_map, order)
     if phase == "done":
         return []
 
@@ -193,7 +234,7 @@ def build_next_actions(
 
 
 class WorkflowEngine:
-    """Use from API layer; owns validation and transitions."""
+    """Single write authority for linear step completion (plus guarded engine internals)."""
 
     def get_state_bundle(self, workflow_id: str) -> Tuple[Optional[Dict], List[Dict], Dict[str, Any]]:
         from services.workflow.workflow_db import get_workflow_db
@@ -203,9 +244,10 @@ class WorkflowEngine:
             return None, [], {}
         steps = fetch_steps(workflow_id)
         smap = _steps_by_id(steps)
+        order = _linear_order_from_session(session)
         with get_workflow_db() as (conn, cur):
-            if repair_linear_availability_tx(conn, cur, workflow_id, smap):
-                update_session_fields(conn, cur, workflow_id)
+            if repair_linear_availability_tx(conn, cur, workflow_id, smap, order):
+                wf_inst.touch_session_updated_at(conn, cur, workflow_id)
                 conn.commit()
                 steps = fetch_steps(workflow_id)
                 smap = _steps_by_id(steps)
@@ -248,7 +290,7 @@ class WorkflowEngine:
         metadata: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         wtype = workflow_type or reg.WORKFLOW_TYPE_DEFAULT
-        first = reg.LINEAR_STEP_ORDER[0]
+        first = reg.linear_order_for(wtype)[0]
         wid = create_workflow_with_steps(
             user_id=user_id,
             workflow_type=wtype,
@@ -276,7 +318,7 @@ class WorkflowEngine:
                 user_message="No workflow to resume.",
                 error=safe_error("NOT_FOUND", "Workflow not found."),
             )
-        head, phase = compute_authoritative_step(smap)
+        head, phase = compute_authoritative_step(smap, _linear_order_from_session(session))
         msg = (
             "You’re all caught up — this workflow is complete."
             if phase == "done"
@@ -308,7 +350,8 @@ class WorkflowEngine:
         session, _, smap = self.get_state_bundle(workflow_id)
         if not session or session.get("overall_status") == "completed":
             return False
-        head, phase = compute_authoritative_step(smap)
+        order = _linear_order_from_session(session)
+        head, phase = compute_authoritative_step(smap, order)
         if phase == "done" or head != step_id:
             _log.debug(
                 "service_complete_step skipped: head=%s wanted=%s wf=%s",
@@ -325,8 +368,7 @@ class WorkflowEngine:
             return False
 
         now = utcnow()
-        definition = reg.STEP_REGISTRY[step_id]
-        next_id = definition.next_steps[0] if definition.next_steps else None
+        next_open, finish_session = _first_open_step_after(step_id, smap)
         summary = dict(completion_payload_summary or {})
         if step_id in reg.ASYNC_MANAGED_STEPS:
             summary.setdefault(
@@ -339,6 +381,8 @@ class WorkflowEngine:
                 "resolvedAt": now.isoformat(),
             }
 
+        prior_overall = str(session.get("overall_status") or "active")
+
         with get_workflow_db() as (conn, cur):
             if st in ("available", "failed"):
                 mid_async: Any = False
@@ -348,11 +392,12 @@ class WorkflowEngine:
                         "source": audit_source[:48],
                         "updatedAt": now.isoformat(),
                     }
-                update_step_fields(
+                wf_inst.mutate_step(
                     conn,
                     cur,
                     workflow_id,
                     step_id,
+                    prior_step_status=st,
                     status="in_progress",
                     attempt_count_delta=1,
                     started_at=now,
@@ -362,11 +407,12 @@ class WorkflowEngine:
                     last_error_message_safe=None,
                     async_task_state=mid_async,
                 )
-            update_step_fields(
+            wf_inst.mutate_step(
                 conn,
                 cur,
                 workflow_id,
                 step_id,
+                prior_step_status="in_progress",
                 status="completed",
                 completed_at=now,
                 failed_at=None,
@@ -375,28 +421,33 @@ class WorkflowEngine:
                 last_error_code=None,
                 last_error_message_safe=None,
             )
-            if next_id:
-                update_step_fields(
+            if not finish_session and next_open:
+                next_row = smap.get(next_open) or {}
+                next_prior = str(next_row.get("status") or "not_started")
+                wf_inst.mutate_step(
                     conn,
                     cur,
                     workflow_id,
-                    next_id,
+                    next_open,
+                    prior_step_status=next_prior,
                     status="available",
                 )
-                update_session_fields(
+                wf_inst.mutate_session(
                     conn,
                     cur,
                     workflow_id,
-                    current_step=next_id,
+                    prior_overall_status=prior_overall,
+                    current_step=next_open,
                     overall_status="active",
                     last_error_code=None,
                     last_error_message_safe=None,
                 )
             else:
-                update_session_fields(
+                wf_inst.mutate_session(
                     conn,
                     cur,
                     workflow_id,
+                    prior_overall_status=prior_overall,
                     current_step=None,
                     overall_status="completed",
                     completed_at=now,
@@ -408,6 +459,119 @@ class WorkflowEngine:
             "service_complete",
             workflow_id=workflow_id,
             step_id=step_id,
+            source=audit_source,
+            user_id=audit_user_id,
+        )
+        return True
+
+    def service_begin_next_dispute_round(
+        self,
+        workflow_id: str,
+        *,
+        audit_source: str = "api:begin_next_dispute_round",
+        audit_user_id: Optional[int] = None,
+    ) -> bool:
+        """
+        After the linear workflow is ``completed`` (including ``track``), reopen
+        ``select_disputes`` → … → ``track`` for another dispute cycle in the same session.
+        """
+        session, _, smap = self.get_state_bundle(workflow_id)
+        if not session:
+            return False
+        if str(session.get("overall_status") or "") != "completed":
+            return False
+        tr = smap.get("track") or {}
+        if tr.get("status") != "completed":
+            return False
+
+        from services.workflow.workflow_db import get_workflow_db
+
+        reset_chain = (
+            "select_disputes",
+            "letter_generation",
+            "proof_attachment",
+            "mail",
+            "track",
+        )
+        now = utcnow()
+        prior_overall = "completed"
+
+        with get_workflow_db() as (conn, cur):
+            for sid in reset_chain:
+                row = smap.get(sid) or {}
+                if row.get("status") != "completed":
+                    continue
+                wf_inst.mutate_step(
+                    conn,
+                    cur,
+                    workflow_id,
+                    sid,
+                    prior_step_status="completed",
+                    status="available",
+                )
+                update_step_fields(
+                    conn,
+                    cur,
+                    workflow_id,
+                    sid,
+                    completed_at=None,
+                    failed_at=None,
+                    async_task_state=None,
+                )
+            wf_inst.mutate_session(
+                conn,
+                cur,
+                workflow_id,
+                prior_overall_status=prior_overall,
+                current_step="select_disputes",
+                overall_status="active",
+                completed_at=None,
+                last_error_code=None,
+                last_error_message_safe=None,
+            )
+            conn.commit()
+
+        from services.workflow.dispute_round_execution import snapshot_round_close_before_next
+        from services.workflow.repository import merge_into_workflow_metadata
+
+        snapshot_round_close_before_next(workflow_id)
+
+        def _meta(meta: Dict[str, Any]) -> None:
+            meta["mail"] = {
+                "expected_unique_bureau_sends": 0,
+                "selected_bureau_keys": [],
+                "confirmed_bureaus": [],
+                "successful_send_count": 0,
+                "failed_send_count": 0,
+                "completed_all_sends": False,
+            }
+            ds = meta.get("dispute_selection")
+            if not isinstance(ds, dict):
+                ds = {}
+            else:
+                ds = dict(ds)
+            prev = int(ds.get("dispute_round_number") or 1)
+            nxt = prev + 1
+            ds["dispute_round_number"] = nxt
+            hist = ds.get("dispute_round_history")
+            if not isinstance(hist, list):
+                hist = []
+            hist = list(hist)
+            hist.append(
+                {
+                    "beganAt": now.isoformat(),
+                    "roundNumber": nxt,
+                    "source": (audit_source or "")[:64],
+                }
+            )
+            ds["dispute_round_history"] = hist[-24:]
+            meta["dispute_selection"] = ds
+
+        merge_into_workflow_metadata(workflow_id, _meta)
+        log_workflow_event(
+            "begin_next_dispute_round",
+            workflow_id=workflow_id,
+            step_id="select_disputes",
             source=audit_source,
             user_id=audit_user_id,
         )
@@ -431,7 +595,8 @@ class WorkflowEngine:
         session, _, smap = self.get_state_bundle(workflow_id)
         if not session or session.get("overall_status") == "completed":
             return False
-        head, phase = compute_authoritative_step(smap)
+        order = _linear_order_from_session(session)
+        head, phase = compute_authoritative_step(smap, order)
         if phase == "done" or head != step_id:
             return False
         row = smap[step_id]
@@ -439,13 +604,15 @@ class WorkflowEngine:
         if st == "failed":
             return True
         now = utcnow()
+        prior_overall = str(session.get("overall_status") or "active")
         with get_workflow_db() as (conn, cur):
             if st == "available":
-                update_step_fields(
+                wf_inst.mutate_step(
                     conn,
                     cur,
                     workflow_id,
                     step_id,
+                    prior_step_status="available",
                     status="in_progress",
                     attempt_count_delta=1,
                     started_at=now,
@@ -463,21 +630,23 @@ class WorkflowEngine:
                     "source": (audit_source or "")[:48],
                     "updatedAt": now.isoformat(),
                 }
-            update_step_fields(
+            wf_inst.mutate_step(
                 conn,
                 cur,
                 workflow_id,
                 step_id,
+                prior_step_status="in_progress",
                 status="failed",
                 failed_at=now,
                 last_error_code=error_code,
                 last_error_message_safe=message_safe,
                 async_task_state=fail_async,
             )
-            update_session_fields(
+            wf_inst.mutate_session(
                 conn,
                 cur,
                 workflow_id,
+                prior_overall_status=prior_overall,
                 overall_status="failed",
                 last_error_code=error_code,
                 last_error_message_safe=message_safe,
@@ -511,21 +680,21 @@ class WorkflowEngine:
         session, _, smap = self.get_state_bundle(workflow_id)
         if not session or session.get("overall_status") == "completed":
             return False
-        head, _ = compute_authoritative_step(smap)
+        head, _ = compute_authoritative_step(smap, _linear_order_from_session(session))
         if head != step_id:
             return False
         row = smap[step_id]
         if row["status"] != "in_progress":
             return False
         with get_workflow_db() as (conn, cur):
-            update_step_fields(
+            wf_inst.mutate_step(
                 conn,
                 cur,
                 workflow_id,
                 step_id,
                 async_task_state=async_task_state,
             )
-            update_session_fields(conn, cur, workflow_id)
+            wf_inst.touch_session_updated_at(conn, cur, workflow_id)
             conn.commit()
         log_workflow_event(
             "async_state",
@@ -561,22 +730,25 @@ class WorkflowEngine:
         if step_id not in lr_mod.FAILED_RETRYABLE_STEPS:
             return {"ok": False, "error": {"code": "STEP_NOT_REOPEN_ELIGIBLE"}}
         uid = int(session["user_id"])
+        prior_overall = str(session.get("overall_status") or "active")
         with get_workflow_db() as (conn, cur):
-            update_step_fields(
+            wf_inst.mutate_step(
                 conn,
                 cur,
                 workflow_id,
                 step_id,
+                prior_step_status="failed",
                 status="available",
                 failed_at=None,
                 last_error_code=None,
                 last_error_message_safe=None,
                 async_task_state=None,
             )
-            update_session_fields(
+            wf_inst.mutate_session(
                 conn,
                 cur,
                 workflow_id,
+                prior_overall_status=prior_overall,
                 overall_status="active",
                 last_error_code=None,
                 last_error_message_safe=None,
@@ -607,7 +779,7 @@ class WorkflowEngine:
         session, _, smap = self.get_state_bundle(workflow_id)
         if not session:
             return {"ok": False, "error": {"code": "NOT_FOUND"}}
-        head, _ = compute_authoritative_step(smap)
+        head, _ = compute_authoritative_step(smap, _linear_order_from_session(session))
         if head != "mail":
             return {"ok": False, "error": {"code": "HEAD_NOT_MAIL"}}
         mail_row = smap.get("mail")
@@ -661,11 +833,8 @@ class WorkflowEngine:
         patch_mail = {k: v for k, v in patch_mail.items() if v is not None}
 
         with get_workflow_db() as (conn, cur):
-            update_session_fields(
-                conn,
-                cur,
-                workflow_id,
-                metadata_patch={"mail": patch_mail},
+            wf_inst.patch_session_metadata(
+                conn, cur, workflow_id, {"mail": patch_mail}
             )
             conn.commit()
 
@@ -718,7 +887,7 @@ class WorkflowEngine:
                 error=safe_error("WORKFLOW_COMPLETE", "No further steps."),
             )
 
-        head, _ = compute_authoritative_step(smap)
+        head, _ = compute_authoritative_step(smap, _linear_order_from_session(session))
         if head != step_id:
             exp_label = (
                 reg.STEP_REGISTRY[head].name
@@ -763,12 +932,15 @@ class WorkflowEngine:
                 "source": audit_source[:48],
                 "updatedAt": now.isoformat(),
             }
+        prior_overall = str(session.get("overall_status") or "active")
+        row_status = str(row["status"])
         with get_workflow_db() as (conn, cur):
-            update_step_fields(
+            wf_inst.mutate_step(
                 conn,
                 cur,
                 workflow_id,
                 step_id,
+                prior_step_status=row_status,
                 status="in_progress",
                 attempt_count_delta=1,
                 started_at=now,
@@ -778,10 +950,11 @@ class WorkflowEngine:
                 last_error_message_safe=None,
                 async_task_state=async_payload if async_payload is not None else False,
             )
-            update_session_fields(
+            wf_inst.mutate_session(
                 conn,
                 cur,
                 workflow_id,
+                prior_overall_status=prior_overall,
                 current_step=step_id,
                 overall_status="active",
                 last_error_code=None,
@@ -824,7 +997,7 @@ class WorkflowEngine:
                 error=safe_error("NOT_FOUND", "Workflow not found."),
             )
 
-        head, _ = compute_authoritative_step(smap)
+        head, _ = compute_authoritative_step(smap, _linear_order_from_session(session))
         if head != step_id:
             return workflow_envelope(
                 action_result="rejected",
@@ -849,43 +1022,49 @@ class WorkflowEngine:
             )
 
         now = utcnow()
-        definition = reg.STEP_REGISTRY[step_id]
-        next_id = definition.next_steps[0] if definition.next_steps else None
+        next_open, finish_session = _first_open_step_after(step_id, smap)
+        prior_overall = str(session.get("overall_status") or "active")
 
         with get_workflow_db() as (conn, cur):
-            update_step_fields(
+            wf_inst.mutate_step(
                 conn,
                 cur,
                 workflow_id,
                 step_id,
+                prior_step_status="in_progress",
                 status="completed",
                 completed_at=now,
                 failed_at=None,
                 completion_payload_summary=completion_payload_summary or {},
                 async_task_state=None,
             )
-            if next_id:
-                update_step_fields(
+            if not finish_session and next_open:
+                next_row = smap.get(next_open) or {}
+                next_prior = str(next_row.get("status") or "not_started")
+                wf_inst.mutate_step(
                     conn,
                     cur,
                     workflow_id,
-                    next_id,
+                    next_open,
+                    prior_step_status=next_prior,
                     status="available",
                 )
-                update_session_fields(
+                wf_inst.mutate_session(
                     conn,
                     cur,
                     workflow_id,
-                    current_step=next_id,
+                    prior_overall_status=prior_overall,
+                    current_step=next_open,
                     overall_status="active",
                     last_error_code=None,
                     last_error_message_safe=None,
                 )
             else:
-                update_session_fields(
+                wf_inst.mutate_session(
                     conn,
                     cur,
                     workflow_id,
+                    prior_overall_status=prior_overall,
                     current_step=None,
                     overall_status="completed",
                     completed_at=now,
@@ -895,8 +1074,8 @@ class WorkflowEngine:
             conn.commit()
 
         # Refresh for response
-        if next_id:
-            msg = f"Step complete. Next: {reg.STEP_REGISTRY[next_id].name}."
+        if not finish_session and next_open:
+            msg = f"Step complete. Next: {reg.STEP_REGISTRY[next_open].name}."
         else:
             msg = "Workflow complete. Tracking and follow-ups can continue here."
         return self.build_response(
@@ -922,7 +1101,7 @@ class WorkflowEngine:
                 error=safe_error("NOT_FOUND", "Workflow not found."),
             )
 
-        head, _ = compute_authoritative_step(smap)
+        head, _ = compute_authoritative_step(smap, _linear_order_from_session(session))
         if head != step_id:
             return workflow_envelope(
                 action_result="rejected",
@@ -939,21 +1118,24 @@ class WorkflowEngine:
             )
 
         now = utcnow()
+        prior_overall = str(session.get("overall_status") or "active")
         with get_workflow_db() as (conn, cur):
-            update_step_fields(
+            wf_inst.mutate_step(
                 conn,
                 cur,
                 workflow_id,
                 step_id,
+                prior_step_status="in_progress",
                 status="failed",
                 failed_at=now,
                 last_error_code=error_code,
                 last_error_message_safe=message_safe,
             )
-            update_session_fields(
+            wf_inst.mutate_session(
                 conn,
                 cur,
                 workflow_id,
+                prior_overall_status=prior_overall,
                 overall_status="failed",
                 last_error_code=error_code,
                 last_error_message_safe=message_safe,

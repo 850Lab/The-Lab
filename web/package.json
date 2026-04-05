@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "workflow-api": "cd .. && python -m uvicorn api.workflow_app:app --host 127.0.0.1 --port 5000",
     "build": "tsc && vite build",
     "preview": "vite preview",
     "test:e2e": "playwright test"

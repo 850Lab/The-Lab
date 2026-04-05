@@ -8,17 +8,68 @@ type UploadResult =
 
 type Props = {
   disabled?: boolean;
-  onUploadPdf: (file: File) => Promise<UploadResult>;
+  onUploadPdfs: (files: File[]) => Promise<UploadResult>;
 };
 
 function isPdfFile(f: File) {
   return f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf");
 }
 
-export function UploadDropzoneCard({ disabled, onUploadPdf }: Props) {
+function pdfFilesFromFileList(fileList: FileList | null): File[] {
+  if (!fileList?.length) return [];
+  const out: File[] = [];
+  for (let i = 0; i < fileList.length; i++) {
+    const f = fileList.item(i);
+    if (f) out.push(f);
+  }
+  return out.sort((a, b) =>
+    a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" }),
+  );
+}
+
+function summarizeNames(files: File[], max = 3): string {
+  if (files.length === 0) return "";
+  if (files.length === 1) return files[0].name;
+  const shown = files.slice(0, max).map((f) => f.name);
+  const more = files.length > max ? ` +${files.length - max} more` : "";
+  return `${shown.join(", ")}${more}`;
+}
+
+function MergeStackIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 64 56"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden
+    >
+      <rect x="8" y="4" width="48" height="36" rx="3" className="stroke-white/25" strokeWidth="1.5" />
+      <rect x="4" y="12" width="48" height="36" rx="3" className="stroke-lab-accent/50" strokeWidth="1.5" />
+      <rect
+        x="0"
+        y="20"
+        width="48"
+        height="36"
+        rx="3"
+        className="fill-lab-surface stroke-lab-accent"
+        strokeWidth="2"
+      />
+      <path
+        d="M14 38h20M14 32h14"
+        className="stroke-lab-muted/80"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+export function UploadDropzoneCard({ disabled, onUploadPdfs }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [phase, setPhase] = useState<"idle" | "dragging" | "uploading">("idle");
-  const [fileName, setFileName] = useState<string | null>(null);
+  const [pendingFiles, setPendingFiles] = useState<File[] | null>(null);
+  const [labelHint, setLabelHint] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [cardHover, setCardHover] = useState(false);
   const dragDepth = useRef(0);
@@ -26,39 +77,42 @@ export function UploadDropzoneCard({ disabled, onUploadPdf }: Props) {
   const resetError = useCallback(() => setError(null), []);
 
   const runUpload = useCallback(
-    async (file: File) => {
+    async (files: File[]) => {
       resetError();
-      setFileName(file.name);
+      setPendingFiles(files);
+      setLabelHint(summarizeNames(files));
       setPhase("uploading");
-      const result = await onUploadPdf(file);
+      const result = await onUploadPdfs(files);
       if (!result.success) {
         setError(result.message);
         setPhase("idle");
-        setFileName(null);
+        setLabelHint(null);
+        setPendingFiles(null);
         return;
       }
     },
-    [onUploadPdf, resetError],
+    [onUploadPdfs, resetError],
   );
 
-  const handleFile = useCallback(
-    (file: File | null) => {
+  const handleFiles = useCallback(
+    (picked: File[]) => {
       if (disabled || phase === "uploading") return;
       resetError();
-      if (!file) return;
-      if (!isPdfFile(file)) {
-        setError("Please upload a PDF file.");
+      if (!picked.length) return;
+      const nonPdf = picked.filter((f) => !isPdfFile(f));
+      if (nonPdf.length) {
+        setError("Every selected file must be a PDF.");
         setPhase("idle");
         return;
       }
-      void runUpload(file);
+      void runUpload(picked);
     },
     [disabled, phase, resetError, runUpload],
   );
 
   const onInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0] ?? null;
-    handleFile(f);
+    const list = pdfFilesFromFileList(e.target.files);
+    handleFiles(list);
     e.target.value = "";
   };
 
@@ -92,39 +146,37 @@ export function UploadDropzoneCard({ disabled, onUploadPdf }: Props) {
     e.stopPropagation();
     dragDepth.current = 0;
     if (phase === "uploading" || disabled) return;
-    const f = e.dataTransfer.files?.[0] ?? null;
-    handleFile(f);
+    const list = pdfFilesFromFileList(e.dataTransfer.files);
+    handleFiles(list);
   };
 
   const showDropzone = phase !== "uploading";
-  const interactive =
-    !disabled && (phase === "idle" || phase === "dragging");
+  const interactive = !disabled && (phase === "idle" || phase === "dragging");
+  const partCount = pendingFiles?.length ?? 0;
 
   return (
     <motion.div
       layout
-      className="relative w-full max-w-lg"
+      className="relative w-full"
       transition={{ layout: { duration: 0.45, ease: [0.22, 1, 0.36, 1] } }}
     >
       <motion.div
         layout
-        className={`relative overflow-hidden rounded-2xl border bg-lab-elevated transition-[box-shadow,border-color] duration-300 ${
+        role="region"
+        aria-label="PDF upload"
+        className={`relative overflow-hidden rounded-2xl border-2 transition-[box-shadow,border-color,background] duration-300 ${
           phase === "uploading"
-            ? "border-lab-accent/20 shadow-[0_0_40px_-16px_rgba(59,130,246,0.25)]"
+            ? "border-lab-accent/35 bg-gradient-to-b from-lab-accent/[0.08] to-lab-elevated shadow-[0_0_56px_-20px_rgba(56,189,248,0.45)]"
             : phase === "dragging"
-              ? "border-lab-accent/55 shadow-[0_0_0_1px_rgba(59,130,246,0.35),0_0_48px_-12px_rgba(59,130,246,0.35)]"
-              : cardHover && phase === "idle"
-                ? "border-white/[0.12] shadow-[0_0_36px_-14px_rgba(59,130,246,0.22)] shadow-xl shadow-black/25"
-                : "border-white/[0.08] shadow-xl shadow-black/20"
+              ? "border-lab-accent bg-gradient-to-b from-lab-accent/[0.12] to-lab-elevated shadow-[0_0_0_1px_rgba(56,189,248,0.4),0_0_60px_-12px_rgba(56,189,248,0.35)]"
+              : disabled
+                ? "border-white/[0.06] bg-lab-elevated/60 opacity-75"
+                : cardHover && phase === "idle"
+                  ? "border-white/[0.14] bg-lab-elevated shadow-[0_20px_50px_-24px_rgba(0,0,0,0.65)]"
+                  : "border-white/[0.1] bg-gradient-to-b from-lab-elevated to-lab-surface/30 shadow-[0_24px_64px_-28px_rgba(0,0,0,0.55)]"
         }`}
-        animate={
-          phase === "dragging"
-            ? { scale: 1.01 }
-            : phase === "idle"
-              ? { scale: 1 }
-              : { scale: 1 }
-        }
-        transition={{ type: "spring", stiffness: 400, damping: 28 }}
+        animate={phase === "dragging" ? { scale: 1.008 } : { scale: 1 }}
+        transition={{ type: "spring", stiffness: 420, damping: 30 }}
         onMouseEnter={() => setCardHover(true)}
         onMouseLeave={() => setCardHover(false)}
         onDragEnter={onDragEnter}
@@ -132,6 +184,11 @@ export function UploadDropzoneCard({ disabled, onUploadPdf }: Props) {
         onDragOver={onDragOver}
         onDrop={onDrop}
       >
+        <div
+          className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_80%_60%_at_50%_-20%,rgba(56,189,248,0.14),transparent)]"
+          aria-hidden
+        />
+
         <AnimatePresence mode="wait">
           {showDropzone ? (
             <motion.div
@@ -140,53 +197,56 @@ export function UploadDropzoneCard({ disabled, onUploadPdf }: Props) {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
-              className="px-6 py-10 sm:px-10 sm:py-12"
+              className="relative px-4 py-5 sm:px-6 sm:py-6"
             >
               <div className="flex flex-col items-center text-center">
-                <motion.div
-                  className={`flex h-14 w-14 items-center justify-center rounded-2xl border border-white/[0.08] bg-lab-surface ${
-                    phase === "dragging" ? "text-lab-accent" : "text-lab-muted"
-                  }`}
-                  animate={phase === "dragging" ? { scale: 1.06 } : { scale: 1 }}
-                  transition={{ type: "spring", stiffness: 380, damping: 22 }}
-                >
-                  <svg className="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={1.5}
-                      d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"
-                    />
-                  </svg>
-                </motion.div>
+                <div className="flex items-center gap-2">
+                  <MergeStackIcon className="h-9 w-11 shrink-0 text-lab-accent sm:h-10 sm:w-[2.85rem]" />
+                </div>
 
-                <h3 className="mt-6 text-lg font-semibold text-lab-text sm:text-xl">
-                  {disabled
-                    ? "Confirm processing below to upload"
-                    : "Drag and drop your report here"}
+                <h3 className="mt-2.5 text-lg font-bold tracking-tight text-lab-text sm:mt-3 sm:text-xl">
+                  {disabled ? "Confirm privacy below to upload" : "Drop PDFs here — we turn them into one report"}
                 </h3>
-                <p className="mt-2 text-sm text-lab-muted sm:text-[15px]">
-                  Or upload a PDF from your device
+                <p className="mt-1 max-w-md text-pretty text-xs font-medium leading-snug text-lab-muted sm:mt-1.5 sm:text-sm sm:leading-relaxed">
+                  {disabled
+                    ? "Check the consent box, then upload."
+                    : "One large bureau file (we split & merge on our servers) or several parts — same pipeline either way."}
                 </p>
 
-                {fileName && phase === "idle" ? (
+                <div className="mt-2.5 flex flex-wrap items-center justify-center gap-1.5 sm:mt-3 sm:gap-2">
+                  {[
+                    { k: "Parts", v: "≤25 MB each" },
+                    { k: "Bundle", v: "Up to 12 PDFs" },
+                    { k: "Single", v: "≤200 MB" },
+                  ].map((row) => (
+                    <span
+                      key={row.k}
+                      className="inline-flex items-baseline gap-1 rounded-full border border-white/[0.1] bg-black/20 px-2 py-1 text-[10px] sm:gap-1.5 sm:px-2.5 sm:py-1.5 sm:text-[11px]"
+                    >
+                      <span className="font-bold uppercase tracking-[0.12em] text-lab-accent">{row.k}</span>
+                      <span className="text-lab-muted">{row.v}</span>
+                    </span>
+                  ))}
+                </div>
+
+                {labelHint && phase === "idle" ? (
                   <motion.p
-                    className="mt-3 max-w-full truncate px-2 text-xs text-lab-subtle sm:text-sm"
+                    className="mt-2 max-w-full rounded-md border border-white/[0.06] bg-white/[0.03] px-2 py-1.5 text-[11px] text-lab-subtle sm:mt-2.5 sm:px-3 sm:py-2 sm:text-xs"
                     initial={{ opacity: 0, y: 4 }}
                     animate={{ opacity: 1, y: 0 }}
                   >
-                    {fileName}
+                    <span className="line-clamp-2 break-all">{labelHint}</span>
                   </motion.p>
                 ) : null}
 
                 {error ? (
-                  <p className="mt-4 text-sm text-red-400/90" role="alert">
+                  <p className="mt-2 rounded-md border border-red-500/30 bg-red-500/10 px-2 py-1.5 text-xs text-red-200/95 sm:mt-2.5 sm:px-3 sm:py-2 sm:text-sm" role="alert">
                     {error}
                   </p>
                 ) : null}
 
                 <motion.div
-                  className="mt-8"
+                  className="mt-4 w-full max-w-xs sm:mt-5 sm:max-w-sm"
                   whileHover={interactive && phase === "idle" ? { scale: 1.02 } : undefined}
                   whileTap={interactive && phase === "idle" ? { scale: 0.98 } : undefined}
                 >
@@ -194,6 +254,7 @@ export function UploadDropzoneCard({ disabled, onUploadPdf }: Props) {
                     ref={inputRef}
                     type="file"
                     accept=".pdf,application/pdf"
+                    multiple
                     className="hidden"
                     disabled={!interactive}
                     onChange={onInputChange}
@@ -202,13 +263,17 @@ export function UploadDropzoneCard({ disabled, onUploadPdf }: Props) {
                     type="button"
                     disabled={!interactive}
                     onClick={() => inputRef.current?.click()}
-                    className="rounded-lg bg-lab-accent px-7 py-3 text-[15px] font-semibold text-white shadow-lg shadow-lab-accent/25 transition-shadow hover:shadow-lab-accent/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-lab-accent/50 disabled:pointer-events-none disabled:opacity-40"
+                    className="w-full rounded-xl bg-lab-accent py-3 text-sm font-bold text-white shadow-lg shadow-lab-accent/30 transition-[box-shadow,filter] hover:brightness-110 hover:shadow-lab-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-lab-accent/60 focus-visible:ring-offset-2 focus-visible:ring-offset-lab-bg disabled:pointer-events-none disabled:opacity-40 sm:py-3.5 sm:text-base"
                   >
-                    Choose file
+                    Choose PDF file(s)
                   </button>
                 </motion.div>
 
-                <p className="mt-4 text-xs text-lab-subtle">PDF · max 25 MB (same as main app)</p>
+                <p className="mt-3 max-w-sm text-pretty text-[10px] leading-snug text-lab-subtle sm:mt-3.5 sm:text-[11px] sm:leading-relaxed">
+                  Multi-part: use names like <span className="font-medium text-lab-muted">report_01.pdf</span>,{" "}
+                  <span className="font-medium text-lab-muted">report_02.pdf</span> so sort order matches your
+                  pages. We merge, then parse as <span className="font-semibold text-lab-text/90">one bureau report</span>.
+                </p>
               </div>
             </motion.div>
           ) : (
@@ -218,12 +283,18 @@ export function UploadDropzoneCard({ disabled, onUploadPdf }: Props) {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
-              className="px-6 sm:px-10"
+              className="relative px-4 sm:px-6"
             >
-              {fileName ? (
-                <p className="pb-2 text-center text-xs text-lab-subtle">{fileName}</p>
+              {labelHint ? (
+                <p className="pt-3 text-center text-[11px] font-medium text-lab-subtle line-clamp-2 sm:pt-4 sm:text-xs">
+                  {partCount > 1 ? `${partCount} parts` : "1 file"} · {labelHint}
+                </p>
               ) : null}
-              <UploadProgressState />
+              <UploadProgressState
+                compact
+                title={partCount > 1 ? "Merging parts & parsing…" : "Uploading & parsing…"}
+                subtitle="Building one report for analysis — keep this tab open."
+              />
             </motion.div>
           )}
         </AnimatePresence>

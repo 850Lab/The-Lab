@@ -77,6 +77,11 @@ export function isEscalationPath(pathname: string): boolean {
   );
 }
 
+/** Phase 1 org-program participant flow (no consumer workflow required). */
+export function isOrgProgramPath(pathname: string): boolean {
+  return pathname === "/program" || pathname.startsWith("/program/");
+}
+
 /** Customer route matching backend authoritative step from a workflow API envelope. */
 export function customerPathFromEnvelope(env: WorkflowEnvelope): string {
   const a = computeAuthoritativeStep(env.stepStatus ?? []);

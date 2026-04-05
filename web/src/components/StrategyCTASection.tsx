@@ -4,18 +4,25 @@ type Props = {
   onStart: () => void;
   label?: string;
   disabled?: boolean;
+  hint?: string;
 };
 
 export function StrategyCTASection({
   onStart,
-  label = "Continue to payment",
+  label = "Lock plan & continue",
   disabled = false,
+  hint,
 }: Props) {
   return (
     <div className="rounded-xl border border-white/[0.08] bg-lab-elevated px-5 py-7 sm:px-8 sm:py-8">
       <h2 className="text-center text-lg font-semibold text-lab-text sm:text-xl">
-        We’ll handle this for you
+        Ready when you are
       </h2>
+      {hint ? (
+        <p className="mx-auto mt-2 max-w-md text-center text-sm leading-relaxed text-lab-muted">
+          {hint}
+        </p>
+      ) : null}
       <div className="mt-6 sm:flex sm:justify-center">
         <motion.button
           type="button"

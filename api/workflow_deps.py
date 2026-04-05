@@ -91,6 +91,24 @@ def get_session_user(
     return user
 
 
+def require_platform_admin(
+    user: Dict[str, Any] = Depends(get_session_user),
+) -> Dict[str, Any]:
+    """
+    Platform operator: ``users.role == 'admin'`` (existing Streamlit / auth convention).
+    Used for org creation and membership attachment in Phase 1 S1.
+    """
+    if (user.get("role") or "").strip() != "admin":
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "code": "FORBIDDEN",
+                "messageSafe": "Platform administrator access required.",
+            },
+        )
+    return user
+
+
 def get_session_bearer_token(
     creds: Optional[HTTPAuthorizationCredentials] = Depends(_bearer),
 ) -> str:

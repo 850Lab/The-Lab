@@ -1,3 +1,15 @@
+"""
+850 Lab — Streamlit application (legacy reference only).
+
+**Authoritative customer surface:** React (``web/``) + FastAPI (``api/workflow_app.py``).
+
+In production-like environments, interactive Streamlit workflow mutations are **off**
+by default (see ``services/streamlit_customer_gate.py``): non-admin users see a redirect
+message instead of the dispute shell; report saves and Streamlit-branded workflow hooks
+are blocked unless ``STREAMLIT_ALLOW_CUSTOMER_MUTATIONS=1``.
+
+Per ``docs/STREAMLIT_RETIREMENT.md``: do not add new product logic here.
+"""
 import logging
 import sys
 
@@ -10,12 +22,19 @@ _startup_logger = logging.getLogger('850lab.startup')
 _startup_logger.info("App module loading started")
 print("[850lab] App module loading started", flush=True)
 
+import os
 import streamlit as st
 
 from patch_viewport import patch as _patch_viewport
 _patch_viewport()
 
 st.set_page_config(page_title="850 Lab", page_icon="💡", layout="wide")
+
+if os.environ.get("STREAMLIT_LEGACY_REFERENCE_BANNER", "").strip() == "1":
+    st.caption(
+        "Legacy reference UI — authoritative product: React (`web/`) + FastAPI "
+        "(`api/workflow_app.py`). See `docs/STREAMLIT_RETIREMENT.md`."
+    )
 
 try:
     from streamlit import user_info
@@ -28,7 +47,6 @@ import re
 import hashlib
 import html as html_mod
 import time
-import os
 from io import BytesIO
 from datetime import datetime
 import traceback
@@ -811,6 +829,36 @@ if not _is_demo and qp.get('payment') == 'success' and qp.get('session_id'):
 elif not _is_demo and qp.get('payment') == 'cancelled':
     st.info("Payment was cancelled. You can purchase anytime.")
     st.query_params.clear()
+
+if not _is_demo:
+    try:
+        from services.streamlit_customer_gate import streamlit_customer_product_shell_disabled
+
+        if streamlit_customer_product_shell_disabled() and not auth.is_admin(current_user):
+            inject_css()
+            _cust_origin = (
+                os.environ.get("WORKFLOW_CUSTOMER_APP_ORIGIN")
+                or os.environ.get("PUBLIC_APP_ORIGIN")
+                or ""
+            ).strip().rstrip("/")
+            st.markdown(
+                f'<div style="max-width:520px;margin:2.5rem auto;padding:1.5rem 1.75rem;'
+                f'background:{BG_1};border:1px solid {BORDER};border-radius:12px;">'
+                f'<div style="font-size:1.15rem;font-weight:700;color:{TEXT_0};margin-bottom:10px;">'
+                f'Customer tools live in the web app</div>'
+                f'<div style="font-size:0.9rem;color:{TEXT_1};line-height:1.55;margin-bottom:16px;">'
+                f'This Streamlit interface is legacy. Uploads, disputes, letters, and mail '
+                f'run through the FastAPI workflow API and React UI.</div>'
+                f"{f'<a href=\"{_cust_origin}\" target=\"_blank\" rel=\"noopener\" '
+                f'style="display:inline-block;background:{GOLD};color:#111;padding:10px 22px;'
+                f'border-radius:8px;font-weight:700;text-decoration:none;">Open customer app</a>'
+                if _cust_origin else ''}"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
+            st.stop()
+    except Exception:
+        _startup_logger.exception("streamlit_customer_shell_gate_failed")
 
 _bg_results_lock = threading.Lock()
 _bg_results = {}
@@ -3065,7 +3113,14 @@ elif st.session_state.ui_card == "UPLOAD":
 
                         status.update(label="Building your plan...", state="running")
                         try:
-                            report_id = db.save_report(bureau, uploaded_file.name, parsed_data, full_text, user_id=user_id)
+                            report_id = db.save_report(
+                                bureau,
+                                uploaded_file.name,
+                                parsed_data,
+                                full_text,
+                                user_id=user_id,
+                                mutation_channel="streamlit",
+                            )
                             track_analytics('upload', 'UPLOAD', f'bureau:{bureau}')
                         except Exception:
                             report_id = None

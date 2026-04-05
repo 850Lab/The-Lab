@@ -2,9 +2,10 @@ import { motion } from "framer-motion";
 
 type Props = {
   onContinue: () => void;
+  footerHint?: string;
 };
 
-export function EscalationCTASection({ onContinue }: Props) {
+export function EscalationCTASection({ onContinue, footerHint }: Props) {
   return (
     <motion.div
       variants={{
@@ -31,7 +32,7 @@ export function EscalationCTASection({ onContinue }: Props) {
         Continue with this step
       </motion.button>
       <p className="text-center text-xs text-lab-subtle sm:text-sm">
-        We’ll prepare the next action for you
+        {footerHint ?? "We’ll prepare the next action for you"}
       </p>
     </motion.div>
   );

@@ -4,21 +4,92 @@ Minimal persistence layer for reports, violations, and letters
 """
 
 import os
+
+# Repo-root `.env` for local dev (Cursor/new shells). `database.py` lives at repo root → one dirname.
+try:
+    from dotenv import load_dotenv
+
+    _repo_root = os.path.dirname(os.path.abspath(__file__))
+    # `override=True`: repo `.env` wins over stale User-level DATABASE_URL (e.g. localhost).
+    load_dotenv(os.path.join(_repo_root, ".env"), override=True)
+except ImportError:
+    pass
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from psycopg2.pool import ThreadedConnectionPool
 from contextlib import contextmanager
 from datetime import datetime
 import json
+import socket
+from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 import logging
+from typing import List
 
 _logger = logging.getLogger(__name__)
 
-DATABASE_URL = os.environ.get('DATABASE_URL')
-
 _pool = None
 _pool_lock = __import__('threading').Lock()
+
+
+def database_dsn() -> str:
+    """Current Postgres URL from the environment (read when the pool is created, not at import)."""
+    return (os.environ.get("DATABASE_URL") or "").strip()
+
+
+def _dsn_log_label(dsn: str) -> str:
+    """Host/db for logs only (no password)."""
+    if not dsn:
+        return "(DATABASE_URL is empty)"
+    try:
+        p = urlparse(dsn)
+        host = p.hostname or "?"
+        port = p.port or 5432
+        db = (p.path or "/").lstrip("/") or "postgres"
+        user = p.username or "?"
+        return f"{user}@{host}:{port}/{db}"
+    except Exception:
+        return "(could not parse DATABASE_URL)"
+
+
+def _dsn_with_ipv4_hostaddr(dsn: str) -> str:
+    """
+    If the hostname resolves to IPv4, add hostaddr=<ipv4> so libpq opens a TCP connection
+    to IPv4 while still using the original host for TLS/SNI. Fixes common Windows/home-network
+    cases where IPv6 to Supabase times out.
+    Set DATABASE_SKIP_IPV4_HOSTADDR=1 to disable.
+    """
+    if (os.environ.get("DATABASE_SKIP_IPV4_HOSTADDR") or "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+    ):
+        return dsn
+    try:
+        p = urlparse(dsn)
+        if not p.hostname:
+            return dsn
+        port = p.port or 5432
+        q = dict(parse_qsl(p.query, keep_blank_values=True))
+        if q.get("hostaddr"):
+            return dsn
+        infos = socket.getaddrinfo(p.hostname, port, type=socket.SOCK_STREAM)
+        ipv4 = None
+        for fam, _, _, _, sockaddr in infos:
+            if fam == socket.AF_INET:
+                ipv4 = sockaddr[0]
+                break
+        if not ipv4:
+            return dsn
+        q["hostaddr"] = ipv4
+        new_query = urlencode(list(q.items()))
+        out = urlunparse(p._replace(query=new_query))
+        _logger.info("PostgreSQL: using IPv4 hostaddr %s for host %s", ipv4, p.hostname)
+        return out
+    except Exception as exc:
+        _logger.debug("IPv4 hostaddr hint skipped: %s", exc)
+        return dsn
+
 
 def _get_pool():
     global _pool
@@ -27,12 +98,20 @@ def _get_pool():
     with _pool_lock:
         if _pool is not None:
             return _pool
+        dsn = database_dsn()
+        if not dsn:
+            raise ValueError(
+                "DATABASE_URL is not set. In PowerShell run e.g. "
+                "$env:DATABASE_URL = 'postgresql://...' then start uvicorn in the same window."
+            )
+        dsn = _dsn_with_ipv4_hostaddr(dsn)
         try:
+            _logger.info("PostgreSQL pool target: %s", _dsn_log_label(dsn))
             _pool = ThreadedConnectionPool(
-                minconn=1, maxconn=10, dsn=DATABASE_URL,
+                minconn=1, maxconn=10, dsn=dsn,
                 keepalives=1, keepalives_idle=30,
                 keepalives_interval=10, keepalives_count=3,
-                connect_timeout=5,
+                connect_timeout=15,
                 options='-c statement_timeout=30000',
             )
             _logger.info("Database pool created successfully")
@@ -141,6 +220,10 @@ def get_db(dict_cursor=False):
 
 def init_database():
     """Create tables if they don't exist, and migrate schema if needed"""
+    from services.workflow.workflow_db_config import assert_postgres_only_in_production
+
+    assert_postgres_only_in_production()
+
     import time as _time
     for _attempt in range(3):
         try:
@@ -154,7 +237,7 @@ def init_database():
                 raise
 
 def _init_database_inner():
-    from services.workflow.workflow_db_config import should_use_workflow_sqlite
+    from services.workflow.workflow_db_config import is_production_like, should_use_workflow_sqlite
 
     if should_use_workflow_sqlite():
         from services.workflow import workflow_sqlite
@@ -166,25 +249,52 @@ def _init_database_inner():
     conn = pool.getconn()
     try:
         cur = conn.cursor()
-        cur.execute("SELECT 1 FROM information_schema.tables WHERE table_name = 'users'")
+        cur.execute(
+            "SELECT 1 FROM information_schema.tables "
+            "WHERE table_schema = 'public' AND table_name = 'users'"
+        )
         if cur.fetchone():
             cur.close()
             try:
                 from workflow_schema import (
+                    ensure_demo_leads_table,
                     ensure_operations_tables,
+                    ensure_org_program_delivery_schema,
+                    ensure_org_tables,
+                    ensure_organization_program_dispute_selections_table,
+                    ensure_organization_program_enrollment_tables,
+                    ensure_organization_program_progress_table,
+                    ensure_reports_program_link_columns,
                     ensure_response_intake_tables,
+                    ensure_workflow_events_table,
+                    ensure_workflow_jobs_table,
                     ensure_workflow_tables,
                 )
 
                 ensure_workflow_tables(conn)
+                ensure_workflow_events_table(conn)
+                ensure_workflow_jobs_table(conn)
                 ensure_response_intake_tables(conn)
                 ensure_operations_tables(conn)
+                ensure_demo_leads_table(conn)
+                ensure_org_tables(conn)
+                ensure_organization_program_enrollment_tables(conn)
+                ensure_org_program_delivery_schema(conn)
+                ensure_reports_program_link_columns(conn)
+                ensure_organization_program_dispute_selections_table(conn)
+                ensure_organization_program_progress_table(conn)
                 conn.commit()
             except Exception as _wf_e:
                 try:
                     conn.rollback()
                 except Exception:
                     pass
+                if is_production_like():
+                    _logger.error(
+                        "workflow schema ensure failed in production (fatal): %s",
+                        _wf_e,
+                    )
+                    raise
                 _logger.warning("workflow schema ensure failed (non-fatal): %s", _wf_e)
             pool.putconn(conn)
             return
@@ -203,7 +313,13 @@ def _init_database_inner():
 
 def _init_database_ddl(pool, conn):
     cur = conn.cursor()
-    
+
+    # `users` / `sessions` / `payments` live in auth; many tables below FK to `users`.
+    # Fresh Supabase DB has `auth.users` only — not `public.users`.
+    import auth
+
+    auth.init_auth_tables()
+
     cur.execute('''
         CREATE TABLE IF NOT EXISTS reports (
             id SERIAL PRIMARY KEY,
@@ -588,14 +704,20 @@ def _init_database_ddl(pool, conn):
 
     try:
         from workflow_schema import (
+            ensure_demo_leads_table,
             ensure_operations_tables,
             ensure_response_intake_tables,
+            ensure_workflow_events_table,
+            ensure_workflow_jobs_table,
             ensure_workflow_tables,
         )
 
         ensure_workflow_tables(conn)
+        ensure_workflow_events_table(conn)
+        ensure_workflow_jobs_table(conn)
         ensure_response_intake_tables(conn)
         ensure_operations_tables(conn)
+        ensure_demo_leads_table(conn)
     except Exception as _wf_e:
         _logger.warning(
             "workflow schema ensure after full DDL failed (non-fatal): %s", _wf_e
@@ -605,21 +727,56 @@ def _init_database_ddl(pool, conn):
     cur.close()
     pool.putconn(conn)
 
-def save_report(bureau, file_name, parsed_data, full_text=None, user_id=None):
+def save_report(
+    bureau,
+    file_name,
+    parsed_data,
+    full_text=None,
+    user_id=None,
+    organization_id=None,
+    organization_program_enrollment_id=None,
+    *,
+    mutation_channel=None,
+):
     """Save a parsed report. Raw full_text is never persisted — only structured
     parsed_data is stored. This is intentional: credit reports contain SSNs,
-    full account numbers, and other PII that should not sit in the database."""
+    full account numbers, and other PII that should not sit in the database.
+
+    ``mutation_channel="streamlit"`` is rejected when Streamlit customer mutations are
+    disabled (production default unless ``STREAMLIT_ALLOW_CUSTOMER_MUTATIONS=1``).
+    """
+    if mutation_channel == "streamlit":
+        from services.streamlit_customer_gate import streamlit_customer_mutations_forbidden
+
+        if streamlit_customer_mutations_forbidden():
+            raise RuntimeError(
+                "Report saves from Streamlit are disabled. Use the React customer app "
+                "and POST /api/workflows/{id}/reports/upload (or org /api/me/report)."
+            )
     with get_db() as (conn, cur):
-        cur.execute('''
-            INSERT INTO reports (bureau, file_name, parsed_data, full_text, user_id)
-            VALUES (%s, %s, %s, NULL, %s)
+        cur.execute(
+            """
+            INSERT INTO reports (
+                bureau, file_name, parsed_data, full_text, user_id,
+                organization_id, organization_program_enrollment_id
+            )
+            VALUES (%s, %s, %s, NULL, %s, %s, %s)
             RETURNING id
-        ''', (bureau, file_name, json.dumps(parsed_data), user_id))
-        
+            """,
+            (
+                bureau,
+                file_name,
+                json.dumps(parsed_data),
+                user_id,
+                organization_id,
+                organization_program_enrollment_id,
+            ),
+        )
+
         result = cur.fetchone()
         report_id = result[0] if result else None
         conn.commit()
-    
+
     return report_id
 
 def get_report(report_id, user_id=None):
@@ -675,6 +832,53 @@ def get_recent_reports_with_parsed_for_user(user_id: int, limit: int = 25):
             d["parsed_data"] = {}
         out.append(d)
     return out
+
+
+def get_reports_with_parsed_for_user_by_ids(user_id: int, report_ids: List[int]):
+    """
+    Subset of ``get_recent_reports_with_parsed_for_user`` — same row shape, scoped to ids
+    that belong to ``user_id``. Used by the public demo so visitor output cannot mix in
+    other reports attached to the same user row.
+    """
+    if not report_ids:
+        return []
+    uniq: List[int] = []
+    seen = set()
+    for raw in report_ids:
+        try:
+            rid = int(raw)
+        except (TypeError, ValueError):
+            continue
+        if rid not in seen:
+            seen.add(rid)
+            uniq.append(rid)
+    if not uniq:
+        return []
+    with get_db(dict_cursor=True) as (conn, cur):
+        cur.execute(
+            """
+            SELECT id, upload_date, bureau, file_name, parsed_data
+            FROM reports
+            WHERE user_id = %s AND id IN %s
+            ORDER BY upload_date DESC
+            """,
+            (user_id, tuple(uniq)),
+        )
+        rows = cur.fetchall()
+    out = []
+    for r in rows:
+        d = dict(r)
+        pd = d.get("parsed_data")
+        if isinstance(pd, str):
+            try:
+                d["parsed_data"] = json.loads(pd)
+            except Exception:
+                d["parsed_data"] = {}
+        elif pd is None:
+            d["parsed_data"] = {}
+        out.append(d)
+    return out
+
 
 def save_violation(report_id, violation_type, fcra_section, triggering_data, explanation):
     with get_db() as (conn, cur):
@@ -968,6 +1172,12 @@ def save_lob_send(user_id, report_id, bureau, lob_id, tracking_number, status,
                 pass
         return send_id
     except Exception:
+        _logger.exception(
+            "save_lob_send failed user_id=%s bureau=%s status=%s",
+            user_id,
+            bureau,
+            status,
+        )
         return None
 
 
@@ -1676,6 +1886,88 @@ def mark_sprint_lead_contacted(lead_id):
             UPDATE sprint_leads SET contacted = TRUE WHERE id = %s
         ''', (lead_id,))
         conn.commit()
+
+
+def insert_demo_lead(
+    name,
+    email,
+    phone,
+    *,
+    source="react_demo",
+    scenario_id=None,
+    workflow_id=None,
+    meta=None,
+):
+    """Persist a public demo / outreach lead. Returns new row id or None."""
+    payload = meta if isinstance(meta, dict) else {}
+    wf = (str(workflow_id).strip()[:80] if workflow_id else None)
+    scen = (str(scenario_id).strip()[:64] if scenario_id else None)
+    with get_db() as (conn, cur):
+        cur.execute(
+            """
+            INSERT INTO demo_leads (name, email, phone, source, scenario_id, workflow_id, meta)
+            VALUES (%s, %s, %s, %s, %s, %s, CAST(%s AS jsonb))
+            RETURNING id
+            """,
+            (
+                (name or "").strip()[:255],
+                (email or "").strip()[:255],
+                (phone or "").strip()[:80] or None,
+                (source or "react_demo").strip()[:40],
+                scen,
+                wf,
+                json.dumps(payload),
+            ),
+        )
+        row = cur.fetchone()
+        conn.commit()
+        return int(row[0]) if row else None
+
+
+def list_demo_leads(limit=100):
+    lim = max(1, min(500, int(limit)))
+    with get_db(dict_cursor=True) as (conn, cur):
+        cur.execute(
+            """
+            SELECT id, name, email, phone, source, scenario_id, workflow_id, created_at, meta,
+                   converted_organization_id, lead_disposition
+            FROM demo_leads
+            ORDER BY created_at DESC
+            LIMIT %s
+            """,
+            (lim,),
+        )
+        return [dict(r) for r in cur.fetchall()]
+
+
+def get_demo_lead(lead_id: int):
+    with get_db(dict_cursor=True) as (conn, cur):
+        cur.execute(
+            """
+            SELECT id, name, email, phone, source, scenario_id, workflow_id, created_at, meta,
+                   converted_organization_id, lead_disposition
+            FROM demo_leads WHERE id = %s LIMIT 1
+            """,
+            (int(lead_id),),
+        )
+        row = cur.fetchone()
+    return dict(row) if row else None
+
+
+def link_demo_lead_to_organization(lead_id: int, organization_id: int) -> bool:
+    with get_db(dict_cursor=True) as (conn, cur):
+        cur.execute(
+            """
+            UPDATE demo_leads
+            SET converted_organization_id = %s,
+                lead_disposition = 'converted'
+            WHERE id = %s AND converted_organization_id IS NULL
+            """,
+            (int(organization_id), int(lead_id)),
+        )
+        n = cur.rowcount
+        conn.commit()
+    return n > 0
 
 
 def log_round_transfer(from_user_id, to_user_id, ai_rounds, letters):

@@ -84,9 +84,12 @@ def build_customer_response_guidance(metrics: Dict[str, Any]) -> Dict[str, Any]:
     if esc >= 1:
         return {
             "primaryState": "escalation_available",
-            "title": "You have escalation opportunities",
-            "message": "At least one response suggests a stronger next step is available.",
-            "actionLabel": "Continue to escalation",
+            "title": "You have escalation leverage",
+            "message": (
+                "At least one saved response points past ‘wait and see.’ Open the escalation toolkit "
+                "for furnisher disputes, follow-up letters, call scripts, and CFPB-style paths."
+            ),
+            "actionLabel": "Open escalation toolkit",
             "actionTarget": "/escalation",
         }
     if fail >= 1:

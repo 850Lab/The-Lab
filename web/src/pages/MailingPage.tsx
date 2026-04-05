@@ -1,7 +1,8 @@
 import { motion } from "framer-motion";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { BureauSendStatusRow } from "@/components/BureauSendStatusRow";
+import { ProgramFlowBridge } from "@/components/ProgramFlowBridge";
 import { MailTruthStatusCard } from "@/components/MailTruthStatusCard";
 import { MailingCTASection } from "@/components/MailingCTASection";
 import { TopBarMinimal } from "@/components/TopBarMinimal";
@@ -195,34 +196,64 @@ export function MailingPage() {
           <motion.div initial="hidden" animate="show" className="pb-4">
             <motion.p
               variants={headerVariants}
-              className="text-center text-xs font-medium uppercase tracking-[0.14em] text-lab-subtle"
+              className="text-center text-[10px] font-semibold uppercase tracking-[0.16em] text-lab-accent"
             >
-              Mail
+              Your program · Send
             </motion.p>
             <motion.h1
               variants={headerVariants}
-              className="mt-3 text-center text-2xl font-semibold tracking-tight text-lab-text sm:text-[1.65rem]"
+              className="mt-2 text-center text-2xl font-semibold tracking-tight text-lab-text sm:text-[1.65rem]"
             >
-              Send certified mail
+              Your letters are being sent
             </motion.h1>
             <motion.p
               variants={headerVariants}
               className="mx-auto mt-3 max-w-sm text-center text-sm leading-relaxed text-lab-muted sm:text-[15px]"
             >
-              Generating letters does not mail them. Below is the exact status from the server for
-              this workflow — including test vs live and what is blocking send.
+              This is where <strong className="font-medium text-lab-text">official action</strong>{" "}
+              happens: each bureau send below requests{" "}
+              <strong className="font-medium text-lab-text">USPS certified mail</strong> with a paper
+              trail — not email, not a draft. Live sends are meaningful and hard to undo; test sends
+              never leave the processor as real mail (status is shown clearly below).
             </motion.p>
+            <motion.div variants={headerVariants} className="mx-auto mt-5 max-w-sm">
+              <ProgramFlowBridge>
+                <span className="font-medium text-lab-text">Proof is on file;</span> you&apos;re
+                cleared to trigger certified delivery. One bureau at a time — then continue to
+                tracking to watch what happens next in the same program.
+              </ProgramFlowBridge>
+            </motion.div>
 
             <motion.div variants={headerVariants}>
               <MailTruthStatusCard mail={mail} />
             </motion.div>
+
+            {mail.onMailStep && !mail.hasMailingsEntitlement && mail.hasLetters && mail.proofBothOnFile ? (
+              <motion.div
+                variants={headerVariants}
+                className="mx-auto mt-4 max-w-sm rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-50"
+              >
+                <p className="font-medium text-amber-100">Mailings at the send moment</p>
+                <p className="mt-1.5 text-xs leading-relaxed text-amber-100/88">
+                  You&apos;re ready to certify-send, but your account has no mailing balance left.
+                  Add mailings where you manage your account (same login), or ask your organization
+                  if mailings are included with your program seat — then refresh this page.
+                </p>
+                <Link
+                  to="/"
+                  className="mt-3 inline-block text-xs font-semibold text-amber-200 hover:text-amber-100"
+                >
+                  Go to home / account entry →
+                </Link>
+              </motion.div>
+            ) : null}
 
             <motion.p
               variants={headerVariants}
               className="mx-auto mt-4 max-w-sm text-center text-xs text-lab-subtle"
             >
               Progress: {mail.mailedCount} of {mail.mailGateExpected} bureau send
-              {mail.mailGateExpected === 1 ? "" : "s"} recorded for this workflow
+              {mail.mailGateExpected === 1 ? "" : "s"} recorded for this program
               {mail.mailGateFailedSendCount > 0
                 ? ` · ${mail.mailGateFailedSendCount} failed attempt(s) logged`
                 : ""}
@@ -345,8 +376,8 @@ export function MailingPage() {
                         className="w-full rounded-lg bg-lab-accent py-2.5 text-sm font-semibold text-white shadow-md shadow-lab-accent/20 disabled:pointer-events-none disabled:opacity-45"
                       >
                         {sendingBureau === t.bureau
-                          ? "Sending…"
-                          : `Send certified to ${t.bureauDisplay}${
+                          ? "Submitting certified send…"
+                          : `Send certified mail to ${t.bureauDisplay}${
                               mail.costEstimate?.totalDisplay
                                 ? ` (${mail.costEstimate.totalDisplay})`
                                 : ""
@@ -365,7 +396,8 @@ export function MailingPage() {
             />
             {trackBlocked ? (
               <p className="mt-3 text-center text-xs text-lab-subtle">
-                Send each pending bureau letter to continue to tracking.
+                One next action per pending bureau: certified send below. When all are submitted,
+                continue to tracking — same program, no dead end.
               </p>
             ) : null}
           </motion.div>

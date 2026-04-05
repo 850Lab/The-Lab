@@ -38,39 +38,39 @@ export function MailTruthStatusCard({ mail }: { mail: MailContextPayload }) {
 
       <ul className="mt-4 space-y-1.5 border-t border-white/[0.08] pt-3 text-xs text-lab-subtle">
         <li>
-          Letters on file for mail:{" "}
+          Dispute letters ready to mail:{" "}
           <span className="font-medium text-lab-text">
             {ms.lettersGenerated ? "Yes" : "Not yet"}
           </span>
         </li>
         <li>
-          ID + address proof:{" "}
+          Government ID & proof of address:{" "}
           <span className="font-medium text-lab-text">
-            {ms.proofComplete ? "Complete" : "Incomplete"}
+            {ms.proofComplete ? "On file" : "Still needed"}
           </span>
         </li>
         <li>
-          Mailing credits:{" "}
+          Mailing balance (used at certified send):{" "}
           <span className="font-medium text-lab-text">
             {ms.mailingCreditsAvailable
-              ? `${mail.mailingsBalance} on balance`
-              : "None available"}
+              ? `${mail.mailingsBalance} ready — one credit per live bureau send`
+              : "Add mailings before you submit — send is the spend moment"}
           </span>
         </li>
         <li>
-          Next send mode:{" "}
+          Certified send mode:{" "}
           <span className="font-medium text-lab-text">
             {ms.requiresLiveForCustomerSend && ms.isTestMode
-              ? "Blocked (live key required)"
+              ? "Blocked — live mail key required"
               : ms.isTestMode
-                ? "Lob test (no USPS mail)"
-                : "Live Lob (real certified mail)"}
+                ? "Test (no physical USPS letter)"
+                : "Live USPS certified mail"}
           </span>
         </li>
         {ms.hasTracking ? (
           <li className="text-lab-muted">
-            At least one bureau has a USPS tracking link on file (transit status — not proof of
-            delivery).
+            At least one bureau has USPS tracking (shows handoff and transit — not proof the bureau
+            finished its review).
           </li>
         ) : null}
       </ul>

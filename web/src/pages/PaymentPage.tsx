@@ -2,6 +2,7 @@ import { motion } from "framer-motion";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { PaymentShell } from "@/components/PaymentShell";
+import { ProgramFlowBridge } from "@/components/ProgramFlowBridge";
 import { PreparedItemsSummary, type PreparedCategory } from "@/components/PreparedItemsSummary";
 import { PriceRow } from "@/components/PriceRow";
 import { TopBarMinimal } from "@/components/TopBarMinimal";
@@ -197,27 +198,46 @@ export function PaymentPage() {
         <motion.div variants={pageVariants} initial="hidden" animate="show">
           <motion.p
             variants={headerVariants}
-            className="text-center text-xs font-medium uppercase tracking-[0.14em] text-lab-subtle"
+            className="text-center text-[10px] font-semibold uppercase tracking-[0.16em] text-lab-accent"
           >
-            Activate
+            Your program · Activate letters
           </motion.p>
           <motion.h1
             variants={headerVariants}
-            className="mt-3 text-center text-2xl font-semibold tracking-tight text-lab-text sm:text-[1.65rem]"
+            className="mt-2 text-center text-2xl font-semibold tracking-tight text-lab-text sm:text-[1.65rem]"
           >
-            Complete payment
+            Pay when the plan is locked
           </motion.h1>
           <motion.p
             variants={headerVariants}
             className="mx-auto mt-3 max-w-sm text-center text-sm leading-relaxed text-lab-muted sm:text-[15px]"
           >
-            You’re buying letter credits (and mailings if included in the pack you pick). Checkout
-            is handled by Stripe; this workflow stays linked to your purchase.
+            You only reach this screen after your dispute set is real — so payment lines up with the
+            moment we generate bureau-ready letters. Packs can include mailing balance you spend later,
+            one credit per live certified send — add more mailings in your account only if you run
+            out before you finish sending.
           </motion.p>
+          <motion.p
+            variants={headerVariants}
+            className="mx-auto mt-3 max-w-sm text-center text-sm leading-relaxed text-lab-muted sm:text-[15px]"
+          >
+            <span className="font-medium text-lab-text">Right after checkout:</span> we move straight
+            into{" "}
+            <strong className="font-medium text-lab-text">generating your dispute letters</strong> —
+            the same engine output you came for, not a generic template.
+          </motion.p>
+
+          <motion.div variants={headerVariants} className="mx-auto mt-5 max-w-sm">
+            <ProgramFlowBridge>
+              <span className="font-medium text-lab-text">This isn&apos;t a detour;</span> it&apos;s
+              the same program — activate letter production, then the next screen is letters. Already
+              have credits? Continue without paying.
+            </ProgramFlowBridge>
+          </motion.div>
 
           {loading ? (
             <motion.p variants={headerVariants} className="mt-10 text-center text-sm text-lab-muted">
-              Loading payment status…
+              Loading your purchase options…
             </motion.p>
           ) : null}
 
@@ -229,7 +249,7 @@ export function PaymentPage() {
 
           {paymentCancelled ? (
             <motion.div variants={headerVariants} className="mt-8 rounded-lg border border-white/[0.1] bg-lab-surface/80 p-4 text-center text-sm text-lab-muted">
-              <p>Checkout was cancelled. You can choose a pack below when you’re ready.</p>
+              <p>Checkout was cancelled — your plan is still saved. Pick a pack when you’re ready.</p>
               <button
                 type="button"
                 onClick={clearQuery}
@@ -249,7 +269,7 @@ export function PaymentPage() {
                 <div className="space-y-2">
                   <p className="text-sm font-semibold text-lab-text">Payment received</p>
                   <p className="text-sm text-lab-muted">
-                    Applying your purchase to this workflow (usually a few seconds).
+                    Applying your purchase to this program (usually a few seconds).
                   </p>
                   <p className="text-xs text-lab-subtle">{NEXT_STEP_AFTER_PAYMENT_LINE}</p>
                 </div>
@@ -259,7 +279,7 @@ export function PaymentPage() {
                     Purchase confirmed — one more tap
                   </p>
                   <p className="text-center text-sm text-amber-100/90">
-                    Your credits are on your account; this workflow is still finishing the payment
+                    Your credits are on your account; this program is still finishing the payment
                     step. Retry below — safe to run more than once.
                   </p>
                   <p className="text-center text-xs text-amber-200/80">{NEXT_STEP_AFTER_PAYMENT_LINE}</p>
@@ -278,7 +298,7 @@ export function PaymentPage() {
                   <p className="text-sm text-red-300/90">{reconcileError}</p>
                   <p className="text-xs text-lab-subtle">
                     Your Stripe payment may still be valid. Retry, or contact support with your
-                    workflow id if this keeps appearing.
+                    program id if this keeps appearing.
                   </p>
                   <button
                     type="button"
@@ -305,7 +325,7 @@ export function PaymentPage() {
             >
               {pay.paymentStepCompleted ? (
                 <>
-                  <p>Payment is already complete for this workflow.</p>
+                  <p>Payment is already complete for this program.</p>
                   <Link
                     to={canonicalCustomerPath}
                     className="inline-block font-semibold text-lab-accent hover:text-sky-300"
@@ -338,13 +358,13 @@ export function PaymentPage() {
                 <PreparedItemsSummary categories={buildCategories(pay)} />
 
                 <div className="mt-4 text-center text-xs text-lab-subtle">
-                  Letter credits on your account:{" "}
+                  Letter credits already on your account:{" "}
                   <span className="font-medium text-lab-text">{pay.entitlements.letters}</span>
                 </div>
 
                 <div className="mt-6 space-y-3">
                   <p className="text-xs font-medium uppercase tracking-[0.12em] text-lab-subtle">
-                    Recommended
+                    Fits this round
                   </p>
                   <div className="rounded-lg border border-lab-accent/25 bg-lab-bg/20 px-4 py-3">
                     <div className="flex items-baseline justify-between gap-2">
@@ -356,8 +376,8 @@ export function PaymentPage() {
                       </span>
                     </div>
                     <p className="mt-1 text-xs text-lab-muted">
-                      {pay.recommendedPack.ai_rounds} AI · {pay.recommendedPack.letters} letters ·{" "}
-                      {pay.recommendedPack.mailings} mailings
+                      {pay.recommendedPack.ai_rounds} AI rounds · {pay.recommendedPack.letters} letters ·{" "}
+                      {pay.recommendedPack.mailings} mailings (for certified send when you use them)
                     </p>
                     <button
                       type="button"
@@ -366,8 +386,8 @@ export function PaymentPage() {
                       className="mt-3 w-full rounded-lg bg-lab-accent py-2.5 text-sm font-semibold text-white shadow-md shadow-lab-accent/20 disabled:pointer-events-none disabled:opacity-50"
                     >
                       {checkoutLoadingId === pay.recommendedPack.id
-                        ? "Opening Stripe…"
-                        : "Pay with Stripe"}
+                        ? "Opening secure checkout…"
+                        : "Unlock letters — pay with Stripe"}
                     </button>
                   </div>
                 </div>
@@ -375,7 +395,7 @@ export function PaymentPage() {
                 {pay.otherPacks.length > 0 ? (
                   <div className="mt-6 space-y-2">
                     <p className="text-xs font-medium uppercase tracking-[0.12em] text-lab-subtle">
-                      Other packs
+                      Other packs (same program)
                     </p>
                     <ul className="space-y-2">
                       {pay.otherPacks.map((pk) => (
@@ -440,7 +460,10 @@ export function PaymentPage() {
                 ) : null}
 
                 <div className="mt-6">
-                  <PriceRow label="Recommended total" amountDisplay={formatUsd(pay.recommendedPack.price_cents)} />
+                  <PriceRow
+                    label="This round (recommended pack)"
+                    amountDisplay={formatUsd(pay.recommendedPack.price_cents)}
+                  />
                 </div>
 
                 <div className="mt-6">
@@ -459,12 +482,12 @@ export function PaymentPage() {
                   >
                     {creditsLoading
                       ? "Continuing…"
-                      : "Continue with my existing letter credits"}
+                      : "Skip checkout — use my letter credits"}
                   </button>
                   <p className="mt-2 text-center text-xs text-lab-subtle">
-                    Requires at least {pay.neededLetters} letter credit
-                    {pay.neededLetters === 1 ? "" : "s"} for this round. You have{" "}
-                    {pay.entitlements.letters}.
+                    This round needs {pay.neededLetters} letter credit
+                    {pay.neededLetters === 1 ? "" : "s"}; you have {pay.entitlements.letters}. No
+                    extra charge when you already bought the moment.
                   </p>
                 </div>
               </motion.div>

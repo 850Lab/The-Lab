@@ -1,7 +1,9 @@
 """
-Backend-owned escalation hints from classification + coarse workflow posture.
+Backend-owned escalation hints from **document-level** response classification + workflow posture.
 
-Returns structured JSON safe for persistence and UI (no raw model output).
+Per-item bureau outcomes (``no_response``, repeated ``verified``, partial ``updated``) and
+structured next steps live in ``services.workflow.escalation_engine`` (``dispute_selection``
+metadata: ``escalation_actions``, ``escalation_status``).
 """
 
 from __future__ import annotations

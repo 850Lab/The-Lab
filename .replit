@@ -28,6 +28,9 @@ args = "workflow_api"
 name = "streamlit_app"
 author = "agent"
 
+[workflows.workflow.metadata]
+outputType = "webview"
+
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "streamlit run app.py --server.port 5000 --server.address 0.0.0.0 --server.headless true"
@@ -37,22 +40,19 @@ waitForPort = 5000
 name = "workflow_api"
 author = "agent"
 
-[workflows.workflow.metadata]
-outputType = "webview"
-
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "python -m uvicorn api.workflow_app:app --host 0.0.0.0 --port 8000"
 waitForPort = 8000
 
-# Public URL (Deployments + default browser tab): customer React + workflow API on 8000.
-# Streamlit admin UI: open port 5000 from the Replit ports panel.
+# Default Repl map: 80 → 5000. Deployments use scripts/replit_deployment_entry.sh instead
+# (uvicorn on 5000 + Streamlit on 5001) so the public URL gets React without editing .replit.
 [[ports]]
-localPort = 8000
+localPort = 5000
 externalPort = 80
 
 [[ports]]
-localPort = 5000
+localPort = 8000
 
 [agent]
 integrations = ["python_openai_ai_integrations:1.0.0", "stripe:2.0.0", "resend:1.0.0"]

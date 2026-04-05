@@ -22,12 +22,12 @@ export function PaymentShell({ stripeReady, returnOriginConfigured }: Props) {
             d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
           />
         </svg>
-        <span>Secure card checkout</span>
+        <span>Checkout at the value moment</span>
       </div>
       {stripeReady && returnOriginConfigured ? (
         <p className="mt-2 text-xs leading-relaxed text-lab-muted sm:text-sm">
-          Card details are entered on Stripe’s secure page. You’ll return here while we confirm the
-          charge and unlock letter generation — not mail yet.
+          Card details stay on Stripe. You return here once the charge clears and letter generation
+          unlocks for this program — certified mail is a separate step later, when you actually send.
         </p>
       ) : (
         <p className="mt-2 text-xs leading-relaxed text-lab-muted sm:text-sm">

@@ -14,15 +14,18 @@ import auth
 import database as db
 from claims import extract_claims
 from review_claims import ReviewClaim, compress_claims
-from services.customer_dispute_strategy import parse_workflow_metadata_value
+from services.customer_dispute_strategy import (
+    dispute_round_number_from_meta,
+    parse_workflow_metadata_value,
+)
 from services.dispute_pipeline import process_dispute_pipeline
 from services.workflow import hooks as workflow_hooks
 from services.workflow.engine import compute_authoritative_step
 from services.workflow.repository import fetch_steps
+from services.customer_dispute_strategy import estimate_unique_bureaus_for_claims
 from services.workflow_payment_service import needed_letters_from_workflow_session
 
 _log = logging.getLogger(__name__)
-_ENGINE = WorkflowEngine()
 
 
 def _parsed_dict(raw: Any) -> Dict[str, Any]:
@@ -57,12 +60,19 @@ def build_pipeline_context_for_user(
     *,
     session_row: Optional[Dict[str, Any]],
     is_admin: bool,
+    only_report_ids: Optional[List[int]] = None,
 ) -> Tuple[Dict[str, Any], List[ReviewClaim], str]:
     """
     Returns (context_dict, selected_review_claims, error_code).
     error_code empty on success.
+
+    ``only_report_ids`` limits DB reads to those report rows (must belong to ``user_id``).
+    Used by the public fixture demo so letter/plan context cannot pull other reports on the same user.
     """
-    rows = db.get_recent_reports_with_parsed_for_user(user_id, limit=25)
+    if only_report_ids is not None:
+        rows = db.get_reports_with_parsed_for_user_by_ids(user_id, only_report_ids)
+    else:
+        rows = db.get_recent_reports_with_parsed_for_user(user_id, limit=25)
     if not rows:
         return {}, [], "no_reports"
 
@@ -107,6 +117,7 @@ def build_pipeline_context_for_user(
     ent = auth.get_entitlements(user_id)
     letters_bal = int(ent.get("letters", 0) or 0)
     needed = needed_letters_from_workflow_session(session_row)
+    meta = parse_workflow_metadata_value(session_row.get("metadata") if session_row else {})
 
     ctx: Dict[str, Any] = {
         "uploaded_reports": uploaded_reports,
@@ -114,7 +125,7 @@ def build_pipeline_context_for_user(
         "identity_confirmed": identity_confirmed,
         "review_claim_responses": {},
         "review_claims_list": review_claims_list,
-        "round_number": 1,
+        "round_number": dispute_round_number_from_meta(meta),
         "user_id": user_id,
         "is_admin_user": is_admin,
         "persist_letters": True,
@@ -126,6 +137,67 @@ def build_pipeline_context_for_user(
         "free_max_capacity": 0,
     }
     return ctx, selected, ""
+
+
+def build_credit_command_plan_for_workflow(
+    user_id: int,
+    workflow_id: str,
+    *,
+    session_row: Dict[str, Any],
+    is_admin: bool,
+    record_observability_event: bool = False,
+    only_report_ids: Optional[List[int]] = None,
+) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+    """
+    Same deterministic 72-hour plan as Streamlit (``credit_command_plan.build_credit_command_plan``),
+    from DB reports + workflow dispute selection.
+    """
+    from credit_command_plan import build_credit_command_plan
+
+    ctx, selected, err = build_pipeline_context_for_user(
+        user_id,
+        workflow_id,
+        session_row=session_row,
+        is_admin=is_admin,
+        only_report_ids=only_report_ids,
+    )
+    if err:
+        return None, err
+    if not selected:
+        return None, "no_selection"
+
+    items_by_type: Dict[Any, List[Any]] = {}
+    for rc in selected:
+        rt = rc.review_type
+        if rt not in items_by_type:
+            items_by_type[rt] = []
+        items_by_type[rt].append(rc)
+
+    claims_list = ctx.get("review_claims_list") or []
+    by_id = {rc.review_claim_id: rc for rc in claims_list}
+    sel_ids = [rc.review_claim_id for rc in selected]
+    bureau_list = estimate_unique_bureaus_for_claims(by_id, sel_ids)
+
+    plan = build_credit_command_plan(
+        items_by_type=items_by_type,
+        selected_count=len(selected),
+        bureaus=set(bureau_list),
+        parsed_reports=ctx.get("uploaded_reports"),
+    )
+    if record_observability_event and plan:
+        from services.workflow.workflow_event_service import record_system_event
+
+        record_system_event(
+            workflow_id,
+            "credit_command_plan.generated",
+            actor="system",
+            source="workflow",
+            metadata={
+                "selectedCount": len(selected),
+                "bureauCount": len(bureau_list),
+            },
+        )
+    return plan, None
 
 
 def letter_generation_head_state(workflow_id: str) -> Tuple[Optional[str], str, Optional[Dict[str, Any]]]:
@@ -163,13 +235,32 @@ def serialize_letter_row(row: Dict[str, Any], *, preview_len: int = 320) -> Dict
     }
 
 
-def list_letters_for_workflow_customer(user_id: int) -> List[Dict[str, Any]]:
+def list_letters_for_workflow_customer(
+    user_id: int,
+    *,
+    only_report_ids: Optional[List[int]] = None,
+) -> List[Dict[str, Any]]:
     """Latest letters per (report_id, bureau) for display."""
     rows = db.get_all_letters_for_user(user_id)
     if not rows:
         return []
+    allowed: Optional[set] = None
+    if only_report_ids is not None:
+        allowed = set()
+        for x in only_report_ids:
+            try:
+                allowed.add(int(x))
+            except (TypeError, ValueError):
+                pass
     dedup: Dict[Tuple[Any, str], Dict[str, Any]] = {}
     for row in rows:
+        if allowed is not None:
+            try:
+                rid = int(row.get("report_id"))
+            except (TypeError, ValueError):
+                continue
+            if rid not in allowed:
+                continue
         key = (row.get("report_id"), (row.get("bureau") or "").lower())
         if key[1] and key not in dedup:
             dedup[key] = row
@@ -200,6 +291,7 @@ def run_letter_generation(
     *,
     session_row: Dict[str, Any],
     is_admin: bool,
+    only_report_ids: Optional[List[int]] = None,
 ) -> Tuple[Dict[str, Any], Optional[str]]:
     """
     Run pipeline and complete workflow step on success.
@@ -214,6 +306,7 @@ def run_letter_generation(
         workflow_id,
         session_row=session_row,
         is_admin=is_admin,
+        only_report_ids=only_report_ids,
     )
     if err == "no_reports":
         return {}, "No parsed credit reports found. Upload a report first."
@@ -252,4 +345,13 @@ def run_letter_generation(
     if not ok:
         return result, "Letters were generated but the workflow step could not be marked complete."
 
+    from services.workflow.workflow_event_service import record_system_event
+
+    record_system_event(
+        workflow_id,
+        "letters.generated",
+        actor="system",
+        source="api:letter_generation",
+        metadata={"bureauCount": len(bureaus), "bureaus": bureaus},
+    )
     return result, None

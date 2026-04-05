@@ -42,7 +42,7 @@ def build_credit_command_plan(
     day1.append({
         "title": "Do NOT apply for new credit",
         "why": "Every new inquiry can drop your score 5-10 points. Freeze activity for 45 days.",
-        "do_next": "Set a calendar reminder: no applications until the investigation window closes.",
+        "do_next": "Block your calendar: zero new applications until the bureau investigation window closes.",
         "warning": "Even 'soft pull' pre-qualifications can sometimes trigger hard inquiries.",
     })
 
@@ -63,28 +63,28 @@ def build_credit_command_plan(
         day1.append({
             "title": f"Flag {wrong_count} data inconsistenc{'ies' if wrong_count != 1 else 'y'}",
             "why": "Incorrect details (dates, balances, statuses) can trigger verification penalties.",
-            "do_next": "Your letters cite FCRA Section 611 for each inaccuracy. Mail them promptly.",
+            "do_next": "Confirm each inaccuracy is cited under FCRA §611 in your letters, then mail or certify-send from this workflow.",
         })
 
     if has_high_util:
         day1.append({
             "title": "Pay down high-utilization cards",
             "why": "Utilization over 30% drags your score. Under 10% is ideal.",
-            "do_next": "Make a payment to bring your highest-balance card under 30% of its limit.",
+            "do_next": "Pay down the highest-utilization card today to get under 30% of its limit (under 10% is ideal).",
         })
 
     if dup_count > 0:
         day2.append({
             "title": f"Confirm {dup_count} duplicate{'s are' if dup_count != 1 else ' is'} addressed",
             "why": "Double-reported accounts inflict double damage on your score.",
-            "do_next": "Your dispute letters flag these. Verify each duplicate is included.",
+            "do_next": "Cross-check your letters: every duplicate account you selected must appear in the mailed set.",
         })
 
     bureau_list = ", ".join(sorted(b.title() for b in bureaus))
     day2.append({
         "title": f"Mail dispute letters to {bureau_list}",
         "why": "Certified mail creates a legal paper trail and starts the 30-day investigation clock.",
-        "do_next": "Print, sign, and send via certified mail with return receipt requested.",
+        "do_next": "Complete proof, then submit certified mail from this workflow (return receipt where available).",
         "warning": "Do not send by email or regular mail — you need proof of delivery.",
     })
 
@@ -92,26 +92,26 @@ def build_credit_command_plan(
         day2.append({
             "title": "Gather supporting documentation",
             "why": "Having proof ready strengthens your position if the bureau pushes back.",
-            "do_next": f"Pull any receipts, statements, or records that support your {unverif_count} unverifiable item{'s' if unverif_count != 1 else ''}.",
+            "do_next": f"Gather receipts, statements, or IDs that prove your side for your {unverif_count} unverifiable item{'s' if unverif_count != 1 else ''} — keep them ready if a bureau calls.",
         })
 
     day3.append({
         "title": "Set up your 30-day tracking system",
         "why": "Bureaus must investigate within 30 days. Missing the window means free escalation leverage.",
-        "do_next": "Use the Bureau Investigation Tracker below to monitor countdown and status.",
+        "do_next": "Use this workflow’s Tracking screen daily: note send dates, USPS movement, and the 30-day investigation clock.",
     })
 
     day3.append({
         "title": "Freeze non-essential credit activity",
         "why": "New accounts or inquiries during investigation can complicate your dispute.",
-        "do_next": "Consider placing a temporary credit freeze via each bureau's website.",
+        "do_next": "Place or confirm a temporary security freeze at each bureau’s site if you want zero surprise new accounts during review.",
     })
 
     if neg_count > 0:
         day3.append({
             "title": "Plan your escalation strategy",
             "why": "If bureaus don't respond in 30 days, you can escalate to the CFPB or state AG.",
-            "do_next": "Review the escalation options that will unlock in your tracker after Day 30.",
+            "do_next": "After day 30 with no adequate response, file CFPB and/or state AG complaints with your certified-mail proof attached.",
         })
 
     day1 = day1[:4]
