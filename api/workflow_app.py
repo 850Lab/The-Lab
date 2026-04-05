@@ -69,6 +69,7 @@ from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Query, 
 from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
+from starlette.concurrency import run_in_threadpool
 
 from api.customer_web_static import (
     install_strip_workflow_api_prefix_middleware,
@@ -3726,10 +3727,22 @@ async def post_workflow_report_upload(
         _raise_flow_violation(e)
 
     uid = int(session["user_id"])
+    t0 = time.perf_counter()
+    _logger.info(
+        "workflow_report_upload_begin workflow_id=%s user_id=%s bytes=%s fname=%s",
+        workflow_id,
+        uid,
+        len(raw),
+        fname,
+    )
     try:
         from services.report_pipeline import process_uploaded_reports
 
-        result = process_uploaded_reports(
+        # Long-running parse in a thread pool so the event loop stays responsive (health checks,
+        # other requests) during large PDF OCR/layout work — blocking here would stall the
+        # whole worker and can cause platform health probes to fail mid-upload.
+        result = await run_in_threadpool(
+            process_uploaded_reports,
             [(fname, raw)],
             {"user_id": uid, "workflow_id": workflow_id, "mutation_channel": "workflow_http"},
         )
@@ -3745,6 +3758,14 @@ async def post_workflow_report_upload(
 
     skips = result.get("file_skips") or []
     processed = int(result.get("reports_processed") or 0)
+    elapsed_ms = int((time.perf_counter() - t0) * 1000)
+    _logger.info(
+        "workflow_report_upload_pipeline_done workflow_id=%s elapsed_ms=%s reports_processed=%s file_skips=%s",
+        workflow_id,
+        elapsed_ms,
+        processed,
+        len(skips),
+    )
 
     return {
         "ok": processed > 0 and len(skips) == 0,
