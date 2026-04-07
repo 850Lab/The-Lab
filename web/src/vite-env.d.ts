@@ -11,6 +11,8 @@ interface ImportMetaEnv {
   readonly VITE_IDIQ_REPORT_URL?: string;
   /** Override free annual report site URL (default annualcreditreport.com). */
   readonly VITE_ANNUAL_CREDIT_REPORT_URL?: string;
+  /** Set to "0" to force legacy multipart report upload (skip presigned direct-to-storage). */
+  readonly VITE_USE_DIRECT_REPORT_UPLOAD?: string;
 }
 
 interface ImportMeta {

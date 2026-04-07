@@ -4,7 +4,11 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { GetReportPanel } from "@/components/GetReportPanel";
 import { TopBarMinimal } from "@/components/TopBarMinimal";
 import { UploadDropzoneCard } from "@/components/UploadDropzoneCard";
-import { postReportUpload } from "@/lib/workflowApi";
+import {
+  isWorkflowReportUploadAbortError,
+  pollReportUploadParseJob,
+  postReportUpload,
+} from "@/lib/workflowApi";
 import { useAuth } from "@/providers/AuthContext";
 import { useCustomerWorkflow } from "@/providers/CustomerWorkflowContext";
 
@@ -48,6 +52,14 @@ export function UploadStep() {
   const [getReportOpen, setGetReportOpen] = useState(false);
   const [privacyAgreed, setPrivacyAgreed] = useState(false);
   const [setupError, setSetupError] = useState<string | null>(null);
+  const [uploadParseError, setUploadParseError] = useState<string | null>(null);
+  const [parseJob, setParseJob] = useState<{
+    jobId: string;
+    workflowId: string;
+  } | null>(null);
+  const [dropzoneResetKey, setDropzoneResetKey] = useState(0);
+  const pendingUploadFilesRef = useRef<File[] | null>(null);
+  const parsePollGenerationRef = useRef(0);
   const initOnceRef = useRef(false);
   const { token: authToken, emailVerified } = useAuth();
   const {
@@ -83,6 +95,57 @@ export function UploadStep() {
     authToken && emailVerified && workflowId && !wfLoading,
   );
   const allowUpload = workspaceReady && privacyAgreed;
+  const parseBusy = parseJob != null;
+
+  useEffect(() => {
+    if (!token || !parseJob) return;
+    const runId = ++parsePollGenerationRef.current;
+    const ac = new AbortController();
+    void (async () => {
+      try {
+        const final = await pollReportUploadParseJob(
+          token,
+          parseJob.workflowId,
+          parseJob.jobId,
+          { signal: ac.signal },
+        );
+        if (runId !== parsePollGenerationRef.current) return;
+        const filesForNav = pendingUploadFilesRef.current;
+        setParseJob(null);
+        pendingUploadFilesRef.current = null;
+        applyWorkflowEnvelope(final.workflow);
+        if (!final.ok) {
+          const first = final.fileSkips[0];
+          const msg = first
+            ? skipReasonMessage(first.reason)
+            : final.workflow.userMessage || "Upload could not be completed.";
+          setUploadParseError(msg);
+          setDropzoneResetKey((k) => k + 1);
+          return;
+        }
+        const nameHint =
+          filesForNav && filesForNav.length > 0
+            ? filesForNav.length === 1
+              ? filesForNav[0].name
+              : `${filesForNav.length} merged parts`
+            : "your report";
+        navigate("/analyze", {
+          replace: true,
+          state: { uploadedReportFileName: nameHint },
+        });
+      } catch (e) {
+        if (isWorkflowReportUploadAbortError(e)) return;
+        if (runId !== parsePollGenerationRef.current) return;
+        setUploadParseError(e instanceof Error ? e.message : "Report processing failed");
+        setParseJob(null);
+        pendingUploadFilesRef.current = null;
+        setDropzoneResetKey((k) => k + 1);
+      }
+    })();
+    return () => {
+      ac.abort();
+    };
+  }, [token, parseJob?.jobId, parseJob?.workflowId, applyWorkflowEnvelope, navigate]);
 
   const onUploadPdfs = useCallback(
     async (files: File[]) => {
@@ -93,9 +156,15 @@ export function UploadStep() {
             "Sign in and create a free account to upload your report and save progress.",
         };
       }
+      setUploadParseError(null);
       try {
         const r = await postReportUpload(token, workflowId, files, privacyAgreed);
         applyWorkflowEnvelope(r.workflow);
+        if (r.processing && r.jobId) {
+          pendingUploadFilesRef.current = files;
+          setParseJob({ jobId: r.jobId, workflowId });
+          return { success: true as const };
+        }
         if (!r.ok) {
           const first = r.fileSkips[0];
           const msg = first
@@ -176,6 +245,27 @@ export function UploadStep() {
             </motion.p>
           ) : null}
 
+          {uploadParseError ? (
+            <motion.p
+              variants={block}
+              className="mb-2 w-full rounded-lg border border-red-500/35 bg-red-500/10 px-3 py-2 text-center text-sm text-red-100/95"
+            >
+              {uploadParseError}
+            </motion.p>
+          ) : null}
+
+          {parseBusy ? (
+            <motion.div
+              variants={block}
+              className="mb-2 w-full rounded-lg border border-sky-500/35 bg-sky-500/10 px-3 py-2 text-center text-sm text-sky-100"
+              role="status"
+              aria-live="polite"
+            >
+              Processing your report… This can take a minute for large files. You can stay on this
+              page.
+            </motion.div>
+          ) : null}
+
           {!guestExplore && authToken && emailVerified && !workflowId && wfLoading ? (
             <motion.p variants={block} className="mb-2 text-center text-sm font-medium text-lab-muted">
               Starting your program workspace…
@@ -247,7 +337,11 @@ export function UploadStep() {
             </label>
 
             <div className="mt-3 sm:mt-3.5">
-              <UploadDropzoneCard disabled={!allowUpload} onUploadPdfs={onUploadPdfs} />
+              <UploadDropzoneCard
+                key={dropzoneResetKey}
+                disabled={!allowUpload || parseBusy}
+                onUploadPdfs={onUploadPdfs}
+              />
             </div>
 
             <div className="mt-3 flex flex-col items-center gap-1 border-t border-white/[0.06] pt-3 text-center sm:mt-3.5 sm:gap-1.5 sm:pt-3.5">

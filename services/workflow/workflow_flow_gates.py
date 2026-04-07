@@ -385,6 +385,28 @@ def enforce_flow_action(
                     current_step=head,
                     expected_step="upload",
                 )
+            wf_type = str(session.get("workflow_type") or reg.WORKFLOW_TYPE_DEFAULT)
+            if wf_type == reg.ORG_PROGRAM_WORKFLOW_TYPE:
+                defn_ou = reg.STEP_REGISTRY["orgprog_upload"]
+                row_ou = smap.get("orgprog_upload")
+                st_ou = row_ou.get("status") if row_ou else None
+                if head == "orgprog_upload" and st_ou in defn_ou.allowed_entry_statuses:
+                    return
+                defn_of = reg.STEP_REGISTRY["orgprog_findings_ready"]
+                row_of = smap.get("orgprog_findings_ready")
+                st_of = row_of.get("status") if row_of else None
+                if (
+                    head == "orgprog_findings_ready"
+                    and st_of in defn_of.allowed_entry_statuses
+                    and st_of != "completed"
+                ):
+                    return
+                raise FlowEnforcementError(
+                    "FLOW_ORDER_VIOLATION",
+                    "Upload a report when program upload is your current step, or add another bureau PDF while findings are open.",
+                    current_step=head,
+                    expected_step="orgprog_upload",
+                )
             defn_upload = reg.STEP_REGISTRY["upload"]
             defn_review = reg.STEP_REGISTRY["review_claims"]
             row_u = smap.get("upload")
@@ -629,6 +651,8 @@ def job_type_to_customer_action(job_type: str) -> Optional[str]:
     """Map async job types to customer flow actions (preflight before execution)."""
     if job_type == "letter_generation":
         return ACTION_LETTER_GENERATION_RUN
+    if job_type == "report_upload_parse":
+        return ACTION_REPORT_PDF_UPLOAD
     return None
 
 

@@ -1,4 +1,10 @@
 import { workflowApiBase } from "@/lib/apiBase";
+import {
+  postOrgReportUploadDirect,
+  ReportUploadStorageUnavailableError,
+  shouldTryDirectReportUpload,
+} from "@/lib/directReportUpload";
+import type { WorkflowJobPublic } from "@/lib/workflowApi";
 import { formatReportUploadErrorMessage } from "@/lib/uploadHttpError";
 import type {
   DisputeOptionsResponse,
@@ -58,15 +64,104 @@ export async function getMeOrgProgram(token: string): Promise<OrgProgramResponse
   return orgProgramJson<OrgProgramResponse>(token, "/api/me/org-program");
 }
 
-export async function getMeProgress(token: string): Promise<ProgressResponse> {
-  return orgProgramJson<ProgressResponse>(token, "/api/me/progress");
+export async function getMeProgress(
+  token: string,
+  init?: RequestInit,
+): Promise<ProgressResponse> {
+  return orgProgramJson<ProgressResponse>(token, "/api/me/progress", init);
 }
 
 const MAX_ME_CHUNK_MB = 25;
 const MAX_ME_SINGLE_MB = 200;
 const MAX_ME_REPORT_PARTS = 12;
 
-export async function postMeReport(
+const ME_REPORT_POLL_MS = 1500;
+const ME_REPORT_TIMEOUT_MS = 45 * 60 * 1000;
+
+function _sleepMs(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new DOMException("Aborted", "AbortError"));
+      return;
+    }
+    const t = setTimeout(() => resolve(), ms);
+    const onAbort = () => {
+      clearTimeout(t);
+      reject(new DOMException("Aborted", "AbortError"));
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+/** True when ``fetch`` or polling was cancelled via ``AbortSignal``. */
+export function isOrgProgramAbortError(e: unknown): boolean {
+  return e instanceof DOMException && e.name === "AbortError";
+}
+
+/**
+ * Poll ``GET /api/workflows/{programWorkflowId}/jobs/{jobId}`` until terminal, then refresh
+ * progression via ``getMeProgress``. Use from page lifecycle after ``postMeReport`` returns
+ * with ``processing`` (do not block upload handler on this).
+ *
+ * Pass ``signal`` to cancel in-flight fetches and sleep (unmount / route change).
+ */
+export async function pollMeReportParseJob(
+  token: string,
+  programWorkflowId: string,
+  jobId: string,
+  options?: { signal?: AbortSignal },
+): Promise<ReportUploadResponse> {
+  const signal = options?.signal;
+  const terminal = new Set(["completed", "failed"]);
+  const start = Date.now();
+  while (Date.now() - start < ME_REPORT_TIMEOUT_MS) {
+    if (signal?.aborted) {
+      throw new DOMException("Aborted", "AbortError");
+    }
+    const j = await orgProgramJson<{ ok: boolean; job: WorkflowJobPublic }>(
+      token,
+      `/api/workflows/${encodeURIComponent(programWorkflowId)}/jobs/${encodeURIComponent(jobId)}`,
+      { signal },
+    );
+    const st = j.job.status;
+    if (terminal.has(st)) {
+      if (st === "failed") {
+        const msg =
+          typeof j.job.error === "string" && j.job.error.trim()
+            ? j.job.error.trim()
+            : "Report processing failed.";
+        throw new Error(msg);
+      }
+      const res = j.job.result;
+      const ok = Boolean(res && typeof res === "object" && (res as { ok?: boolean }).ok);
+      const reportsProcessed = Number(
+        (res as { reportsProcessed?: number } | null)?.reportsProcessed ?? 0,
+      );
+      const rawSkips = (res as { fileSkips?: unknown } | null)?.fileSkips;
+      const fileSkips = Array.isArray(rawSkips) ? rawSkips : [];
+      const rawIds = (res as { reportIds?: unknown } | null)?.reportIds;
+      const reportIds = Array.isArray(rawIds)
+        ? rawIds.map((x) => Number(x)).filter((n) => Number.isFinite(n) && n > 0)
+        : [];
+      const prog = await getMeProgress(token, { signal });
+      return {
+        ok,
+        processingStatus: ok ? "complete" : "failed",
+        reportsProcessed,
+        reportIds,
+        fileSkips,
+        progression: prog.progression,
+      };
+    }
+    await _sleepMs(ME_REPORT_POLL_MS, signal);
+  }
+  throw new Error(
+    "Report processing is taking longer than expected. Try again or use a smaller PDF.",
+  );
+}
+
+/** Legacy multipart ``POST /api/me/report``. */
+export async function postMeReportMultipart(
   token: string,
   files: File | File[],
   privacyConsent: boolean,
@@ -108,6 +203,49 @@ export async function postMeReport(
     );
   }
   return JSON.parse(text) as ReportUploadResponse;
+}
+
+/**
+ * Single-file: presigned session → PUT → finalize when enabled; otherwise or on storage-unavailable,
+ * multipart ``postMeReportMultipart``.
+ */
+export async function postMeReport(
+  token: string,
+  files: File | File[],
+  privacyConsent: boolean,
+): Promise<ReportUploadResponse> {
+  const list = Array.isArray(files) ? files : [files];
+  if (list.length === 0) {
+    throw new Error("Choose at least one PDF.");
+  }
+  if (list.length > MAX_ME_REPORT_PARTS) {
+    throw new Error(`At most ${MAX_ME_REPORT_PARTS} PDF parts per upload.`);
+  }
+  const chunkBytes = MAX_ME_CHUNK_MB * 1024 * 1024;
+  const singleBytes = MAX_ME_SINGLE_MB * 1024 * 1024;
+  if (list.length > 1) {
+    for (const f of list) {
+      if (f.size > chunkBytes) {
+        throw new Error(
+          `Each part must be at most ${MAX_ME_CHUNK_MB} MB (${f.name}). Or upload one PDF up to ${MAX_ME_SINGLE_MB} MB.`,
+        );
+      }
+    }
+  } else if (list[0].size > singleBytes) {
+    throw new Error(`This PDF is too large (max ${MAX_ME_SINGLE_MB} MB).`);
+  }
+
+  if (shouldTryDirectReportUpload(list.length)) {
+    try {
+      return await postOrgReportUploadDirect(token, list[0]!);
+    } catch (e) {
+      if (e instanceof ReportUploadStorageUnavailableError) {
+        return postMeReportMultipart(token, files, privacyConsent);
+      }
+      throw e;
+    }
+  }
+  return postMeReportMultipart(token, files, privacyConsent);
 }
 
 export async function postMeAnalyze(

@@ -61,6 +61,7 @@ _load_repo_dotenv()
 import logging
 import os
 import re
+import tempfile
 import time
 from contextlib import asynccontextmanager
 from typing import Any, Dict, List, Literal, Optional
@@ -69,8 +70,6 @@ from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Query, 
 from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
-from starlette.concurrency import run_in_threadpool
-
 from api.customer_web_static import (
     install_strip_workflow_api_prefix_middleware,
     mount_customer_web_dist_if_present,
@@ -118,6 +117,7 @@ from services.customer_letter_service import (
 )
 from services.workflow.workflow_job_service import (
     JOB_TYPE_LETTER_GENERATION,
+    JOB_TYPE_REPORT_UPLOAD_PARSE,
     create_job,
     get_job as wf_get_job,
     list_jobs as wf_list_jobs,
@@ -229,7 +229,22 @@ from services.program_enrollment_service import (
     build_me_org_program_payload,
     create_program_enrollment,
     get_enrollment,
+    get_program_workflow_id_for_enrollment,
     list_enrollments_for_org,
+)
+from services.report_upload_object_storage import ReportUploadStorageError
+from services.report_upload_session_service import (
+    ReportUploadFinalizeError,
+    create_report_upload_session,
+    finalize_direct_storage_report_upload,
+)
+from services.report_upload_staging import (
+    MAX_MERGED_REPORT_MB,
+    MAX_REPORT_PARTS,
+    MAX_REPORT_UPLOAD_MB,
+    MAX_SINGLE_REPORT_UPLOAD_MB,
+    ReportUploadStagingError,
+    stream_upload_part_to_temp_file,
 )
 from services.program_progress_service import (
     apply_instructor_program_override,
@@ -285,28 +300,6 @@ def _log_resend_env_at_startup() -> None:
         env_path.is_file(),
     )
 
-
-# Per-chunk ceiling: manual multi-part uploads, and auto-split page ranges.
-_MAX_REPORT_UPLOAD_MB = 25
-_MAX_REPORT_PARTS = 12
-
-# Single PDF upload (e.g. long Equifax export); server may split by pages then merge for parsing.
-try:
-    _MAX_SINGLE_REPORT_UPLOAD_MB = int(
-        (os.environ.get("MAX_SINGLE_REPORT_UPLOAD_MB") or "200").strip()
-    )
-except ValueError:
-    _MAX_SINGLE_REPORT_UPLOAD_MB = 200
-_MAX_SINGLE_REPORT_UPLOAD_MB = max(_MAX_REPORT_UPLOAD_MB, min(_MAX_SINGLE_REPORT_UPLOAD_MB, 500))
-
-try:
-    _MAX_MERGED_REPORT_MB = int((os.environ.get("MAX_MERGED_REPORT_MB") or "250").strip())
-except ValueError:
-    _MAX_MERGED_REPORT_MB = 250
-_MAX_MERGED_REPORT_MB = max(
-    _MAX_SINGLE_REPORT_UPLOAD_MB,
-    min(_MAX_MERGED_REPORT_MB, 500),
-)
 
 _public_demo_hit_times: Dict[str, List[float]] = {}
 _public_demo_lead_hit_times: Dict[str, List[float]] = {}
@@ -542,6 +535,16 @@ class EscalationUxStateBody(BaseModel):
     action_id: str = Field(..., min_length=4, max_length=80, alias="actionId")
     reviewed: bool = False
     proceeded: bool = False
+
+    model_config = {"populate_by_name": True}
+
+
+class ReportUploadFinalizeBody(BaseModel):
+    """Finalize direct-to-object-storage upload → ``report_upload_parse`` job."""
+
+    upload_id: str = Field(..., alias="uploadId", min_length=32, max_length=40)
+    byte_size: int = Field(..., alias="byteSize", gt=0)
+    sha256_hex: str = Field(..., alias="sha256Hex", min_length=64, max_length=64)
 
     model_config = {"populate_by_name": True}
 
@@ -843,90 +846,45 @@ def _http_detail(code: str, message_safe: str) -> Dict[str, Any]:
     return {"code": code, "messageSafe": message_safe}
 
 
-def _normalize_one_large_pdf_to_pipeline_bytes(fname: str, raw: bytes) -> tuple[str, bytes]:
-    """
-    If ``raw`` is under the chunk ceiling, return as-is. Otherwise split by page ranges
-    under the chunk ceiling, merge into one PDF, and return that (same bureau, one report).
-    """
-    from services.report_pdf_merge import merge_pdf_parts
-    from services.report_pdf_split import split_pdf_by_max_serialized_bytes
-
-    chunk_max = _MAX_REPORT_UPLOAD_MB * 1024 * 1024
-    max_single = _MAX_SINGLE_REPORT_UPLOAD_MB * 1024 * 1024
-    max_merged = _MAX_MERGED_REPORT_MB * 1024 * 1024
-
-    if len(raw) > max_single:
-        raise HTTPException(
-            status_code=413,
-            detail=_http_detail(
-                "FILE_TOO_LARGE",
-                f"Maximum upload size is {_MAX_SINGLE_REPORT_UPLOAD_MB} MB.",
-            ),
-        )
-    if len(raw) <= chunk_max:
-        if len(raw) > max_merged:
-            raise HTTPException(
-                status_code=413,
-                detail=_http_detail(
-                    "MERGED_TOO_LARGE",
-                    f"PDF exceeds {_MAX_MERGED_REPORT_MB} MB.",
-                ),
-            )
-        return fname, raw
-
-    stem = fname.rsplit(".", 1)[0] if fname.lower().endswith(".pdf") else fname
-    try:
-        chunks = split_pdf_by_max_serialized_bytes(
-            raw,
-            stem=stem,
-            chunk_max_bytes=chunk_max,
-        )
-    except ValueError as e:
-        raise HTTPException(
-            status_code=400,
-            detail=_http_detail(
-                "PDF_SPLIT_FAILED",
-                (str(e) or "Could not split PDF into processable chunks.")[:280],
-            ),
-        ) from e
-
-    try:
-        merged_name, merged = merge_pdf_parts(chunks)
-    except ValueError as e:
-        raise HTTPException(
-            status_code=400,
-            detail=_http_detail(
-                "PDF_MERGE_FAILED",
-                (str(e) or "Could not merge PDF after splitting.")[:240],
-            ),
-        ) from e
-
-    if len(merged) > max_merged:
-        raise HTTPException(
-            status_code=413,
-            detail=_http_detail(
-                "MERGED_TOO_LARGE",
-                f"Merged PDF exceeds {_MAX_MERGED_REPORT_MB} MB after processing.",
-            ),
-        )
-    return merged_name, merged
+def _raise_finalize_error(e: ReportUploadFinalizeError) -> None:
+    raise HTTPException(
+        status_code=e.http_status,
+        detail=_http_detail(e.code, e.message_safe),
+    ) from None
 
 
-async def _load_and_maybe_merge_report_pdfs(
+def _report_upload_session_api_response(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Shared shape for direct-to-storage session creation (retail + org)."""
+    return {
+        "ok": True,
+        "uploadId": payload["uploadId"],
+        "uploadUrl": payload["uploadUrl"],
+        "objectKey": payload["objectKey"],
+        "constraints": {
+            "contentType": "application/pdf",
+            "maxSingleFileBytes": MAX_SINGLE_REPORT_UPLOAD_MB * 1024 * 1024,
+            "maxMergedBytes": MAX_MERGED_REPORT_MB * 1024 * 1024,
+            "maxPartBytes": MAX_REPORT_UPLOAD_MB * 1024 * 1024,
+            "maxParts": MAX_REPORT_PARTS,
+        },
+        "presignedExpiresIn": payload.get("presignedExpiresIn"),
+        "sessionExpiresAt": payload.get("expiresAt"),
+    }
+
+
+async def _stage_report_upload_parts_to_temp(
     *,
     file: Optional[UploadFile],
     files: Optional[List[UploadFile]],
-) -> tuple[str, bytes]:
+) -> tuple[List[str], List[str], List[int], List[str]]:
     """
-    - One PDF: up to ``MAX_SINGLE_REPORT_UPLOAD_MB``; if over the chunk size, split by pages
-      server-side, merge to one PDF, then parse.
-    - Several PDFs (``files``): each part at most chunk size; merged in request order.
+    Stream each uploaded part to a temp file with incremental SHA-256, ``fsync``, and
+    on-disk size verification. PDF merge/split runs in the worker after
+    ``partByteSizes`` / ``partSha256Hex`` checks (see ``workflow_job_worker``).
     """
-    from services.report_pdf_merge import merge_pdf_parts
-
     uploads: List[UploadFile] = []
     if files:
-        uploads = [u for u in files if u is not None][: _MAX_REPORT_PARTS]
+        uploads = [u for u in files if u is not None][:MAX_REPORT_PARTS]
     elif file is not None:
         uploads = [file]
     if not uploads:
@@ -934,73 +892,66 @@ async def _load_and_maybe_merge_report_pdfs(
             status_code=400,
             detail=_http_detail("NO_FILE", "A PDF file is required."),
         )
-    if len(uploads) > _MAX_REPORT_PARTS:
+    if len(uploads) > MAX_REPORT_PARTS:
         raise HTTPException(
             status_code=400,
             detail=_http_detail(
                 "TOO_MANY_PARTS",
-                f"At most {_MAX_REPORT_PARTS} PDF parts per upload.",
+                f"At most {MAX_REPORT_PARTS} PDF parts per upload.",
             ),
         )
 
-    chunk_max = _MAX_REPORT_UPLOAD_MB * 1024 * 1024
-    max_single = _MAX_SINGLE_REPORT_UPLOAD_MB * 1024 * 1024
-    max_merged = _MAX_MERGED_REPORT_MB * 1024 * 1024
-    parts: List[tuple[str, bytes]] = []
-    for uf in uploads:
-        raw = await uf.read()
-        if len(uploads) > 1 and len(raw) > chunk_max:
-            raise HTTPException(
-                status_code=413,
-                detail=_http_detail(
-                    "FILE_TOO_LARGE",
-                    f"Each PDF part must be at most {_MAX_REPORT_UPLOAD_MB} MB when uploading multiple parts.",
-                ),
-            )
-        if len(uploads) == 1 and len(raw) > max_single:
-            raise HTTPException(
-                status_code=413,
-                detail=_http_detail(
-                    "FILE_TOO_LARGE",
-                    f"Maximum upload size is {_MAX_SINGLE_REPORT_UPLOAD_MB} MB.",
-                ),
-            )
-        if not raw:
-            raise HTTPException(
-                status_code=400,
-                detail=_http_detail("EMPTY_FILE", "Empty file."),
-            )
-        fname = (uf.filename or "part.pdf").replace("\\", "/").split("/")[-1]
-        if not fname.lower().endswith(".pdf"):
-            raise HTTPException(
-                status_code=400,
-                detail=_http_detail("NOT_PDF", "A PDF file is required."),
-            )
-        parts.append((fname, raw))
-
-    if len(parts) == 1:
-        return _normalize_one_large_pdf_to_pipeline_bytes(parts[0][0], parts[0][1])
-
+    chunk_max = MAX_REPORT_UPLOAD_MB * 1024 * 1024
+    max_single = MAX_SINGLE_REPORT_UPLOAD_MB * 1024 * 1024
+    multi = len(uploads) > 1
+    paths: List[str] = []
+    names: List[str] = []
+    sizes: List[int] = []
+    hashes: List[str] = []
     try:
-        merged_name, merged = merge_pdf_parts(parts)
-    except ValueError as e:
-        raise HTTPException(
-            status_code=400,
-            detail=_http_detail(
-                "PDF_MERGE_FAILED",
-                (str(e) or "Could not merge PDF parts.")[:240],
-            ),
-        ) from e
-
-    if len(merged) > max_merged:
-        raise HTTPException(
-            status_code=413,
-            detail=_http_detail(
-                "MERGED_TOO_LARGE",
-                f"Merged PDF exceeds {_MAX_MERGED_REPORT_MB} MB. Use fewer or smaller parts.",
-            ),
-        )
-    return merged_name, merged
+        for uf in uploads:
+            fname = (uf.filename or "part.pdf").replace("\\", "/").split("/")[-1]
+            if not fname.lower().endswith(".pdf"):
+                raise HTTPException(
+                    status_code=400,
+                    detail=_http_detail("NOT_PDF", "A PDF file is required."),
+                )
+            max_b = chunk_max if multi else max_single
+            too_large = (
+                f"Each PDF part must be at most {MAX_REPORT_UPLOAD_MB} MB when uploading multiple parts."
+                if multi
+                else f"Maximum upload size is {MAX_SINGLE_REPORT_UPLOAD_MB} MB."
+            )
+            try:
+                pth, sz, hx = await stream_upload_part_to_temp_file(
+                    uf,
+                    max_bytes=max_b,
+                    too_large_message=too_large,
+                )
+            except ReportUploadStagingError as e:
+                raise HTTPException(
+                    status_code=e.http_status,
+                    detail=_http_detail(e.code, e.message_safe),
+                ) from e
+            paths.append(pth)
+            names.append(fname)
+            sizes.append(sz)
+            hashes.append(hx)
+    except HTTPException:
+        for p in paths:
+            try:
+                os.unlink(p)
+            except OSError:
+                pass
+        raise
+    except Exception:
+        for p in paths:
+            try:
+                os.unlink(p)
+            except OSError:
+                pass
+        raise
+    return paths, names, sizes, hashes
 
 
 def _raise_flow_violation(e: FlowEnforcementError) -> None:
@@ -2145,8 +2096,8 @@ async def post_me_report(
 ) -> Dict[str, Any]:
     """
     Enrolled org participant: upload one bureau PDF (or multiple parts merged server-side);
-    full parse via ``process_uploaded_reports``.
-    Advances ``org_program_v1`` workflow steps (``workflow_sessions``) for this enrollment.
+    parse runs in a ``report_upload_parse`` background job (same as ``POST .../reports/upload``).
+    Client polls ``GET /api/workflows/{programWorkflowId}/jobs/{jobId}`` until terminal.
     """
     ctx = _require_enrolled_org_participant(user)
     _require_org_program_payment_access(ctx)
@@ -2161,57 +2112,159 @@ async def post_me_report(
             ),
         )
 
-    fname, raw = await _load_and_maybe_merge_report_pdfs(file=file, files=files)
+    part_paths, part_names, part_sizes, part_sha256 = await _stage_report_upload_parts_to_temp(
+        file=file,
+        files=files,
+    )
 
     uid = int(user["user_id"])
-    try:
-        from services.report_pipeline import process_uploaded_reports
+    oid = int(ctx["organization_id"])
+    eid = int(ctx["organization_program_enrollment_id"])
+    wid = get_program_workflow_id_for_enrollment(eid)
+    if not wid:
+        wid = ensure_org_program_workflow(uid, oid, eid)
+    total_bytes = sum(part_sizes)
 
-        result = process_uploaded_reports(
-            [(fname, raw)],
+    try:
+        jid = create_job(
+            wid,
+            JOB_TYPE_REPORT_UPLOAD_PARSE,
             {
-                "user_id": uid,
-                "organization_id": ctx["organization_id"],
-                "organization_program_enrollment_id": ctx[
-                    "organization_program_enrollment_id"
-                ],
-                "mutation_channel": "workflow_http",
+                "userId": uid,
+                "staging": "parts_v1",
+                "tempPartPaths": part_paths,
+                "partFilenames": part_names,
+                "partByteSizes": part_sizes,
+                "partSha256Hex": part_sha256,
+                "orgProgramFollowup": True,
+                "organizationId": oid,
+                "organizationProgramEnrollmentId": eid,
             },
+            dedupe_pending=False,
         )
     except Exception:
-        _logger.exception("me report upload pipeline failed for user %s", uid)
+        for p in part_paths:
+            try:
+                os.unlink(p)
+            except OSError:
+                pass
+        raise
+
+    _logger.info(
+        "me_report_upload_queued user_id=%s enrollment_id=%s job_id=%s bytes=%s",
+        uid,
+        eid,
+        jid,
+        total_bytes,
+    )
+
+    out: Dict[str, Any] = {
+        "ok": True,
+        "processing": True,
+        "jobId": jid,
+        "programWorkflowId": wid,
+        "processingStatus": "queued",
+        "reportsProcessed": 0,
+        "reportIds": [],
+        "fileSkips": [],
+    }
+    bundle = _me_org_engine_bundle(ctx, uid)
+    if bundle:
+        out.update(bundle)
+    return out
+
+
+@app.post("/api/me/report-upload/session")
+def post_me_report_upload_session(
+    user: Dict[str, Any] = Depends(get_session_user),
+) -> Dict[str, Any]:
+    """
+    Org program: presigned PUT session for direct-to-object-storage upload (same flow gates as
+    ``POST /api/me/report`` without multipart body). Legacy ``POST /api/me/report`` unchanged.
+    """
+    ctx = _require_enrolled_org_participant(user)
+    _require_org_program_payment_access(ctx)
+    _require_org_program_not_paused(user, ctx)
+
+    uid = int(user["user_id"])
+    oid = int(ctx["organization_id"])
+    eid = int(ctx["organization_program_enrollment_id"])
+    wid = get_program_workflow_id_for_enrollment(eid)
+    if not wid:
+        wid = ensure_org_program_workflow(uid, oid, eid)
+
+    try:
+        payload = create_report_upload_session(
+            user_id=uid,
+            workflow_id=wid,
+            kind="org_program",
+            organization_id=oid,
+            organization_program_enrollment_id=eid,
+        )
+    except ReportUploadStorageError as e:
         raise HTTPException(
-            status_code=500,
+            status_code=503,
             detail=_http_detail(
-                "PARSE_PIPELINE_ERROR",
-                "Report processing failed. Try again or use a different PDF.",
+                "REPORT_UPLOAD_STORAGE_UNAVAILABLE",
+                (str(e) or "Object storage is not configured.")[:280],
             ),
-        ) from None
+        ) from e
 
-    skips = result.get("file_skips") or []
-    processed = int(result.get("reports_processed") or 0)
-    report_ids: List[int] = []
-    for _k, rep in (result.get("uploaded_reports") or {}).items():
-        rid = rep.get("report_id")
-        if rid is not None:
-            report_ids.append(int(rid))
+    return _report_upload_session_api_response(payload)
 
-    ok = processed > 0 and len(skips) == 0
-    if ok:
-        eid = int(ctx["organization_program_enrollment_id"])
-        oid = int(ctx["organization_id"])
-        steps_done = ["orgprog_upload"]
-        if report_ids:
-            fp = build_findings_payload(uid, report_id=report_ids[0])
-            if fp.get("processingStatus") == "complete":
-                steps_done.append("orgprog_findings_ready")
-        advance_org_program_steps(uid, oid, eid, steps_done, audit_source="api:me_report")
-    out = {
-        "ok": ok,
-        "processingStatus": "complete" if ok else "failed",
-        "reportsProcessed": processed,
-        "reportIds": report_ids,
-        "fileSkips": skips,
+
+@app.post("/api/me/report-upload/finalize")
+def post_me_report_upload_finalize(
+    body: ReportUploadFinalizeBody,
+    user: Dict[str, Any] = Depends(get_session_user),
+) -> Dict[str, Any]:
+    """
+    After PUT to presigned URL, verify object + enqueue ``report_upload_parse`` (same job shape as
+    ``POST /api/me/report``). Legacy multipart route unchanged.
+    """
+    ctx = _require_enrolled_org_participant(user)
+    _require_org_program_payment_access(ctx)
+    _require_org_program_not_paused(user, ctx)
+
+    uid = int(user["user_id"])
+    oid = int(ctx["organization_id"])
+    eid = int(ctx["organization_program_enrollment_id"])
+    wid = get_program_workflow_id_for_enrollment(eid)
+    if not wid:
+        wid = ensure_org_program_workflow(uid, oid, eid)
+
+    try:
+        jid, idem = finalize_direct_storage_report_upload(
+            upload_id=body.upload_id,
+            user_id=uid,
+            workflow_id=wid,
+            kind="org_program",
+            byte_size=body.byte_size,
+            sha256_hex=body.sha256_hex,
+            organization_id=oid,
+            organization_program_enrollment_id=eid,
+        )
+    except ReportUploadStorageError as e:
+        raise HTTPException(
+            status_code=503,
+            detail=_http_detail(
+                "REPORT_UPLOAD_STORAGE_UNAVAILABLE",
+                (str(e) or "Object storage is not configured.")[:280],
+            ),
+        ) from e
+    except ReportUploadFinalizeError as e:
+        _raise_finalize_error(e)
+
+    out: Dict[str, Any] = {
+        "ok": True,
+        "jobId": jid,
+        "idempotent": idem,
+        "processing": True,
+        "programWorkflowId": wid,
+        "processingStatus": "queued",
+        "reportsProcessed": 0,
+        "reportIds": [],
+        "fileSkips": [],
     }
     bundle = _me_org_engine_bundle(ctx, uid)
     if bundle:
@@ -3719,58 +3772,143 @@ async def post_workflow_report_upload(
             },
         )
 
-    fname, raw = await _load_and_maybe_merge_report_pdfs(file=file, files=files)
+    try:
+        enforce_customer_action(workflow_id, ACTION_REPORT_PDF_UPLOAD)
+    except FlowEnforcementError as e:
+        _raise_flow_violation(e)
 
+    part_paths, part_names, part_sizes, part_sha256 = await _stage_report_upload_parts_to_temp(
+        file=file,
+        files=files,
+    )
+
+    uid = int(session["user_id"])
+    total_bytes = sum(part_sizes)
+    _logger.info(
+        "workflow_report_upload_begin workflow_id=%s user_id=%s bytes=%s parts=%s",
+        workflow_id,
+        uid,
+        total_bytes,
+        len(part_paths),
+    )
+
+    try:
+        jid = create_job(
+            workflow_id,
+            JOB_TYPE_REPORT_UPLOAD_PARSE,
+            {
+                "userId": uid,
+                "staging": "parts_v1",
+                "tempPartPaths": part_paths,
+                "partFilenames": part_names,
+                "partByteSizes": part_sizes,
+                "partSha256Hex": part_sha256,
+            },
+            dedupe_pending=False,
+        )
+    except Exception:
+        for p in part_paths:
+            try:
+                os.unlink(p)
+            except OSError:
+                pass
+        raise
+
+    _logger.info(
+        "workflow_report_upload_queued workflow_id=%s user_id=%s job_id=%s bytes=%s",
+        workflow_id,
+        uid,
+        jid,
+        total_bytes,
+    )
+
+    return {
+        "ok": True,
+        "processing": True,
+        "jobId": jid,
+        "reportsProcessed": 0,
+        "fileSkips": [],
+        **_workflow_payload_with_progression(workflow_id),
+    }
+
+
+@app.post("/api/workflows/{workflow_id}/report-upload/session")
+def post_workflow_report_upload_session(
+    workflow_id: str,
+    session: Dict[str, Any] = Depends(get_owned_workflow),
+) -> Dict[str, Any]:
+    """
+    Direct-to-object-storage: create an upload session and presigned PUT URL.
+    Client uploads bytes to ``uploadUrl``, then calls finalize (separate route; not yet implemented).
+    Legacy ``POST .../reports/upload`` is unchanged.
+    """
     try:
         enforce_customer_action(workflow_id, ACTION_REPORT_PDF_UPLOAD)
     except FlowEnforcementError as e:
         _raise_flow_violation(e)
 
     uid = int(session["user_id"])
-    t0 = time.perf_counter()
-    _logger.info(
-        "workflow_report_upload_begin workflow_id=%s user_id=%s bytes=%s fname=%s",
-        workflow_id,
-        uid,
-        len(raw),
-        fname,
-    )
     try:
-        from services.report_pipeline import process_uploaded_reports
-
-        # Long-running parse in a thread pool so the event loop stays responsive (health checks,
-        # other requests) during large PDF OCR/layout work — blocking here would stall the
-        # whole worker and can cause platform health probes to fail mid-upload.
-        result = await run_in_threadpool(
-            process_uploaded_reports,
-            [(fname, raw)],
-            {"user_id": uid, "workflow_id": workflow_id, "mutation_channel": "workflow_http"},
+        payload = create_report_upload_session(
+            user_id=uid,
+            workflow_id=workflow_id,
+            kind="retail",
         )
-    except Exception:
-        _logger.exception("report upload pipeline failed for workflow %s", workflow_id)
+    except ReportUploadStorageError as e:
         raise HTTPException(
-            status_code=500,
-            detail={
-                "code": "PARSE_PIPELINE_ERROR",
-                "messageSafe": "Report processing failed. Try again or use a different PDF.",
-            },
-        ) from None
+            status_code=503,
+            detail=_http_detail(
+                "REPORT_UPLOAD_STORAGE_UNAVAILABLE",
+                (str(e) or "Object storage is not configured.")[:280],
+            ),
+        ) from e
 
-    skips = result.get("file_skips") or []
-    processed = int(result.get("reports_processed") or 0)
-    elapsed_ms = int((time.perf_counter() - t0) * 1000)
-    _logger.info(
-        "workflow_report_upload_pipeline_done workflow_id=%s elapsed_ms=%s reports_processed=%s file_skips=%s",
-        workflow_id,
-        elapsed_ms,
-        processed,
-        len(skips),
-    )
+    return _report_upload_session_api_response(payload)
+
+
+@app.post("/api/workflows/{workflow_id}/report-upload/finalize")
+def post_workflow_report_upload_finalize(
+    workflow_id: str,
+    body: ReportUploadFinalizeBody,
+    session: Dict[str, Any] = Depends(get_owned_workflow),
+) -> Dict[str, Any]:
+    """
+    After PUT to presigned URL, verify object in storage and enqueue ``report_upload_parse``.
+    Legacy ``POST .../reports/upload`` unchanged.
+    """
+    try:
+        enforce_customer_action(workflow_id, ACTION_REPORT_PDF_UPLOAD)
+    except FlowEnforcementError as e:
+        _raise_flow_violation(e)
+
+    uid = int(session["user_id"])
+    try:
+        jid, idem = finalize_direct_storage_report_upload(
+            upload_id=body.upload_id,
+            user_id=uid,
+            workflow_id=workflow_id,
+            kind="retail",
+            byte_size=body.byte_size,
+            sha256_hex=body.sha256_hex,
+        )
+    except ReportUploadStorageError as e:
+        raise HTTPException(
+            status_code=503,
+            detail=_http_detail(
+                "REPORT_UPLOAD_STORAGE_UNAVAILABLE",
+                (str(e) or "Object storage is not configured.")[:280],
+            ),
+        ) from e
+    except ReportUploadFinalizeError as e:
+        _raise_finalize_error(e)
 
     return {
-        "ok": processed > 0 and len(skips) == 0,
-        "reportsProcessed": processed,
-        "fileSkips": skips,
+        "ok": True,
+        "jobId": jid,
+        "idempotent": idem,
+        "processing": True,
+        "reportsProcessed": 0,
+        "fileSkips": [],
         **_workflow_payload_with_progression(workflow_id),
     }
 

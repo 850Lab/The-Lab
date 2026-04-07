@@ -23,6 +23,11 @@ import type {
 } from "@/lib/responseTypes";
 import type { TrackingContextResponse } from "@/lib/trackingTypes";
 import { workflowApiBase } from "@/lib/apiBase";
+import {
+  postRetailReportUploadDirect,
+  ReportUploadStorageUnavailableError,
+  shouldTryDirectReportUpload,
+} from "@/lib/directReportUpload";
 import { formatReportUploadErrorMessage } from "@/lib/uploadHttpError";
 import type { EscalationLayerResponse } from "@/lib/escalationLayerTypes";
 import type { WorkflowIntegrityHints } from "@/lib/integrityHintsTypes";
@@ -84,10 +89,12 @@ export async function fetchActiveWorkflowId(
 export async function fetchWorkflowResume(
   token: string,
   workflowId: string,
+  init?: RequestInit,
 ): Promise<WorkflowEnvelope> {
   return workflowFetchJson<WorkflowEnvelope>(
     `/api/workflows/${encodeURIComponent(workflowId)}/resume`,
     token,
+    init,
   );
 }
 
@@ -554,7 +561,98 @@ export type ReportUploadResponse = {
   reportsProcessed: number;
   fileSkips: Array<{ filename: string; reason: string }>;
   workflow: WorkflowEnvelope;
+  /** Server queued a background parse; client should poll ``/jobs/{jobId}`` until terminal. */
+  processing?: boolean;
+  jobId?: string;
 };
+
+export type WorkflowJobPublic = {
+  jobId: string;
+  workflowId: string;
+  jobType: string;
+  status: string;
+  attemptCount?: number;
+  maxAttempts?: number;
+  payload: Record<string, unknown>;
+  result: Record<string, unknown> | null;
+  error: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+  runAt?: string | null;
+};
+
+const REPORT_PARSE_POLL_MS = 1500;
+const REPORT_PARSE_TIMEOUT_MS = 45 * 60 * 1000;
+
+function _reportParseSleepMs(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new DOMException("Aborted", "AbortError"));
+      return;
+    }
+    const t = setTimeout(() => resolve(), ms);
+    const onAbort = () => {
+      clearTimeout(t);
+      reject(new DOMException("Aborted", "AbortError"));
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+/** True when retail report polling was cancelled via ``AbortSignal``. */
+export function isWorkflowReportUploadAbortError(e: unknown): boolean {
+  return e instanceof DOMException && e.name === "AbortError";
+}
+
+/**
+ * Wait for ``report_upload_parse`` job to finish, then return the same shape as a synchronous
+ * upload response (refreshed ``workflow`` from resume after parse completes).
+ */
+export async function pollReportUploadParseJob(
+  token: string,
+  workflowId: string,
+  jobId: string,
+  options?: { signal?: AbortSignal },
+): Promise<ReportUploadResponse> {
+  const signal = options?.signal;
+  const terminal = new Set(["completed", "failed"]);
+  const start = Date.now();
+  while (Date.now() - start < REPORT_PARSE_TIMEOUT_MS) {
+    if (signal?.aborted) {
+      throw new DOMException("Aborted", "AbortError");
+    }
+    const j = await workflowFetchJson<{ ok: boolean; job: WorkflowJobPublic }>(
+      `/api/workflows/${encodeURIComponent(workflowId)}/jobs/${encodeURIComponent(jobId)}`,
+      token,
+      { signal },
+    );
+    const st = j.job.status;
+    if (terminal.has(st)) {
+      if (st === "failed") {
+        const msg =
+          typeof j.job.error === "string" && j.job.error.trim()
+            ? j.job.error.trim()
+            : "Report processing failed.";
+        throw new Error(msg);
+      }
+      const res = j.job.result;
+      const ok = Boolean(res && typeof res === "object" && (res as { ok?: boolean }).ok);
+      const reportsProcessed = Number(
+        (res as { reportsProcessed?: number } | null)?.reportsProcessed ?? 0,
+      );
+      const rawSkips = (res as { fileSkips?: unknown } | null)?.fileSkips;
+      const fileSkips = Array.isArray(rawSkips)
+        ? (rawSkips as Array<{ filename: string; reason: string }>)
+        : [];
+      const workflow = await fetchWorkflowResume(token, workflowId, { signal });
+      return { ok, reportsProcessed, fileSkips, workflow };
+    }
+    await _reportParseSleepMs(REPORT_PARSE_POLL_MS, signal);
+  }
+  throw new Error(
+    "Report processing is taking longer than expected. Try again or use a smaller PDF.",
+  );
+}
 
 /** Manual multi-part uploads: each piece stays under this (server merges). */
 const MAX_REPORT_CHUNK_MB = 25;
@@ -562,8 +660,8 @@ const MAX_REPORT_CHUNK_MB = 25;
 const MAX_SINGLE_REPORT_MB = 200;
 const MAX_REPORT_PARTS = 12;
 
-/** Multipart upload → same ``report_pipeline`` as Streamlit; completes upload + parse_analyze hooks. */
-export async function postReportUpload(
+/** Legacy multipart → ``POST .../reports/upload`` (same pipeline as Streamlit). */
+export async function postReportUploadMultipart(
   token: string,
   workflowId: string,
   files: File | File[],
@@ -609,4 +707,48 @@ export async function postReportUpload(
     );
   }
   return JSON.parse(text) as ReportUploadResponse;
+}
+
+/**
+ * Single-file: presigned session → PUT → finalize when enabled; otherwise or on storage-unavailable,
+ * multipart ``postReportUploadMultipart``. Multi-part uploads always use multipart.
+ */
+export async function postReportUpload(
+  token: string,
+  workflowId: string,
+  files: File | File[],
+  privacyConsent: boolean,
+): Promise<ReportUploadResponse> {
+  const list = Array.isArray(files) ? files : [files];
+  if (list.length === 0) {
+    throw new Error("Choose at least one PDF.");
+  }
+  if (list.length > MAX_REPORT_PARTS) {
+    throw new Error(`At most ${MAX_REPORT_PARTS} PDF parts per upload.`);
+  }
+  const chunkBytes = MAX_REPORT_CHUNK_MB * 1024 * 1024;
+  const singleBytes = MAX_SINGLE_REPORT_MB * 1024 * 1024;
+  if (list.length > 1) {
+    for (const f of list) {
+      if (f.size > chunkBytes) {
+        throw new Error(
+          `Each part must be at most ${MAX_REPORT_CHUNK_MB} MB (${f.name}). Or upload one large PDF (up to ${MAX_SINGLE_REPORT_MB} MB) and we split it automatically.`,
+        );
+      }
+    }
+  } else if (list[0].size > singleBytes) {
+    throw new Error(`This PDF is too large (max ${MAX_SINGLE_REPORT_MB} MB).`);
+  }
+
+  if (shouldTryDirectReportUpload(list.length)) {
+    try {
+      return await postRetailReportUploadDirect(token, workflowId, list[0]!);
+    } catch (e) {
+      if (e instanceof ReportUploadStorageUnavailableError) {
+        return postReportUploadMultipart(token, workflowId, files, privacyConsent);
+      }
+      throw e;
+    }
+  }
+  return postReportUploadMultipart(token, workflowId, files, privacyConsent);
 }

@@ -20,6 +20,7 @@ from services.workflow.workflow_event_service import record_event_tx
 _log = logging.getLogger(__name__)
 
 JOB_TYPE_LETTER_GENERATION = "letter_generation"
+JOB_TYPE_REPORT_UPLOAD_PARSE = "report_upload_parse"
 
 STATUS_PENDING = "pending"
 STATUS_RUNNING = "running"
@@ -417,6 +418,11 @@ def public_job_view(d: Dict[str, Any]) -> Dict[str, Any]:
             return v.isoformat()
         return v
 
+    payload = d.get("payload") if isinstance(d.get("payload"), dict) else {}
+    jt = str(d.get("job_type") or "")
+    if jt == JOB_TYPE_REPORT_UPLOAD_PARSE:
+        payload = {k: v for k, v in payload.items() if k != "tempPdfPath"}
+
     return {
         "jobId": str(d.get("id", "")),
         "workflowId": str(d.get("workflow_id", "")),
@@ -424,7 +430,7 @@ def public_job_view(d: Dict[str, Any]) -> Dict[str, Any]:
         "status": d.get("status"),
         "attemptCount": d.get("attempt_count"),
         "maxAttempts": d.get("max_attempts"),
-        "payload": d.get("payload") if isinstance(d.get("payload"), dict) else {},
+        "payload": payload,
         "result": d.get("result") if isinstance(d.get("result"), dict) else None,
         "error": d.get("error"),
         "createdAt": ts(d.get("created_at")),

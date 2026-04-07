@@ -83,6 +83,10 @@ export type ReportUploadResponse = {
   reportIds: number[];
   fileSkips: unknown[];
   progression?: ProgressionPayload;
+  /** Background parse queued; poll ``GET .../workflows/{programWorkflowId}/jobs/{jobId}``. */
+  processing?: boolean;
+  jobId?: string;
+  programWorkflowId?: string;
 };
 
 export type FindingsResponse = {

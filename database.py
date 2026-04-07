@@ -264,6 +264,7 @@ def _init_database_inner():
                     ensure_organization_program_dispute_selections_table,
                     ensure_organization_program_enrollment_tables,
                     ensure_organization_program_progress_table,
+                    ensure_report_upload_sessions_table,
                     ensure_reports_program_link_columns,
                     ensure_response_intake_tables,
                     ensure_workflow_events_table,
@@ -283,6 +284,7 @@ def _init_database_inner():
                 ensure_reports_program_link_columns(conn)
                 ensure_organization_program_dispute_selections_table(conn)
                 ensure_organization_program_progress_table(conn)
+                ensure_report_upload_sessions_table(conn)
                 conn.commit()
             except Exception as _wf_e:
                 try:
@@ -706,6 +708,7 @@ def _init_database_ddl(pool, conn):
         from workflow_schema import (
             ensure_demo_leads_table,
             ensure_operations_tables,
+            ensure_report_upload_sessions_table,
             ensure_response_intake_tables,
             ensure_workflow_events_table,
             ensure_workflow_jobs_table,
@@ -718,6 +721,7 @@ def _init_database_ddl(pool, conn):
         ensure_response_intake_tables(conn)
         ensure_operations_tables(conn)
         ensure_demo_leads_table(conn)
+        ensure_report_upload_sessions_table(conn)
     except Exception as _wf_e:
         _logger.warning(
             "workflow schema ensure after full DDL failed (non-fatal): %s", _wf_e

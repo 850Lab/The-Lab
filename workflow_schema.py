@@ -123,6 +123,48 @@ def ensure_workflow_jobs_table(conn) -> None:
     cur.close()
 
 
+def ensure_report_upload_sessions_table(conn) -> None:
+    """
+    Direct-to-object-storage ingest: one row per presigned upload before finalize → job.
+
+    ``organization_id`` / ``organization_program_enrollment_id`` are set for org-program
+    uploads; optional FKs omitted so this table can be ensured early in bootstrap.
+    """
+    cur = conn.cursor()
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS report_upload_sessions (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            workflow_id UUID NOT NULL REFERENCES workflow_sessions(workflow_id) ON DELETE CASCADE,
+            kind VARCHAR(24) NOT NULL DEFAULT 'retail',
+            organization_id INTEGER,
+            organization_program_enrollment_id INTEGER,
+            bucket TEXT NOT NULL,
+            object_key TEXT NOT NULL UNIQUE,
+            status VARCHAR(32) NOT NULL DEFAULT 'pending_upload',
+            expires_at TIMESTAMP NOT NULL,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            finalized_at TIMESTAMP NULL,
+            metadata JSONB NOT NULL DEFAULT '{}'::jsonb
+        )
+        """
+    )
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_report_upload_sessions_user "
+        "ON report_upload_sessions(user_id, created_at DESC)"
+    )
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_report_upload_sessions_wf "
+        "ON report_upload_sessions(workflow_id)"
+    )
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_report_upload_sessions_status_expires "
+        "ON report_upload_sessions(status, expires_at)"
+    )
+    cur.close()
+
+
 def ensure_response_intake_tables(conn) -> None:
     """
     Persistent bureau/furnisher response records + classification outputs.

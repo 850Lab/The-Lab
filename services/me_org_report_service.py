@@ -120,6 +120,44 @@ def build_findings_payload(
     }
 
 
+def apply_org_report_upload_side_effects(
+    user_id: int,
+    organization_id: int,
+    enrollment_id: int,
+    parse_result: Dict[str, Any],
+    *,
+    audit_source: str = "api:me_report",
+) -> None:
+    """
+    After ``process_uploaded_reports`` for an org participant: advance ``org_program_v1`` steps.
+    No-op when the parse did not yield a stored report.
+    """
+    skips = parse_result.get("file_skips") or []
+    processed = int(parse_result.get("reports_processed") or 0)
+    ok = processed > 0 and len(skips) == 0
+    if not ok:
+        return
+    report_ids: List[int] = []
+    for _k, rep in (parse_result.get("uploaded_reports") or {}).items():
+        rid = rep.get("report_id")
+        if rid is not None:
+            report_ids.append(int(rid))
+    steps_done = ["orgprog_upload"]
+    if report_ids:
+        fp = build_findings_payload(user_id, report_id=report_ids[0])
+        if fp.get("processingStatus") == "complete":
+            steps_done.append("orgprog_findings_ready")
+    from services.org_program_workflow_service import advance_org_program_steps
+
+    advance_org_program_steps(
+        user_id,
+        organization_id,
+        enrollment_id,
+        steps_done,
+        audit_source=audit_source,
+    )
+
+
 def _inq_hard(inq: Any) -> bool:
     try:
         from services.report_metrics import is_hard_inquiry

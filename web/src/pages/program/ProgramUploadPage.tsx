@@ -1,6 +1,12 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { getMeProgress, postMeAnalyze, postMeReport } from "@/lib/orgProgramApi";
+import {
+  getMeProgress,
+  isOrgProgramAbortError,
+  pollMeReportParseJob,
+  postMeAnalyze,
+  postMeReport,
+} from "@/lib/orgProgramApi";
 import { PROGRAM_EYEBROW } from "@/lib/orgProgramRoutes";
 import { useAuth } from "@/providers/AuthContext";
 
@@ -11,11 +17,19 @@ export function ProgramUploadPage() {
   const [accessLoading, setAccessLoading] = useState(true);
   const [files, setFiles] = useState<File[]>([]);
   const [consent, setConsent] = useState(false);
-  const [busy, setBusy] = useState(false);
+  const [uploadBusy, setUploadBusy] = useState(false);
+  const [parseJob, setParseJob] = useState<{
+    jobId: string;
+    programWorkflowId: string;
+  } | null>(null);
   const [analyzeBusy, setAnalyzeBusy] = useState(false);
   const [reportId, setReportId] = useState<number | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
+
+  const parseBusy = parseJob != null;
+  /** Bumps each time a parse-poll effect run starts; ignores stale async completions (Strict Mode + navigation). */
+  const parsePollGenerationRef = useRef(0);
 
   useEffect(() => {
     if (!token) {
@@ -40,23 +54,68 @@ export function ProgramUploadPage() {
     };
   }, [token]);
 
+  useEffect(() => {
+    if (!token || !parseJob) return;
+    const runId = ++parsePollGenerationRef.current;
+    const ac = new AbortController();
+    void (async () => {
+      try {
+        const final = await pollMeReportParseJob(
+          token,
+          parseJob.programWorkflowId,
+          parseJob.jobId,
+          { signal: ac.signal },
+        );
+        if (runId !== parsePollGenerationRef.current) return;
+        setParseJob(null);
+        if (!final.ok || !final.reportIds?.length) {
+          setErr(
+            final.processingStatus === "failed"
+              ? "Upload could not be processed."
+              : "No report saved.",
+          );
+          return;
+        }
+        const rid = final.reportIds[0];
+        setReportId(rid);
+        setMsg("We have your report. One more step and we'll unpack what matters.");
+      } catch (e) {
+        if (isOrgProgramAbortError(e)) return;
+        if (runId !== parsePollGenerationRef.current) return;
+        setErr(e instanceof Error ? e.message : "Report processing failed");
+        setParseJob(null);
+      }
+    })();
+    return () => {
+      ac.abort();
+    };
+  }, [token, parseJob?.jobId, parseJob?.programWorkflowId]);
+
   const onUpload = async () => {
     if (!token || files.length === 0) return;
-    setBusy(true);
+    setUploadBusy(true);
     setErr(null);
     setMsg(null);
     try {
       const res = await postMeReport(token, files, consent);
+      setUploadBusy(false);
+
+      if (res.processing && res.jobId && res.programWorkflowId) {
+        setParseJob({ jobId: res.jobId, programWorkflowId: res.programWorkflowId });
+        return;
+      }
+
       if (!res.ok || !res.reportIds?.length) {
-        throw new Error(res.processingStatus === "failed" ? "Upload could not be processed." : "No report saved.");
+        throw new Error(
+          res.processingStatus === "failed" ? "Upload could not be processed." : "No report saved.",
+        );
       }
       const rid = res.reportIds[0];
       setReportId(rid);
       setMsg("We have your report. One more step and we'll unpack what matters.");
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Upload failed");
-    } finally {
-      setBusy(false);
+      setUploadBusy(false);
     }
   };
 
@@ -92,6 +151,16 @@ export function ProgramUploadPage() {
           {err}
         </div>
       )}
+      {parseBusy && (
+        <div
+          className="rounded-md border border-sky-500/35 bg-sky-500/10 p-3 text-sm text-sky-100"
+          role="status"
+          aria-live="polite"
+        >
+          Reading your PDF… This can take a minute for large files. You can stay on this page.
+        </div>
+      )}
+
       {msg && (
         <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-100">
           {msg}
@@ -162,11 +231,11 @@ export function ProgramUploadPage() {
 
         <button
           type="button"
-          disabled={files.length === 0 || !consent || busy}
+          disabled={files.length === 0 || !consent || uploadBusy || parseBusy}
           onClick={() => void onUpload()}
           className="mt-6 w-full rounded-md bg-lab-accent py-2.5 text-sm font-semibold text-slate-950 disabled:opacity-40 sm:w-auto sm:px-6"
         >
-          {busy ? "Uploading…" : "Upload report"}
+          {uploadBusy ? "Uploading…" : "Upload report"}
         </button>
       </div>
 

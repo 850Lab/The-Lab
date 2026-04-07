@@ -5,12 +5,12 @@ import react from "@vitejs/plugin-react";
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
-  // Default matches scripts/replit_deployment_entry.sh (uvicorn :5000). If you use
-  // `uvicorn ... --port 8000`, set WORKFLOW_API_PROXY_TARGET=http://127.0.0.1:8000 in web/.env.local
+  // Local dev: run `python -m uvicorn api.workflow_app:app --host 127.0.0.1 --port 8000` from repo root.
+  // Override in web/.env.local if your API uses another port.
   const proxyTarget =
     env.WORKFLOW_API_PROXY_TARGET?.trim() ||
     env.VITE_WORKFLOW_API_PROXY_TARGET?.trim() ||
-    "http://127.0.0.1:5000";
+    "http://127.0.0.1:8000";
 
   const workflowApiProxy = {
     target: proxyTarget,
@@ -32,7 +32,7 @@ export default defineConfig(({ mode }) => {
         const messageSafe = [
           `Workflow API proxy could not reach ${proxyTarget}.`,
           code === "ECONNREFUSED"
-            ? "Start the workflow server (e.g. python -m uvicorn api.workflow_app:app --host 127.0.0.1 --port 5000) or set WORKFLOW_API_PROXY_TARGET in web/.env.local to the URL where it is running."
+            ? "Start the workflow server (e.g. python -m uvicorn api.workflow_app:app --host 127.0.0.1 --port 8000) or set WORKFLOW_API_PROXY_TARGET in web/.env.local to the URL where it is running."
             : String((err as Error)?.message || err),
         ].join(" ");
         out.writeHead(502, { "Content-Type": "application/json" });
