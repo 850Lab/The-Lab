@@ -9,6 +9,12 @@ FROM node:20-bookworm-slim AS web-builder
 
 WORKDIR /app/web
 
+# Optional build-time vars for split API/static hosting (same-origin Docker deploy can omit).
+ARG VITE_WORKFLOW_API_URL=
+ARG VITE_PUBLIC_DEMO_SECRET=
+ENV VITE_WORKFLOW_API_URL=$VITE_WORKFLOW_API_URL
+ENV VITE_PUBLIC_DEMO_SECRET=$VITE_PUBLIC_DEMO_SECRET
+
 COPY web/package.json web/package-lock.json ./
 RUN npm ci
 

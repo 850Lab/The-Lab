@@ -1,7 +1,10 @@
 import { motion } from "framer-motion";
 import { useCallback, useState } from "react";
 import { Link } from "react-router-dom";
-import { PublicDemoInteractiveSection } from "@/components/PublicDemoInteractiveSection";
+import {
+  PublicDemoInteractiveSection,
+  type DemoSurfaceTheme,
+} from "@/components/PublicDemoInteractiveSection";
 import { TopBarMinimal } from "@/components/TopBarMinimal";
 import { WaitlistLeadForm } from "@/components/WaitlistLeadForm";
 import type { PublicDemoRunResult } from "@/lib/publicDemoTypes";
@@ -24,6 +27,8 @@ const heroItem = {
     transition: { duration: 0.5, ease: [0.22, 1, 0.36, 1] },
   },
 };
+
+const waitlistDemoSurface: DemoSurfaceTheme = "day";
 
 export function LandingWaitlist() {
   const { token, emailVerified } = useAuth();
@@ -117,11 +122,28 @@ export function LandingWaitlist() {
           </div>
         </motion.div>
 
-        <div className="mt-10 sm:mt-12">
+        {/* Visible demo section title: embeddedOnHome uses sr-only headings inside the component. */}
+        <div className="mx-auto mt-12 max-w-3xl text-center sm:mt-14">
+          <p
+            data-testid="waitlist-demo-eyebrow"
+            className="text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-500"
+          >
+            Live preview
+          </p>
+          <h2 className="mt-3 text-balance text-2xl font-bold tracking-tight text-neutral-950 sm:text-3xl">
+            Same engine — sample PDFs only
+          </h2>
+          <p className="mx-auto mt-3 max-w-xl text-pretty text-sm font-medium leading-relaxed text-neutral-600 sm:text-[15px]">
+            Run a real fixture through the live parser, priorities, letters, and 72-hour plan. Nothing
+            from your machine uploads here.
+          </p>
+        </div>
+
+        <div className="mt-8 sm:mt-10">
           <PublicDemoInteractiveSection
             onRunSuccess={handleRunSuccess}
             embeddedOnHome
-            surfaceTheme="day"
+            surfaceTheme={waitlistDemoSurface}
           />
         </div>
 

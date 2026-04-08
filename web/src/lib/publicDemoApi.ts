@@ -94,7 +94,7 @@ export function classifyPublicDemoScenariosError(e: unknown): PublicDemoUnavaila
     if (code === "PUBLIC_DEMO_UNAVAILABLE") {
       return {
         headline: "Interactive preview isn’t enabled on this server",
-        body: "The demo uses the same parsing, disputes, letters, and gameplan as members — but this deployment hasn’t turned on the public demo yet. You can still start with your own account and report.",
+        body: "The demo uses the same parsing, disputes, letters, and gameplan as members — but this host hasn’t enabled it yet. Operators: set PUBLIC_DEMO_ENABLED=1 on the API (e.g. Railway service variables) when ENVIRONMENT=production or REPLIT_DEPLOYMENT=1, then redeploy. Fixture PDFs ship in the repo under samples/.",
         technicalNote: msg,
         code,
         showOperatorDetails,
