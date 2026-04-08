@@ -47,6 +47,8 @@ import { ProgramOrgSetupPage } from "@/pages/program/ProgramOrgSetupPage";
 import { LaunchPreviewApp } from "@/pages/launch-preview/LaunchPreviewApp";
 import { LaunchPreviewDashboard } from "@/pages/launch-preview/LaunchPreviewDashboard";
 import { LaunchPreviewInspector } from "@/pages/launch-preview/LaunchPreviewInspector";
+import { WAITLIST_MODE } from "@/lib/productGates";
+import { LandingWaitlist } from "@/pages/LandingWaitlist";
 
 export default function App() {
   return (
@@ -56,7 +58,14 @@ export default function App() {
         {/** Legacy URL: same try-first home, scroll to interactive demo. */}
         <Route
           path="/demo"
-          element={<Navigate to={{ pathname: "/", hash: "live-demo" }} replace />}
+          element={
+            <Navigate
+              to={
+                WAITLIST_MODE ? "/waitlist" : { pathname: "/", hash: "live-demo" }
+              }
+              replace
+            />
+          }
         />
 
         {/**
@@ -94,6 +103,16 @@ export default function App() {
           }
         >
           <Route index element={<HomeGate />} />
+          <Route
+            path="waitlist"
+            element={
+              WAITLIST_MODE ? (
+                <LandingWaitlist />
+              ) : (
+                <Navigate to="/" replace />
+              )
+            }
+          />
           <Route path="login" element={<LoginPage />} />
           <Route path="forgot-password" element={<ForgotPasswordPage />} />
           <Route path="signup" element={<SignupPage />} />

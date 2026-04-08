@@ -5,19 +5,13 @@ import {
   isEscalationPath,
   isOrgProgramPath,
 } from "@/lib/workflowStepRoutes";
+import {
+  publicUnauthPaths,
+  signedOutAuthEntryPath,
+  WAITLIST_MODE,
+} from "@/lib/productGates";
 import { useAuth } from "@/providers/AuthContext";
 import { useCustomerWorkflow } from "@/providers/CustomerWorkflowContext";
-
-/** Signed-out users can open the pre-upload funnel without an account. */
-const PUBLIC_UNAUTH_PATHS = new Set([
-  "/",
-  "/login",
-  "/signup",
-  "/forgot-password",
-  "/get-report",
-  "/get-report/idiq",
-  "/upload",
-]);
 const VERIFY_EMAIL_PATH = "/verify-email";
 
 /** Logged-in + verified but no workflow yet: same pre-workflow pages as guests. */
@@ -47,8 +41,14 @@ export function CustomerWorkflowShell() {
   }
 
   if (!auth.token) {
-    if (!PUBLIC_UNAUTH_PATHS.has(path)) {
-      return <Navigate to="/login" replace state={{ from: path }} />;
+    if (!publicUnauthPaths().has(path)) {
+      return (
+        <Navigate
+          to={signedOutAuthEntryPath()}
+          replace
+          state={{ from: path }}
+        />
+      );
     }
     return <Outlet />;
   }
@@ -63,7 +63,9 @@ export function CustomerWorkflowShell() {
   if (
     auth.token &&
     auth.emailVerified &&
-    (path === "/login" || path === "/signup")
+    (path === "/login" ||
+      path === "/signup" ||
+      (WAITLIST_MODE && path === "/waitlist"))
   ) {
     if (ctx.workflowId) {
       return <Navigate to={ctx.canonicalCustomerPath} replace />;

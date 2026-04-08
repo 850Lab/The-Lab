@@ -4,6 +4,7 @@ import { Link, useLocation } from "react-router-dom";
 import { TopBarMinimal } from "@/components/TopBarMinimal";
 import { LaunchHubNavLink } from "@/components/LaunchHubNavLink";
 import { authForgotPassword, authResetPassword } from "@/lib/authApi";
+import { WAITLIST_MODE, signedOutReturnHref } from "@/lib/productGates";
 
 function signupStylePasswordErrors(password: string): string | null {
   if (password.length < 8) return "Password must be at least 8 characters.";
@@ -103,13 +104,15 @@ export function ForgotPasswordPage() {
         {done ? (
           <div className="mt-8 space-y-4">
             <p className="rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-100/95">
-              Your password was updated. You can sign in with the new password.
+              {WAITLIST_MODE
+                ? "Your password was updated. Use the new password the next time you sign in."
+                : "Your password was updated. You can sign in with the new password."}
             </p>
             <Link
-              to={`/login${search}`}
+              to={signedOutReturnHref(search)}
               className="block w-full rounded-lg bg-lab-accent py-2.5 text-center text-sm font-semibold text-white"
             >
-              Back to sign in
+              {WAITLIST_MODE ? "Return to waitlist" : "Back to sign in"}
             </Link>
           </div>
         ) : step === "email" ? (
@@ -242,10 +245,10 @@ export function ForgotPasswordPage() {
         {!done ? (
           <p className="mt-6 text-center text-sm text-lab-muted">
             <Link
-              to={`/login${search}`}
+              to={signedOutReturnHref(search)}
               className="font-medium text-lab-accent hover:text-sky-300"
             >
-              Back to sign in
+              {WAITLIST_MODE ? "Return to waitlist" : "Back to sign in"}
             </Link>
           </p>
         ) : null}

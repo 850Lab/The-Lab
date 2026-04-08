@@ -1,13 +1,22 @@
 import { motion } from "framer-motion";
 import { Link } from "react-router-dom";
+import { WAITLIST_MODE } from "@/lib/productGates";
 import { useAuth } from "@/providers/AuthContext";
 
 type TopBarMinimalProps = {
   /** Hide “Live demo” when the current page already is the demo (home). */
   hideLiveDemoLink?: boolean;
+  /**
+   * Reserved for light marketing shells; styling may be expanded in a separate change.
+   * Accepted now so in-progress pages type-check without affecting default chrome.
+   */
+  variant?: "dark" | "light";
 };
 
-export function TopBarMinimal({ hideLiveDemoLink = false }: TopBarMinimalProps) {
+export function TopBarMinimal({
+  hideLiveDemoLink = false,
+  variant: _variant = "dark",
+}: TopBarMinimalProps) {
   const { token, user, signOut } = useAuth();
 
   return (
@@ -25,7 +34,7 @@ export function TopBarMinimal({ hideLiveDemoLink = false }: TopBarMinimalProps) 
           850 Lab
         </Link>
         <div className="flex min-w-0 items-center gap-3 text-sm sm:gap-4">
-          {!hideLiveDemoLink ? (
+          {!hideLiveDemoLink && !WAITLIST_MODE ? (
             <Link
               to={{ pathname: "/", hash: "live-demo" }}
               className="shrink-0 text-xs font-medium text-lab-accent hover:text-sky-300 sm:text-sm"
@@ -55,6 +64,13 @@ export function TopBarMinimal({ hideLiveDemoLink = false }: TopBarMinimalProps) 
                 Sign out
               </button>
             </>
+          ) : WAITLIST_MODE ? (
+            <Link
+              to="/waitlist"
+              className="font-medium text-lab-accent hover:text-sky-300"
+            >
+              Waitlist
+            </Link>
           ) : (
             <Link
               to="/login"
