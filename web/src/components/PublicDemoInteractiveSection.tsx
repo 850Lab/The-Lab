@@ -58,6 +58,11 @@ const slideBodyMax =
 const innerSection =
   "rounded-lg border border-white/[0.06] bg-lab-bg/20 px-4 py-4 sm:px-5 sm:py-5";
 
+const innerSectionDay =
+  "rounded-lg border border-neutral-200/80 bg-neutral-50/90 px-4 py-4 sm:px-5 sm:py-5";
+
+export type DemoSurfaceTheme = "night" | "day";
+
 /** Longer copy for expanded priority detail. */
 const REVIEW_TYPE_LABELS: Record<string, string> = {
   identity_verification: "Personal information to fix",
@@ -107,33 +112,46 @@ function DemoUnavailablePanel({
   onRetry,
   embeddedOnHome,
   panelClassName,
+  surfaceTheme = "night",
 }: {
   copy: PublicDemoUnavailableCopy;
   onRetry: () => void;
   embeddedOnHome?: boolean;
   panelClassName?: string;
+  surfaceTheme?: DemoSurfaceTheme;
 }) {
+  const day = surfaceTheme === "day";
+  const fg = day ? "text-neutral-950" : "text-lab-text";
+  const muted = day ? "text-neutral-600" : "text-lab-muted";
+  const subtle = day ? "text-neutral-500" : "text-lab-subtle";
+  const techBox = day
+    ? "mx-auto mt-4 max-w-lg rounded-lg border border-neutral-200/90 bg-neutral-50 px-3 py-2 text-left text-xs leading-relaxed text-neutral-600"
+    : "mx-auto mt-4 max-w-lg rounded-lg border border-white/[0.06] bg-lab-bg/50 px-3 py-2 text-left text-xs leading-relaxed text-lab-subtle";
+  const defaultPanel = day
+    ? "mt-8 rounded-2xl border border-neutral-200/90 bg-white px-6 py-10 text-center shadow-lg shadow-neutral-900/5"
+    : "mt-8 rounded-2xl border border-white/[0.08] bg-lab-surface/80 px-6 py-10 text-center shadow-lg shadow-black/20";
   return (
-    <div
-      className={
-        panelClassName ??
-        "mt-8 rounded-2xl border border-white/[0.08] bg-lab-surface/80 px-6 py-10 text-center shadow-lg shadow-black/20"
-      }
-    >
-      <p className="text-lg font-semibold text-lab-text">{copy.headline}</p>
-      <p className="mx-auto mt-3 max-w-md text-sm leading-relaxed text-lab-muted">{copy.body}</p>
+    <div className={panelClassName ?? defaultPanel}>
+      <p className={`text-lg font-semibold ${fg}`}>{copy.headline}</p>
+      <p className={`mx-auto mt-3 max-w-md text-sm leading-relaxed ${muted}`}>{copy.body}</p>
       {copy.technicalNote ? (
-        <p className="mx-auto mt-4 max-w-lg rounded-lg border border-white/[0.06] bg-lab-bg/50 px-3 py-2 text-left text-xs leading-relaxed text-lab-subtle">
-          <span className="font-medium text-lab-muted">Server message: </span>
+        <p className={techBox}>
+          <span className={`font-medium ${muted}`}>Server message: </span>
           {copy.technicalNote}
         </p>
       ) : null}
       {copy.showOperatorDetails ? (
         <details className="mx-auto mt-5 max-w-lg text-left">
-          <summary className="cursor-pointer text-sm font-medium text-lab-accent hover:text-sky-300">
+          <summary
+            className={
+              day
+                ? "cursor-pointer text-sm font-medium text-neutral-800 hover:text-neutral-950"
+                : "cursor-pointer text-sm font-medium text-lab-accent hover:text-sky-300"
+            }
+          >
             For site operators (enable the live demo)
           </summary>
-          <ul className="mt-3 list-disc space-y-2 pl-5 text-xs leading-relaxed text-lab-subtle">
+          <ul className={`mt-3 list-disc space-y-2 pl-5 text-xs leading-relaxed ${subtle}`}>
             <li>
               By default the API auto-creates a system demo user on first run (no{" "}
               <code className="text-violet-200/90">PUBLIC_DEMO_USER_ID</code> required). Optionally set{" "}
@@ -165,26 +183,45 @@ function DemoUnavailablePanel({
         <Link
           to={buildProgramSignupHref()}
           onClick={() => writeDemoProgramBridge({ source: "demo_unavailable" })}
-          className="rounded-lg bg-lab-accent py-3 text-center text-sm font-semibold text-white shadow-md shadow-lab-accent/20 hover:bg-sky-500"
+          className={
+            day
+              ? "rounded-lg bg-neutral-950 py-3 text-center text-sm font-semibold text-white shadow-md shadow-neutral-900/15 hover:bg-neutral-800"
+              : "rounded-lg bg-lab-accent py-3 text-center text-sm font-semibold text-white shadow-md shadow-lab-accent/20 hover:bg-sky-500"
+          }
         >
           Continue with your account
         </Link>
         <button
           type="button"
           onClick={() => onRetry()}
-          className="rounded-lg border border-white/[0.12] py-3 text-sm font-medium text-lab-text hover:bg-white/[0.04]"
+          className={
+            day
+              ? "rounded-lg border border-neutral-200/90 py-3 text-sm font-medium text-neutral-950 hover:bg-neutral-50"
+              : "rounded-lg border border-white/[0.12] py-3 text-sm font-medium text-lab-text hover:bg-white/[0.04]"
+          }
         >
           Try again
         </button>
         {SUPPORT_EMAIL ? (
           <a
             href={`mailto:${SUPPORT_EMAIL}?subject=850%20Lab%20demo`}
-            className="text-center text-sm font-medium text-lab-accent hover:text-sky-300"
+            className={
+              day
+                ? "text-center text-sm font-medium text-neutral-700 hover:text-neutral-950"
+                : "text-center text-sm font-medium text-lab-accent hover:text-sky-300"
+            }
           >
             Contact us
           </a>
         ) : embeddedOnHome ? null : (
-          <Link to="/" className="text-center text-sm font-medium text-lab-muted hover:text-lab-accent">
+          <Link
+            to="/"
+            className={
+              day
+                ? "text-center text-sm font-medium text-neutral-500 hover:text-neutral-900"
+                : "text-center text-sm font-medium text-lab-muted hover:text-lab-accent"
+            }
+          >
             Back to home
           </Link>
         )}
@@ -196,6 +233,8 @@ function DemoUnavailablePanel({
 export type PublicDemoInteractiveSectionProps = {
   onRunSuccess?: (result: PublicDemoRunResult) => void;
   embeddedOnHome?: boolean;
+  /** `day` = white marketing shell (landing). Default `night` matches app dark UI. */
+  surfaceTheme?: DemoSurfaceTheme;
 };
 
 type ResultsPane = "analysis" | "gameplan";
@@ -203,7 +242,22 @@ type ResultsPane = "analysis" | "gameplan";
 export function PublicDemoInteractiveSection({
   onRunSuccess,
   embeddedOnHome,
+  surfaceTheme = "night",
 }: PublicDemoInteractiveSectionProps) {
+  const day = surfaceTheme === "day";
+  const slideShellDay =
+    "mx-auto flex w-full max-w-6xl flex-col min-h-0 rounded-2xl border border-neutral-200/90 bg-white p-6 shadow-[0_28px_80px_-36px_rgba(15,23,42,0.18)] sm:p-8";
+  const shellClass = day ? slideShellDay : slideShell;
+  const innerClass = day ? innerSectionDay : innerSection;
+  const fg = day ? "text-neutral-950" : "text-lab-text";
+  const muted = day ? "text-neutral-600" : "text-lab-muted";
+  const subtle = day ? "text-neutral-500" : "text-lab-subtle";
+  const primaryBtn = day
+    ? "w-full rounded-xl bg-neutral-950 py-3.5 text-[15px] font-semibold text-white shadow-lg shadow-neutral-900/15 outline-none transition-transform focus-visible:ring-2 focus-visible:ring-neutral-400/50 active:scale-[0.99] disabled:opacity-45"
+    : "w-full rounded-xl bg-lab-accent py-3.5 text-[15px] font-semibold text-white shadow-xl shadow-lab-accent/25 outline-none transition-transform focus-visible:ring-2 focus-visible:ring-lab-accent/40 active:scale-[0.99] disabled:opacity-45";
+  const linkAccent = day
+    ? "font-medium text-neutral-800 underline-offset-2 hover:text-neutral-950 hover:underline"
+    : "font-medium text-lab-accent hover:text-sky-300";
   const [scenarios, setScenarios] = useState<PublicDemoScenario[]>([]);
   const [demoUnavailable, setDemoUnavailable] = useState<PublicDemoUnavailableCopy | null>(null);
   const [scenariosLoading, setScenariosLoading] = useState(true);
@@ -309,10 +363,17 @@ export function PublicDemoInteractiveSection({
       className="relative scroll-mt-28"
       aria-label="Interactive scenario demo"
     >
-      <div
-        className="pointer-events-none absolute left-1/2 top-[20%] z-0 h-[min(70vw,420px)] w-[min(70vw,420px)] -translate-x-1/2 -translate-y-1/2 rounded-full bg-lab-accent/[0.07] blur-[100px]"
-        aria-hidden
-      />
+      {!day ? (
+        <div
+          className="pointer-events-none absolute left-1/2 top-[20%] z-0 h-[min(70vw,420px)] w-[min(70vw,420px)] -translate-x-1/2 -translate-y-1/2 rounded-full bg-lab-accent/[0.07] blur-[100px]"
+          aria-hidden
+        />
+      ) : (
+        <div
+          className="pointer-events-none absolute left-1/2 top-[18%] z-0 h-[min(72vw,440px)] w-[min(72vw,440px)] -translate-x-1/2 -translate-y-1/2 rounded-full bg-gradient-to-br from-neutral-200/30 to-transparent blur-[90px]"
+          aria-hidden
+        />
+      )}
 
       <div className="relative z-10 mx-auto w-full max-w-6xl px-0 sm:px-2">
         {embeddedOnHome ? (
@@ -350,8 +411,8 @@ export function PublicDemoInteractiveSection({
         )}
 
         <div className={embeddedOnHome ? "mt-0 md:mt-1" : "mt-8 md:mt-10"}>
-          <div data-testid="demo-slide-deck" className={`${slideShell} ${slideBodyMax}`}>
-            <h3 className="shrink-0 text-center text-lg font-semibold text-lab-text sm:text-xl">
+          <div data-testid="demo-slide-deck" className={`${shellClass} ${slideBodyMax}`}>
+            <h3 className={`shrink-0 text-center text-lg font-semibold sm:text-xl ${fg}`}>
               Start the demo
             </h3>
 
@@ -368,7 +429,12 @@ export function PublicDemoInteractiveSection({
                         copy={demoUnavailable}
                         onRetry={() => void loadScenarios()}
                         embeddedOnHome={embeddedOnHome}
-                        panelClassName="mt-2 rounded-xl border border-white/[0.06] bg-lab-bg/30 px-4 py-6 text-center"
+                        surfaceTheme={surfaceTheme}
+                        panelClassName={
+                          day
+                            ? "mt-2 rounded-xl border border-neutral-200/90 bg-neutral-50 px-4 py-6 text-center"
+                            : "mt-2 rounded-xl border border-white/[0.06] bg-lab-bg/30 px-4 py-6 text-center"
+                        }
                       />
                     ) : null}
 
@@ -377,12 +443,17 @@ export function PublicDemoInteractiveSection({
                         copy={noScenariosPanel}
                         onRetry={() => void loadScenarios()}
                         embeddedOnHome={embeddedOnHome}
-                        panelClassName="mt-2 rounded-xl border border-white/[0.06] bg-lab-bg/30 px-4 py-6 text-center"
+                        surfaceTheme={surfaceTheme}
+                        panelClassName={
+                          day
+                            ? "mt-2 rounded-xl border border-neutral-200/90 bg-neutral-50 px-4 py-6 text-center"
+                            : "mt-2 rounded-xl border border-white/[0.06] bg-lab-bg/30 px-4 py-6 text-center"
+                        }
                       />
                     ) : null}
 
                     {scenariosLoading ? (
-                      <p className="mt-6 text-center text-sm text-lab-muted" role="status">
+                      <p className={`mt-6 text-center text-sm ${muted}`} role="status">
                         Loading scenarios…
                       </p>
                     ) : null}
@@ -394,13 +465,13 @@ export function PublicDemoInteractiveSection({
                           data-testid="demo-generate-preview-button"
                           onClick={() => void runDemo()}
                           disabled={running}
-                          className="w-full rounded-xl bg-lab-accent py-3.5 text-[15px] font-semibold text-white shadow-xl shadow-lab-accent/25 outline-none transition-transform focus-visible:ring-2 focus-visible:ring-lab-accent/40 active:scale-[0.99] disabled:opacity-45"
+                          className={primaryBtn}
                         >
                           Generate demo preview
                         </button>
 
                         <div>
-                          <p className="mb-3 text-center text-xs font-medium uppercase tracking-wide text-lab-subtle">
+                          <p className={`mb-3 text-center text-xs font-medium uppercase tracking-wide ${subtle}`}>
                             Choose a scenario
                           </p>
                           <div
@@ -414,10 +485,16 @@ export function PublicDemoInteractiveSection({
                               return (
                                 <label
                                   key={s.scenarioId}
-                                  className={`flex cursor-pointer flex-col rounded-xl border bg-lab-bg/25 p-3 text-left transition-colors focus-within:ring-2 focus-within:ring-lab-accent/40 ${
-                                    selected
-                                      ? "border-lab-accent/50 bg-lab-accent/10 ring-1 ring-lab-accent/35"
-                                      : "border-white/[0.08] hover:border-white/[0.14]"
+                                  className={`flex cursor-pointer flex-col rounded-xl border p-3 text-left transition-colors focus-within:ring-2 ${
+                                    day
+                                      ? selected
+                                        ? "border-neutral-400 bg-neutral-100 ring-1 ring-neutral-300/80 focus-within:ring-neutral-400/50"
+                                        : "border-neutral-200/90 bg-white hover:border-neutral-300 focus-within:ring-neutral-400/40"
+                                      : `bg-lab-bg/25 focus-within:ring-lab-accent/40 ${
+                                          selected
+                                            ? "border-lab-accent/50 bg-lab-accent/10 ring-1 ring-lab-accent/35"
+                                            : "border-white/[0.08] hover:border-white/[0.14]"
+                                        }`
                                   }`}
                                 >
                                   <input
@@ -428,14 +505,20 @@ export function PublicDemoInteractiveSection({
                                     onChange={() => setSelectedId(s.scenarioId)}
                                   />
                                   {s.categoryLabel ? (
-                                    <span className="mb-2 inline-block w-fit rounded-full border border-white/[0.1] bg-white/[0.04] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-lab-subtle">
+                                    <span
+                                      className={`mb-2 inline-block w-fit rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+                                        day
+                                          ? "border-neutral-200/90 bg-neutral-100 text-neutral-500"
+                                          : "border-white/[0.1] bg-white/[0.04] text-lab-subtle"
+                                      }`}
+                                    >
                                       {s.categoryLabel}
                                     </span>
                                   ) : null}
-                                  <span className="text-sm font-semibold leading-snug text-lab-text">
+                                  <span className={`text-sm font-semibold leading-snug ${fg}`}>
                                     {s.title}
                                   </span>
-                                  <p className="mt-2 flex-1 text-xs leading-relaxed text-lab-muted">
+                                  <p className={`mt-2 flex-1 text-xs leading-relaxed ${muted}`}>
                                     {s.description}
                                   </p>
                                 </label>
@@ -445,9 +528,15 @@ export function PublicDemoInteractiveSection({
                         </div>
 
                         {runError ? (
-                          <div className="rounded-xl border border-red-400/20 bg-red-500/10 px-4 py-4 text-center">
-                            <p className="text-sm font-medium text-lab-text">Couldn&apos;t finish this run</p>
-                            <p className="mt-2 text-sm text-lab-muted">
+                          <div
+                            className={
+                              day
+                                ? "rounded-xl border border-red-200/90 bg-red-50 px-4 py-4 text-center"
+                                : "rounded-xl border border-red-400/20 bg-red-500/10 px-4 py-4 text-center"
+                            }
+                          >
+                            <p className={`text-sm font-medium ${fg}`}>Couldn&apos;t finish this run</p>
+                            <p className={`mt-2 text-sm ${muted}`}>
                               Try again in a moment. If it keeps happening, use the form below and we&apos;ll
                               help.
                             </p>
@@ -457,7 +546,7 @@ export function PublicDemoInteractiveSection({
                                 setRunError(null);
                                 void runDemo();
                               }}
-                              className="mt-4 text-sm font-medium text-lab-accent hover:text-sky-300"
+                              className={`mt-4 text-sm font-medium ${day ? "text-neutral-900 underline-offset-2 hover:underline" : "text-lab-accent hover:text-sky-300"}`}
                             >
                               Try again
                             </button>
@@ -471,7 +560,7 @@ export function PublicDemoInteractiveSection({
                     scenarios.length > 0 &&
                     !demoUnavailable ? (
                       <p
-                        className="mt-4 text-center text-[10px] leading-snug text-lab-subtle/70"
+                        className={`mt-4 text-center text-[10px] leading-snug ${day ? "text-neutral-400" : "text-lab-subtle/70"}`}
                         title="Scenario titles come from this server. If copy looks old, this URL is not your updated API or repo."
                       >
                         Dev: scenarios from <span className="font-mono">{workflowApiBase()}</span>
@@ -488,7 +577,11 @@ export function PublicDemoInteractiveSection({
                     {...slideMotion}
                   >
                     <div
-                      className="h-14 w-14 animate-pulse rounded-full border-2 border-lab-accent/30 border-t-lab-accent"
+                      className={
+                        day
+                          ? "h-14 w-14 animate-pulse rounded-full border-2 border-neutral-200 border-t-neutral-800"
+                          : "h-14 w-14 animate-pulse rounded-full border-2 border-lab-accent/30 border-t-lab-accent"
+                      }
                       aria-hidden
                     />
                     <AnimatePresence mode="wait">
@@ -497,12 +590,12 @@ export function PublicDemoInteractiveSection({
                         initial={{ opacity: 0, y: 6 }}
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: -4 }}
-                        className="mt-10 max-w-md px-4 text-center text-sm leading-relaxed text-lab-muted"
+                        className={`mt-10 max-w-md px-4 text-center text-sm leading-relaxed ${muted}`}
                       >
                         {LOADING_PHASES[phaseIdx]}
                       </motion.p>
                     </AnimatePresence>
-                    <p className="mt-4 max-w-sm px-4 text-center text-xs text-lab-subtle">
+                    <p className={`mt-4 max-w-sm px-4 text-center text-xs ${subtle}`}>
                       Your results and gameplan will appear on the next step — usually under a minute.
                     </p>
                   </motion.div>
@@ -515,11 +608,15 @@ export function PublicDemoInteractiveSection({
                     {...slideMotion}
                   >
                     <div className="flex shrink-0 flex-col items-center gap-2 sm:flex-row sm:justify-center sm:gap-3">
-                      <span className="text-[10px] font-medium uppercase tracking-wider text-lab-subtle">
+                      <span className={`text-[10px] font-medium uppercase tracking-wider ${subtle}`}>
                         View
                       </span>
                       <div
-                        className="inline-flex rounded-lg border border-white/[0.08] bg-lab-bg/30 p-0.5"
+                        className={
+                          day
+                            ? "inline-flex rounded-lg border border-neutral-200/90 bg-neutral-100/80 p-0.5"
+                            : "inline-flex rounded-lg border border-white/[0.08] bg-lab-bg/30 p-0.5"
+                        }
                         role="tablist"
                         aria-label="Results view"
                       >
@@ -531,8 +628,12 @@ export function PublicDemoInteractiveSection({
                           onClick={() => setResultsPane("analysis")}
                           className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
                             resultsPane === "analysis"
-                              ? "bg-white/[0.08] text-lab-text"
-                              : "text-lab-muted hover:text-lab-text"
+                              ? day
+                                ? "bg-white text-neutral-950 shadow-sm"
+                                : "bg-white/[0.08] text-lab-text"
+                              : day
+                                ? "text-neutral-600 hover:text-neutral-950"
+                                : "text-lab-muted hover:text-lab-text"
                           }`}
                         >
                           Analysis
@@ -545,8 +646,12 @@ export function PublicDemoInteractiveSection({
                           onClick={() => setResultsPane("gameplan")}
                           className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
                             resultsPane === "gameplan"
-                              ? "bg-white/[0.08] text-lab-text"
-                              : "text-lab-muted hover:text-lab-text"
+                              ? day
+                                ? "bg-white text-neutral-950 shadow-sm"
+                                : "bg-white/[0.08] text-lab-text"
+                              : day
+                                ? "text-neutral-600 hover:text-neutral-950"
+                                : "text-lab-muted hover:text-lab-text"
                           }`}
                         >
                           Gameplan
@@ -557,39 +662,53 @@ export function PublicDemoInteractiveSection({
                     <div className="mt-4 min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1">
                       {resultsPane === "analysis" ? (
                         <div data-testid="demo-results-analysis-pane">
-                          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-emerald-400/90">
+                          <p
+                            className={
+                              day
+                                ? "text-[10px] font-semibold uppercase tracking-[0.12em] text-neutral-600"
+                                : "text-[10px] font-semibold uppercase tracking-[0.12em] text-emerald-400/90"
+                            }
+                          >
                             Analysis &amp; findings
                           </p>
                           {result.partial ? (
-                            <p className="mt-2 rounded-lg border border-amber-400/25 bg-amber-500/10 px-3 py-2 text-xs text-amber-100/90">
+                            <p
+                              className={
+                                day
+                                  ? "mt-2 rounded-lg border border-amber-200/80 bg-amber-50 px-3 py-2 text-xs text-amber-900/90"
+                                  : "mt-2 rounded-lg border border-amber-400/25 bg-amber-500/10 px-3 py-2 text-xs text-amber-100/90"
+                              }
+                            >
                               Partial output (e.g. letters or payment step) — still from the live pipeline.
                             </p>
                           ) : null}
                           <div className="mt-4 grid grid-cols-1 gap-5 lg:grid-cols-2 lg:gap-6">
                             <div className="min-w-0 space-y-4">
-                              <section className={innerSection}>
-                                <h4 className="text-sm font-semibold text-lab-text">What showed up on the report</h4>
-                                <p className="mt-1 text-[11px] text-lab-subtle">
+                              <section className={innerClass}>
+                                <h4 className={`text-sm font-semibold ${fg}`}>What showed up on the report</h4>
+                                <p className={`mt-1 text-[11px] ${subtle}`}>
                                   {result.scenarioTitle || result.scenarioId}
                                 </p>
                                 {result.message ? (
-                                  <p className="mt-2 text-sm text-amber-200/90">{result.message}</p>
+                                  <p className={day ? "mt-2 text-sm text-amber-800" : "mt-2 text-sm text-amber-200/90"}>
+                                    {result.message}
+                                  </p>
                                 ) : null}
                                 {result.intake ? (
-                                  <ul className="mt-3 space-y-2 text-sm text-lab-muted">
+                                  <ul className={`mt-3 space-y-2 text-sm ${muted}`}>
                                     <li>
-                                      <span className="font-medium text-lab-text">
+                                      <span className={`font-medium ${fg}`}>
                                         {result.intake.aggregates.reportCount}
                                       </span>{" "}
                                       bureau report(s) ·{" "}
-                                      <span className="font-medium text-lab-text">
+                                      <span className={`font-medium ${fg}`}>
                                         {result.intake.reviewClaimsCount}
                                       </span>{" "}
                                       items for review
                                     </li>
                                     <li>
                                       Accounts referenced:{" "}
-                                      <span className="font-medium text-lab-text">
+                                      <span className={`font-medium ${fg}`}>
                                         {result.intake.aggregates.totalAccountsExtracted}
                                       </span>
                                     </li>
@@ -597,14 +716,16 @@ export function PublicDemoInteractiveSection({
                                 ) : null}
                               </section>
                               {result.strategy ? (
-                                <section className={innerSection}>
-                                  <h4 className="text-sm font-semibold text-lab-text">What we&apos;d tackle first</h4>
-                                  <p className="mt-2 text-sm leading-relaxed text-lab-muted">
+                                <section className={innerClass}>
+                                  <h4 className={`text-sm font-semibold ${fg}`}>What we&apos;d tackle first</h4>
+                                  <p className={`mt-2 text-sm leading-relaxed ${muted}`}>
                                     {result.strategy.roundSummary || result.strategy.rationale}
                                   </p>
                                   {result.strategy.perClaim.length ? (
-                                    <div className="mt-4 border-t border-white/[0.06] pt-3">
-                                      <p className="text-[11px] text-lab-subtle">
+                                    <div
+                                      className={`mt-4 border-t pt-3 ${day ? "border-neutral-200/80" : "border-white/[0.06]"}`}
+                                    >
+                                      <p className={`text-[11px] ${subtle}`}>
                                         Tap a tag for more on why it&apos;s prioritized.
                                       </p>
                                       <div className="mt-2 flex flex-wrap gap-2">
@@ -623,10 +744,14 @@ export function PublicDemoInteractiveSection({
                                                   cur === p.reviewClaimId ? null : p.reviewClaimId,
                                                 )
                                               }
-                                              className={`rounded-full border px-3 py-1.5 text-left text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-lab-accent/40 ${
-                                                open
-                                                  ? "border-lab-accent/60 bg-lab-accent/15 text-lab-text"
-                                                  : "border-white/[0.12] bg-lab-bg/30 text-lab-muted hover:border-white/[0.2] hover:text-lab-text"
+                                              className={`rounded-full border px-3 py-1.5 text-left text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 ${
+                                                day
+                                                  ? open
+                                                    ? "border-neutral-400 bg-neutral-200/80 text-neutral-950 focus-visible:ring-neutral-400/50"
+                                                    : "border-neutral-200/90 bg-white text-neutral-600 hover:border-neutral-300 hover:text-neutral-950 focus-visible:ring-neutral-400/40"
+                                                  : open
+                                                    ? "border-lab-accent/60 bg-lab-accent/15 text-lab-text focus-visible:ring-lab-accent/40"
+                                                    : "border-white/[0.12] bg-lab-bg/30 text-lab-muted hover:border-white/[0.2] hover:text-lab-text focus-visible:ring-lab-accent/40"
                                               }`}
                                             >
                                               {priorityPillLabel(p)}
@@ -639,7 +764,11 @@ export function PublicDemoInteractiveSection({
                                           id={`demo-priority-detail-${expandedPriorityId}`}
                                           role="region"
                                           aria-labelledby={`demo-priority-trigger-${expandedPriorityId}`}
-                                          className="mt-3 rounded-lg border border-white/[0.08] bg-lab-bg/25 px-3 py-3"
+                                          className={
+                                            day
+                                              ? "mt-3 rounded-lg border border-neutral-200/90 bg-neutral-50 px-3 py-3"
+                                              : "mt-3 rounded-lg border border-white/[0.08] bg-lab-bg/25 px-3 py-3"
+                                          }
                                         >
                                           {(() => {
                                             const p = result.strategy?.perClaim.find(
@@ -647,7 +776,7 @@ export function PublicDemoInteractiveSection({
                                             );
                                             if (!p) return null;
                                             return (
-                                              <p className="text-sm leading-relaxed text-lab-text">
+                                              <p className={`text-sm leading-relaxed ${fg}`}>
                                                 {priorityDetailText(p)}
                                               </p>
                                             );
@@ -663,9 +792,12 @@ export function PublicDemoInteractiveSection({
                               <PublicDemoBureauLetterStrip
                                 letters={result.letters}
                                 onOpen={(L) => setPreview(L)}
+                                variant={day ? "light" : "dark"}
                               />
                               {result.letterGenerationNote ? (
-                                <p className="mt-3 text-xs text-amber-200/85">{result.letterGenerationNote}</p>
+                                <p className={day ? "mt-3 text-xs text-amber-800/90" : "mt-3 text-xs text-amber-200/85"}>
+                                  {result.letterGenerationNote}
+                                </p>
                               ) : null}
                             </div>
                           </div>
@@ -673,13 +805,17 @@ export function PublicDemoInteractiveSection({
                             type="button"
                             data-testid="demo-next-gameplan-button"
                             onClick={() => setResultsPane("gameplan")}
-                            className="mt-6 w-full rounded-xl bg-lab-accent py-3 text-sm font-semibold text-white shadow-lg shadow-lab-accent/20 sm:w-auto sm:min-w-[240px]"
+                            className={
+                              day
+                                ? "mt-6 w-full rounded-xl bg-neutral-950 py-3 text-sm font-semibold text-white shadow-lg shadow-neutral-900/15 sm:w-auto sm:min-w-[240px]"
+                                : "mt-6 w-full rounded-xl bg-lab-accent py-3 text-sm font-semibold text-white shadow-lg shadow-lab-accent/20 sm:w-auto sm:min-w-[240px]"
+                            }
                           >
                             Next: 72-hour gameplan
                           </button>
-                          <p className="mt-4 text-center text-xs leading-relaxed text-lab-muted">
+                          <p className={`mt-4 text-center text-xs leading-relaxed ${muted}`}>
                             When you&apos;re ready,{" "}
-                            <strong className="font-medium text-lab-text">tell us who you are below</strong>.
+                            <strong className={`font-medium ${fg}`}>tell us who you are below</strong>.
                           </p>
                         </div>
                       ) : (
@@ -688,11 +824,17 @@ export function PublicDemoInteractiveSection({
                             type="button"
                             data-testid="demo-back-analysis-button"
                             onClick={() => setResultsPane("analysis")}
-                            className="mb-4 self-start text-sm font-medium text-lab-accent hover:text-sky-300"
+                            className={linkAccent + " mb-4 self-start text-sm"}
                           >
                             Back to analysis
                           </button>
-                          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-emerald-400/90">
+                          <p
+                            className={
+                              day
+                                ? "text-[10px] font-semibold uppercase tracking-[0.12em] text-neutral-600"
+                                : "text-[10px] font-semibold uppercase tracking-[0.12em] text-emerald-400/90"
+                            }
+                          >
                             72-hour gameplan
                           </p>
                           <div
@@ -704,9 +846,10 @@ export function PublicDemoInteractiveSection({
                                 plan={result.creditCommandPlan}
                                 layout="publicDemoExpandable"
                                 scenarioHeadline={result.scenarioTitle || result.scenarioId}
+                                surfaceLight={day}
                               />
                             ) : (
-                              <p className="text-sm text-lab-muted">
+                              <p className={`text-sm ${muted}`}>
                                 No gameplan returned for this run — try again or continue with your account.
                               </p>
                             )}
@@ -716,17 +859,19 @@ export function PublicDemoInteractiveSection({
                     </div>
 
                     <div
-                      className="mt-4 flex shrink-0 flex-wrap items-center justify-center gap-x-2 gap-y-2 border-t border-white/[0.08] pt-4 text-sm"
+                      className={`mt-4 flex shrink-0 flex-wrap items-center justify-center gap-x-2 gap-y-2 border-t pt-4 text-sm ${
+                        day ? "border-neutral-200/80" : "border-white/[0.08]"
+                      }`}
                       data-testid="demo-start-card-results"
                     >
                       <button
                         type="button"
                         onClick={resetToWelcome}
-                        className="font-medium text-lab-accent hover:text-sky-300"
+                        className={day ? "font-semibold text-neutral-800 hover:text-neutral-950" : "font-medium text-lab-accent hover:text-sky-300"}
                       >
                         Try another scenario
                       </button>
-                      <span className="text-lab-subtle/80" aria-hidden>
+                      <span className={day ? "text-neutral-400/80" : "text-lab-subtle/80"} aria-hidden>
                         ·
                       </span>
                       <button
@@ -734,7 +879,11 @@ export function PublicDemoInteractiveSection({
                         data-testid="demo-run-again-button"
                         onClick={() => void runDemo()}
                         disabled={running}
-                        className="text-lab-muted underline-offset-2 hover:text-lab-accent hover:underline disabled:opacity-45"
+                        className={
+                          day
+                            ? `${muted} underline-offset-2 hover:text-neutral-950 hover:underline disabled:opacity-45`
+                            : "text-lab-muted underline-offset-2 hover:text-lab-accent hover:underline disabled:opacity-45"
+                        }
                       >
                         Run again with selected scenario
                       </button>
