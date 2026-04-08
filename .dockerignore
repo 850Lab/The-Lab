@@ -10,8 +10,9 @@ venv
 .env.*
 !.env.example
 node_modules
-# SPA built on Vercel; API container does not need Vite source or dist.
-web/
+# Web: source is needed for Docker multi-stage build; omit deps and host dist (built in image).
+web/node_modules
+web/dist
 playwright-report
 test-results
 .pytest_cache
