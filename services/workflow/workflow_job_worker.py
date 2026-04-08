@@ -15,7 +15,7 @@ import logging
 import os
 import threading
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from services.workflow.workflow_job_service import (
     JOB_TYPE_LETTER_GENERATION,
@@ -41,7 +41,7 @@ def _job_flow_preflight(job: Dict[str, Any]) -> Optional[str]:
     Before executing a job, apply the same customer flow gate as the enqueueing HTTP route.
     Returns a human-safe error string to fail the job with, or None if OK / no mapping.
     """
-    jt = str(job.get("job_type") or "")
+    jt = str(job.get("job_type") or "").strip()
     action_key = job_type_to_customer_action(jt)
     if not action_key:
         return None
@@ -278,6 +278,13 @@ def _execute_report_upload_parse(job: Dict[str, Any]) -> None:
     )
 
 
+# Single registry: DB `job_type` must match these keys (see workflow_job_service constants).
+_JOB_HANDLERS: Dict[str, Callable[[Dict[str, Any]], None]] = {
+    JOB_TYPE_LETTER_GENERATION: _execute_letter_generation,
+    JOB_TYPE_REPORT_UPLOAD_PARSE: _execute_report_upload_parse,
+}
+
+
 def _dispatch(job: Dict[str, Any]) -> None:
     jid = str(job["id"])
     pre_err = _job_flow_preflight(job)
@@ -285,12 +292,10 @@ def _dispatch(job: Dict[str, Any]) -> None:
         fail_job(jid, pre_err)
         return
 
-    jt = str(job.get("job_type") or "")
-    if jt == JOB_TYPE_LETTER_GENERATION:
-        _execute_letter_generation(job)
-        return
-    if jt == JOB_TYPE_REPORT_UPLOAD_PARSE:
-        _execute_report_upload_parse(job)
+    jt = str(job.get("job_type") or "").strip()
+    handler = _JOB_HANDLERS.get(jt)
+    if handler:
+        handler(job)
         return
 
     fail_job(jid, f"Unsupported job_type: {jt}")

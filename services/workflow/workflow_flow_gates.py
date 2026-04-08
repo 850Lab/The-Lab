@@ -649,9 +649,10 @@ def assert_customer_payment_continue_credits_allowed(workflow_id: str) -> bool:
 
 def job_type_to_customer_action(job_type: str) -> Optional[str]:
     """Map async job types to customer flow actions (preflight before execution)."""
-    if job_type == "letter_generation":
+    jt = (job_type or "").strip()
+    if jt == "letter_generation":
         return ACTION_LETTER_GENERATION_RUN
-    if job_type == "report_upload_parse":
+    if jt == "report_upload_parse":
         return ACTION_REPORT_PDF_UPLOAD
     return None
 
