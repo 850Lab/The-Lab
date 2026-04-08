@@ -5,13 +5,17 @@ import { test, expect } from "@playwright/test";
  * If you turn waitlist off, update this file accordingly.
  */
 test.describe("public marketing + auth entry (waitlist mode)", () => {
-  test("home shows waitlist hero and capture form", async ({ page }) => {
+  test("home shows waitlist hero, live demo, and capture form", async ({ page }) => {
     await page.goto("/");
     await expect(page.getByTestId("home-hero-headline")).toBeVisible();
     await expect(page.getByTestId("home-hero-headline")).toContainText(/Be first when/i);
     await expect(page.getByText("850 Lab").first()).toBeVisible();
+    await expect(page.locator("#live-demo")).toBeVisible();
+    await expect(page.getByTestId("live-demo-section")).toBeVisible();
+    await expect(page.getByTestId("demo-slide-deck")).toBeVisible();
+    const run = page.getByRole("button", { name: "Generate demo preview" });
+    await expect(run).toBeVisible();
     await expect(page.getByTestId("waitlist-form")).toBeVisible();
-    await expect(page.locator("#live-demo")).toHaveCount(0);
   });
 
   test("home: Waitlist in top bar goes to /waitlist; /signup redirects away", async ({
@@ -25,9 +29,10 @@ test.describe("public marketing + auth entry (waitlist mode)", () => {
     await expect(page).toHaveURL(/\/waitlist$/);
   });
 
-  test("/demo redirects to waitlist", async ({ page }) => {
+  test("/demo redirects to home with live-demo anchor", async ({ page }) => {
     await page.goto("/demo");
-    await expect(page).toHaveURL(/\/waitlist$/);
+    await expect(page).toHaveURL(/\/(#live-demo)?$/);
+    await expect(page.locator("#live-demo")).toBeVisible();
   });
 
   test("login URL redirects to waitlist when signed out", async ({ page }) => {

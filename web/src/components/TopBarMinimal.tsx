@@ -34,7 +34,7 @@ export function TopBarMinimal({
           850 Lab
         </Link>
         <div className="flex min-w-0 items-center gap-3 text-sm sm:gap-4">
-          {!hideLiveDemoLink && !WAITLIST_MODE ? (
+          {!hideLiveDemoLink ? (
             <Link
               to={{ pathname: "/", hash: "live-demo" }}
               className="shrink-0 text-xs font-medium text-lab-accent hover:text-sky-300 sm:text-sm"

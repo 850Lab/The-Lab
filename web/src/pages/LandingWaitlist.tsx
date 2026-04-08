@@ -1,7 +1,10 @@
 import { motion } from "framer-motion";
+import { useCallback, useState } from "react";
 import { Link } from "react-router-dom";
+import { PublicDemoInteractiveSection } from "@/components/PublicDemoInteractiveSection";
 import { TopBarMinimal } from "@/components/TopBarMinimal";
 import { WaitlistLeadForm } from "@/components/WaitlistLeadForm";
+import type { PublicDemoRunResult } from "@/lib/publicDemoTypes";
 import { useAuth } from "@/providers/AuthContext";
 import { useCustomerWorkflow } from "@/providers/CustomerWorkflowContext";
 
@@ -25,6 +28,17 @@ const heroItem = {
 export function LandingWaitlist() {
   const { token, emailVerified } = useAuth();
   const { workflowId, loading: wfLoading } = useCustomerWorkflow();
+  const [lastDemoRun, setLastDemoRun] = useState<PublicDemoRunResult | null>(null);
+
+  const handleRunSuccess = useCallback((result: PublicDemoRunResult) => {
+    setLastDemoRun(result);
+    window.requestAnimationFrame(() => {
+      document.getElementById("waitlist")?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    });
+  }, []);
 
   const showContinueStrip = Boolean(
     token && emailVerified && !wfLoading && !workflowId,
@@ -41,7 +55,7 @@ export function LandingWaitlist() {
         aria-hidden
       />
 
-      <TopBarMinimal hideLiveDemoLink />
+      <TopBarMinimal variant="light" />
 
       <div className="h-14 shrink-0" aria-hidden />
 
@@ -103,7 +117,35 @@ export function LandingWaitlist() {
           </div>
         </motion.div>
 
-        <div className="mt-12 sm:mt-16">
+        <div className="mt-10 sm:mt-12">
+          <PublicDemoInteractiveSection
+            onRunSuccess={handleRunSuccess}
+            embeddedOnHome
+            surfaceTheme="day"
+          />
+        </div>
+
+        {lastDemoRun ? (
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
+            className="mt-12 rounded-2xl border border-neutral-200/90 bg-neutral-50/50 px-6 py-8 text-center shadow-sm shadow-neutral-900/5 sm:px-10"
+            data-testid="demo-post-run-cta"
+          >
+            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-neutral-500">
+              Next
+            </p>
+            <h2 className="mt-2 text-xl font-bold text-neutral-950 sm:text-2xl">
+              Request priority access
+            </h2>
+            <p className="mx-auto mt-3 max-w-md text-sm font-medium leading-relaxed text-neutral-600">
+              The full program opens by invitation — join the waitlist below when you&apos;re ready.
+            </p>
+          </motion.div>
+        ) : null}
+
+        <div className={lastDemoRun ? "mt-8 sm:mt-10" : "mt-12 sm:mt-16"}>
           <WaitlistLeadForm />
         </div>
       </main>

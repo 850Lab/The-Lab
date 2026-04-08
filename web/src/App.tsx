@@ -59,12 +59,7 @@ export default function App() {
         <Route
           path="/demo"
           element={
-            <Navigate
-              to={
-                WAITLIST_MODE ? "/waitlist" : { pathname: "/", hash: "live-demo" }
-              }
-              replace
-            />
+            <Navigate to={{ pathname: "/", hash: "live-demo" }} replace />
           }
         />
 
