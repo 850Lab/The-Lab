@@ -146,7 +146,7 @@ function DemoUnavailablePanel({
             className={
               day
                 ? "cursor-pointer text-sm font-medium text-neutral-800 hover:text-neutral-950"
-                : "cursor-pointer text-sm font-medium text-lab-accent hover:text-sky-300"
+                : "cursor-pointer text-sm font-medium text-lab-accent hover:text-zinc-100"
             }
           >
             For site operators (enable the live demo)
@@ -186,7 +186,7 @@ function DemoUnavailablePanel({
           className={
             day
               ? "rounded-lg bg-neutral-950 py-3 text-center text-sm font-semibold text-white shadow-md shadow-neutral-900/15 hover:bg-neutral-800"
-              : "rounded-lg bg-lab-accent py-3 text-center text-sm font-semibold text-white shadow-md shadow-lab-accent/20 hover:bg-sky-500"
+              : "rounded-lg bg-lab-accent py-3 text-center text-sm font-semibold text-white shadow-md shadow-black/35 hover:brightness-110"
           }
         >
           Continue with your account
@@ -208,7 +208,7 @@ function DemoUnavailablePanel({
             className={
               day
                 ? "text-center text-sm font-medium text-neutral-700 hover:text-neutral-950"
-                : "text-center text-sm font-medium text-lab-accent hover:text-sky-300"
+                : "text-center text-sm font-medium text-lab-accent hover:text-zinc-100"
             }
           >
             Contact us
@@ -253,17 +253,18 @@ export function PublicDemoInteractiveSection({
   const muted = day ? "text-neutral-600" : "text-lab-muted";
   const subtle = day ? "text-neutral-500" : "text-lab-subtle";
   const primaryBtn = day
-    ? "w-full rounded-xl bg-neutral-950 py-3.5 text-[15px] font-semibold text-white shadow-lg shadow-neutral-900/15 outline-none transition-transform focus-visible:ring-2 focus-visible:ring-neutral-400/50 active:scale-[0.99] disabled:opacity-45"
-    : "w-full rounded-xl bg-lab-accent py-3.5 text-[15px] font-semibold text-white shadow-xl shadow-lab-accent/25 outline-none transition-transform focus-visible:ring-2 focus-visible:ring-lab-accent/40 active:scale-[0.99] disabled:opacity-45";
+    ? "w-full rounded-xl bg-neutral-950 py-3.5 text-[15px] font-semibold text-white shadow-[0_10px_28px_-10px_rgba(0,0,0,0.45)] outline-none ring-1 ring-white/10 transition-[box-shadow,background-color] duration-200 hover:bg-neutral-900 hover:shadow-[0_14px_36px_-12px_rgba(0,0,0,0.42),0_0_24px_-8px_rgba(255,255,255,0.22)] focus-visible:ring-2 focus-visible:ring-neutral-400/50 disabled:pointer-events-none disabled:opacity-45"
+    : "w-full rounded-xl bg-lab-accent py-3.5 text-[15px] font-semibold text-white shadow-xl shadow-black/40 outline-none ring-1 ring-inset ring-white/10 transition-[box-shadow,filter] duration-200 hover:brightness-[0.97] hover:shadow-[0_12px_32px_-10px_rgba(0,0,0,0.5),0_0_28px_-10px_rgba(255,255,255,0.06)] focus-visible:ring-2 focus-visible:ring-lab-accent/40 disabled:pointer-events-none disabled:opacity-45";
   const linkAccent = day
     ? "font-medium text-neutral-800 underline-offset-2 hover:text-neutral-950 hover:underline"
-    : "font-medium text-lab-accent hover:text-sky-300";
+    : "font-medium text-lab-accent hover:text-zinc-100";
   const [scenarios, setScenarios] = useState<PublicDemoScenario[]>([]);
   const [demoUnavailable, setDemoUnavailable] = useState<PublicDemoUnavailableCopy | null>(null);
   const [scenariosLoading, setScenariosLoading] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [phaseIdx, setPhaseIdx] = useState(0);
   const [running, setRunning] = useState(false);
+  const [preRunGate, setPreRunGate] = useState(false);
   const [runError, setRunError] = useState<string | null>(null);
   const [result, setResult] = useState<PublicDemoRunResult | null>(null);
   const [preview, setPreview] = useState<PublicDemoLetter | null>(null);
@@ -365,12 +366,12 @@ export function PublicDemoInteractiveSection({
     >
       {!day ? (
         <div
-          className="pointer-events-none absolute left-1/2 top-[20%] z-0 h-[min(70vw,420px)] w-[min(70vw,420px)] -translate-x-1/2 -translate-y-1/2 rounded-full bg-lab-accent/[0.07] blur-[100px]"
+          className="pointer-events-none absolute left-1/2 top-[20%] z-0 h-[min(70vw,420px)] w-[min(70vw,420px)] -translate-x-1/2 -translate-y-1/2 rounded-full bg-white/[0.04] blur-[100px]"
           aria-hidden
         />
       ) : (
         <div
-          className="pointer-events-none absolute left-1/2 top-[18%] z-0 h-[min(72vw,440px)] w-[min(72vw,440px)] -translate-x-1/2 -translate-y-1/2 rounded-full bg-gradient-to-br from-neutral-200/30 to-transparent blur-[90px]"
+          className="pointer-events-none absolute left-1/2 top-[18%] z-0 h-[min(72vw,440px)] w-[min(72vw,440px)] -translate-x-1/2 -translate-y-1/2 rounded-full bg-gradient-to-br from-white/[0.06] to-transparent blur-[90px]"
           aria-hidden
         />
       )}
@@ -460,15 +461,49 @@ export function PublicDemoInteractiveSection({
 
                     {showStartControls ? (
                       <div className="mt-4 flex flex-col gap-5">
-                        <button
+                        <motion.button
                           type="button"
                           data-testid="demo-generate-preview-button"
-                          onClick={() => void runDemo()}
-                          disabled={running}
-                          className={primaryBtn}
+                          disabled={running || preRunGate}
+                          onClick={() => {
+                            if (running || preRunGate) return;
+                            setPreRunGate(true);
+                            window.setTimeout(() => {
+                              setPreRunGate(false);
+                              void runDemo();
+                            }, 400);
+                          }}
+                          whileHover={
+                            running || preRunGate ? undefined : { scale: 1.03 }
+                          }
+                          whileTap={
+                            running || preRunGate ? undefined : { scale: 0.97 }
+                          }
+                          transition={{ type: "spring", stiffness: 480, damping: 28 }}
+                          className={`${primaryBtn} group inline-flex items-center justify-center gap-2`}
                         >
-                          Generate demo preview
-                        </button>
+                          {preRunGate ? (
+                            "Starting…"
+                          ) : (
+                            <>
+                              <span className="relative inline-block">
+                                See what shows up
+                                <span
+                                  className={`absolute -bottom-0.5 left-0 h-px w-full origin-left scale-x-0 transition-transform duration-200 ease-out group-hover:scale-x-100 ${
+                                    day ? "bg-white/45" : "bg-white/40"
+                                  }`}
+                                  aria-hidden
+                                />
+                              </span>
+                              <span
+                                className="text-lg font-light leading-none transition-transform duration-200 ease-out group-hover:translate-x-1"
+                                aria-hidden
+                              >
+                                →
+                              </span>
+                            </>
+                          )}
+                        </motion.button>
 
                         <div>
                           <p className={`mb-3 text-center text-xs font-medium uppercase tracking-wide ${subtle}`}>
@@ -546,7 +581,7 @@ export function PublicDemoInteractiveSection({
                                 setRunError(null);
                                 void runDemo();
                               }}
-                              className={`mt-4 text-sm font-medium ${day ? "text-neutral-900 underline-offset-2 hover:underline" : "text-lab-accent hover:text-sky-300"}`}
+                              className={`mt-4 text-sm font-medium ${day ? "text-neutral-900 underline-offset-2 hover:underline" : "text-lab-accent hover:text-zinc-100"}`}
                             >
                               Try again
                             </button>
@@ -792,7 +827,6 @@ export function PublicDemoInteractiveSection({
                               <PublicDemoBureauLetterStrip
                                 letters={result.letters}
                                 onOpen={(L) => setPreview(L)}
-                                variant={day ? "light" : "dark"}
                               />
                               {result.letterGenerationNote ? (
                                 <p className={day ? "mt-3 text-xs text-amber-800/90" : "mt-3 text-xs text-amber-200/85"}>
@@ -808,7 +842,7 @@ export function PublicDemoInteractiveSection({
                             className={
                               day
                                 ? "mt-6 w-full rounded-xl bg-neutral-950 py-3 text-sm font-semibold text-white shadow-lg shadow-neutral-900/15 sm:w-auto sm:min-w-[240px]"
-                                : "mt-6 w-full rounded-xl bg-lab-accent py-3 text-sm font-semibold text-white shadow-lg shadow-lab-accent/20 sm:w-auto sm:min-w-[240px]"
+                                : "mt-6 w-full rounded-xl bg-lab-accent py-3 text-sm font-semibold text-white shadow-lg shadow-black/35 sm:w-auto sm:min-w-[240px]"
                             }
                           >
                             Next: 72-hour gameplan
@@ -846,7 +880,6 @@ export function PublicDemoInteractiveSection({
                                 plan={result.creditCommandPlan}
                                 layout="publicDemoExpandable"
                                 scenarioHeadline={result.scenarioTitle || result.scenarioId}
-                                surfaceLight={day}
                               />
                             ) : (
                               <p className={`text-sm ${muted}`}>
@@ -867,7 +900,7 @@ export function PublicDemoInteractiveSection({
                       <button
                         type="button"
                         onClick={resetToWelcome}
-                        className={day ? "font-semibold text-neutral-800 hover:text-neutral-950" : "font-medium text-lab-accent hover:text-sky-300"}
+                        className={day ? "font-semibold text-neutral-800 hover:text-neutral-950" : "font-medium text-lab-accent hover:text-zinc-100"}
                       >
                         Try another scenario
                       </button>
