@@ -34,7 +34,11 @@ _pool_lock = __import__('threading').Lock()
 
 def database_dsn() -> str:
     """Current Postgres URL from the environment (read when the pool is created, not at import)."""
-    return (os.environ.get("DATABASE_URL") or "").strip()
+    raw = (os.environ.get("DATABASE_URL") or "").strip()
+    # Railway / Heroku-style URLs often use postgres://; libpq expects postgresql://.
+    if raw.startswith("postgres://"):
+        raw = "postgresql://" + raw[len("postgres://") :]
+    return raw
 
 
 def _dsn_log_label(dsn: str) -> str:
@@ -220,19 +224,37 @@ def get_db(dict_cursor=False):
 
 def init_database():
     """Create tables if they don't exist, and migrate schema if needed"""
-    from services.workflow.workflow_db_config import assert_postgres_only_in_production
+    from services.workflow.workflow_db_config import assert_postgres_only_in_production, is_production_like
 
     assert_postgres_only_in_production()
 
     import time as _time
-    for _attempt in range(3):
+
+    prod = is_production_like()
+    attempts = 5 if prod else 3
+    backoff_prod = (2, 4, 8, 12, 20)
+    transient = (
+        psycopg2.InterfaceError,
+        psycopg2.OperationalError,
+        ConnectionError,
+        OSError,
+        TimeoutError,
+    )
+
+    for attempt in range(attempts):
         try:
             return _init_database_inner()
-        except (psycopg2.InterfaceError, psycopg2.OperationalError) as e:
-            _logger.warning(f"init_database attempt {_attempt+1}/3 failed: {e}")
+        except transient as e:
+            _logger.warning(
+                "init_database attempt %s/%s failed: %s",
+                attempt + 1,
+                attempts,
+                e,
+            )
             _reset_pool()
-            if _attempt < 2:
-                _time.sleep(1)
+            if attempt < attempts - 1:
+                delay = backoff_prod[min(attempt, len(backoff_prod) - 1)] if prod else 1
+                _time.sleep(delay)
             else:
                 raise
 
@@ -267,14 +289,20 @@ def _init_database_inner():
                     ensure_report_upload_sessions_table,
                     ensure_reports_program_link_columns,
                     ensure_response_intake_tables,
+                    ensure_guidance_events_table,
+                    ensure_observability_events_table,
                     ensure_workflow_events_table,
+                    ensure_workflow_execution_runs_table,
                     ensure_workflow_jobs_table,
                     ensure_workflow_tables,
                 )
 
                 ensure_workflow_tables(conn)
                 ensure_workflow_events_table(conn)
+                ensure_observability_events_table(conn)
+                ensure_guidance_events_table(conn)
                 ensure_workflow_jobs_table(conn)
+                ensure_workflow_execution_runs_table(conn)
                 ensure_response_intake_tables(conn)
                 ensure_operations_tables(conn)
                 ensure_demo_leads_table(conn)
@@ -710,14 +738,20 @@ def _init_database_ddl(pool, conn):
             ensure_operations_tables,
             ensure_report_upload_sessions_table,
             ensure_response_intake_tables,
+            ensure_guidance_events_table,
+            ensure_observability_events_table,
             ensure_workflow_events_table,
+            ensure_workflow_execution_runs_table,
             ensure_workflow_jobs_table,
             ensure_workflow_tables,
         )
 
         ensure_workflow_tables(conn)
         ensure_workflow_events_table(conn)
+        ensure_observability_events_table(conn)
+        ensure_guidance_events_table(conn)
         ensure_workflow_jobs_table(conn)
+        ensure_workflow_execution_runs_table(conn)
         ensure_response_intake_tables(conn)
         ensure_operations_tables(conn)
         ensure_demo_leads_table(conn)

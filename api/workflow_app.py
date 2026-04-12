@@ -83,6 +83,18 @@ from api.workflow_deps import (
     require_internal_service,
     require_platform_admin,
 )
+from services.execution_runtime import (
+    get_execution_state_for_run,
+    get_execution_state_latest_for_workflow,
+    start_execution_session,
+    submit_execution_outcome,
+)
+from services.execution_runtime.outcomes_query import list_execution_outcomes
+from services.execution_runtime.pattern_mining import summarize_execution_outcome_patterns
+from services.execution_runtime.candidate_upgrade_mapping import (
+    build_candidate_upgrade_proposals,
+)
+from services.execution_runtime.pattern_promotion import build_pattern_promotion_candidates
 from services.workflow.workflow_db_config import is_production_like
 from services.workflow import admin_override_service as admin_svc
 from services.workflow import recovery_execution_service as rec_exec
@@ -101,8 +113,14 @@ from services.workflow.response_flow_events import (
 )
 from services.workflow.response_intake_service import intake_bureau_response
 from services.workflow.repository import fetch_resume_workflow_id_for_user, fetch_session
+from services.workflow.observability_events import list_observability_events
 from services.workflow.workflow_event_service import list_workflow_events
 from services.workflow.integrity_hints_service import build_integrity_hints
+from services.workflow.env_readiness import (
+    compute_workflow_env_readiness,
+    log_workflow_env_readiness_at_startup,
+    public_workflow_readiness_summary,
+)
 from services.workflow import hooks as workflow_hooks
 import auth
 import database as db
@@ -118,6 +136,7 @@ from services.customer_letter_service import (
 from services.workflow.workflow_job_service import (
     JOB_TYPE_LETTER_GENERATION,
     JOB_TYPE_REPORT_UPLOAD_PARSE,
+    claim_job_by_id,
     create_job,
     get_job as wf_get_job,
     list_jobs as wf_list_jobs,
@@ -390,7 +409,19 @@ async def _workflow_api_lifespan(_app: FastAPI):
     _log_resend_env_at_startup()
     import database as db
 
+    _logger.info(
+        "workflow_api lifespan: starting database init (ENVIRONMENT=%s)",
+        (os.environ.get("ENVIRONMENT") or "").strip() or "(unset)",
+    )
     db.init_database()
+    _logger.info("workflow_api lifespan: database init completed successfully")
+    try:
+        log_workflow_env_readiness_at_startup(_logger, database_initialized_ok=True)
+    except Exception:
+        _logger.warning(
+            "workflow_api lifespan: env readiness logging failed (non-fatal)",
+            exc_info=True,
+        )
     if is_production_like():
         _stub = (os.environ.get("WORKFLOW_REMINDER_FALLBACK_STUB") or "").strip().lower()
         if _stub in ("1", "true", "yes", "on"):
@@ -418,13 +449,35 @@ app = FastAPI(
     version="0.2.0",
     lifespan=_workflow_api_lifespan,
 )
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+# Wildcard origin + allow_credentials=True is invalid per fetch/CORS; browsers block many
+# cross-origin calls (e.g. demo scenarios from a separate static host). Customer SPA uses
+# Bearer tokens, not cross-site cookies — credentials stay False unless explicitly overridden.
+_cors_cred = (os.environ.get("WORKFLOW_CORS_ALLOW_CREDENTIALS") or "").strip().lower() in (
+    "1",
+    "true",
+    "yes",
 )
+_cors_origins = [
+    o.strip()
+    for o in (os.environ.get("WORKFLOW_CORS_ORIGINS") or "").split(",")
+    if o.strip()
+]
+if _cors_cred and _cors_origins:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=_cors_origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+else:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=False,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 install_strip_workflow_api_prefix_middleware(app)
 register_customer_web_status_route(app)
 
@@ -443,12 +496,50 @@ def _envelope_with_progression(envelope: Dict[str, Any]) -> Dict[str, Any]:
         build_canonical_progression_envelope_from_resume,
         unified_progression_from_workflow_envelope,
     )
+    from services.workflow.workflow_sync_payload import build_workflow_sync_payload
 
-    return {
+    wid = None
+    if isinstance(envelope, dict):
+        ws = envelope.get("workflowState")
+        if isinstance(ws, dict):
+            raw = ws.get("workflowId")
+            wid = str(raw).strip() if raw else None
+    ss = envelope.get("stepStatus") if isinstance(envelope, dict) else None
+    out = {
         **envelope,
         "progression": unified_progression_from_workflow_envelope(envelope),
         "canonicalProgression": build_canonical_progression_envelope_from_resume(envelope),
     }
+    if wid:
+        out["workflowSync"] = build_workflow_sync_payload(
+            wid, ss if isinstance(ss, list) else None
+        )
+    try:
+        from services.guidance.guidance_engine import customer_orion_bundle_for_api
+
+        uid = None
+        if isinstance(envelope, dict):
+            ws = envelope.get("workflowState")
+            if isinstance(ws, dict) and ws.get("userId") is not None:
+                try:
+                    uid = int(ws["userId"])
+                except (TypeError, ValueError):
+                    uid = None
+        bundle = customer_orion_bundle_for_api(wid, uid)
+        out["guidance"] = bundle.get("guidance")
+        out["bestAction"] = bundle.get("bestAction")
+        out["actionCandidates"] = bundle.get("actionCandidates") or []
+        out["bestActionExplanation"] = bundle.get("bestActionExplanation")
+        out["deliveryPrioritization"] = bundle.get("deliveryPrioritization")
+        out["uxSurfaceContract"] = bundle.get("uxSurfaceContract")
+    except Exception:
+        out["guidance"] = None
+        out["bestAction"] = None
+        out["actionCandidates"] = []
+        out["bestActionExplanation"] = None
+        out["deliveryPrioritization"] = None
+        out["uxSurfaceContract"] = None
+    return out
 
 
 def _workflow_payload_with_progression(workflow_id: str) -> Dict[str, Any]:
@@ -458,12 +549,42 @@ def _workflow_payload_with_progression(workflow_id: str) -> Dict[str, Any]:
         build_canonical_progression_envelope_from_resume,
         unified_progression_from_workflow_envelope,
     )
+    from services.workflow.workflow_sync_payload import build_workflow_sync_payload
 
-    return {
+    ss = env.get("stepStatus") if isinstance(env, dict) else None
+    payload = {
         "workflow": env,
         "progression": unified_progression_from_workflow_envelope(env),
         "canonicalProgression": build_canonical_progression_envelope_from_resume(env),
+        "workflowSync": build_workflow_sync_payload(
+            workflow_id, ss if isinstance(ss, list) else None
+        ),
     }
+    try:
+        from services.guidance.guidance_engine import customer_orion_bundle_for_api
+
+        uid = None
+        ws = env.get("workflowState") if isinstance(env, dict) else None
+        if isinstance(ws, dict) and ws.get("userId") is not None:
+            try:
+                uid = int(ws["userId"])
+            except (TypeError, ValueError):
+                uid = None
+        bundle = customer_orion_bundle_for_api(workflow_id, uid)
+        payload["guidance"] = bundle.get("guidance")
+        payload["bestAction"] = bundle.get("bestAction")
+        payload["actionCandidates"] = bundle.get("actionCandidates") or []
+        payload["bestActionExplanation"] = bundle.get("bestActionExplanation")
+        payload["deliveryPrioritization"] = bundle.get("deliveryPrioritization")
+        payload["uxSurfaceContract"] = bundle.get("uxSurfaceContract")
+    except Exception:
+        payload["guidance"] = None
+        payload["bestAction"] = None
+        payload["actionCandidates"] = []
+        payload["bestActionExplanation"] = None
+        payload["deliveryPrioritization"] = None
+        payload["uxSurfaceContract"] = None
+    return payload
 
 
 def _me_org_engine_bundle(ctx: Dict[str, Any], uid: int) -> Optional[Dict[str, Any]]:
@@ -503,6 +624,14 @@ class CustomerUxEventBody(BaseModel):
     event_name: str = Field(..., min_length=8, max_length=64)
     step_id: str = Field(default=RESPONSE_FLOW_STEP_ID, max_length=64)
     status: str = Field(default="ok", max_length=32)
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
+class OrionSignalBody(BaseModel):
+    """ORION V2.4 Proof script / step signals (tiny payloads; observational only)."""
+
+    event: str = Field(..., min_length=8, max_length=64)
+    timestamp: Optional[str] = Field(default=None, max_length=64)
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
 
@@ -667,6 +796,18 @@ class ArchitectAccessApplyBody(BaseModel):
     reset_consumer_workflow: bool = Field(default=True, alias="resetConsumerWorkflow")
 
 
+class ExecutionOutcomeBody(BaseModel):
+    """Customer outcome log for a guided execution block (maps to OutcomeSubmission)."""
+
+    block_id: str = Field(..., alias="blockId")
+    outcome_key: str = Field(..., alias="outcomeKey")
+    notes: str = ""
+    external_flags: Dict[str, Any] = Field(default_factory=dict, alias="externalFlags")
+    source: str = "user_reported"
+
+    model_config = {"populate_by_name": True}
+
+
 class IntakeAcknowledgeReviewBody(BaseModel):
     """Optional echo of how many claims the user acknowledged (audit only)."""
 
@@ -750,7 +891,34 @@ def get_active_workflow(
     so tracking, responses, and follow-on dispute rounds stay addressable.
     """
     wid = fetch_resume_workflow_id_for_user(int(user["user_id"]))
-    return {"workflowId": wid}
+    out: Dict[str, Any] = {
+        "workflowId": wid,
+        "guidance": None,
+        "bestAction": None,
+        "actionCandidates": [],
+        "bestActionExplanation": None,
+        "deliveryPrioritization": None,
+        "uxSurfaceContract": None,
+    }
+    if wid:
+        try:
+            from services.guidance.guidance_engine import customer_orion_bundle_for_api
+
+            b = customer_orion_bundle_for_api(str(wid), int(user["user_id"]))
+            out["guidance"] = b.get("guidance")
+            out["bestAction"] = b.get("bestAction")
+            out["actionCandidates"] = b.get("actionCandidates") or []
+            out["bestActionExplanation"] = b.get("bestActionExplanation")
+            out["deliveryPrioritization"] = b.get("deliveryPrioritization")
+            out["uxSurfaceContract"] = b.get("uxSurfaceContract")
+        except Exception:
+            out["guidance"] = None
+            out["bestAction"] = None
+            out["actionCandidates"] = []
+            out["bestActionExplanation"] = None
+            out["deliveryPrioritization"] = None
+            out["uxSurfaceContract"] = None
+    return out
 
 
 @app.get("/api/workflows/{workflow_id}/state")
@@ -767,6 +935,95 @@ def get_resume(
     _session: Dict[str, Any] = Depends(get_owned_workflow),
 ) -> Dict[str, Any]:
     return _envelope_with_progression(_engine.resume(workflow_id))
+
+
+@app.post("/api/workflows/{workflow_id}/execution/start")
+def post_workflow_execution_start(
+    workflow_id: str,
+    _session: Dict[str, Any] = Depends(get_owned_workflow),
+    user: Dict[str, Any] = Depends(get_session_user),
+) -> Dict[str, Any]:
+    uid = int(user["user_id"])
+    return start_execution_session(workflow_id, uid)
+
+
+@app.get("/api/workflows/{workflow_id}/execution/state")
+def get_workflow_execution_state(
+    workflow_id: str,
+    run_id: Optional[str] = Query(None, alias="runId"),
+    _session: Dict[str, Any] = Depends(get_owned_workflow),
+    user: Dict[str, Any] = Depends(get_session_user),
+) -> Dict[str, Any]:
+    uid = int(user["user_id"])
+    if run_id and str(run_id).strip():
+        rid = str(run_id).strip()
+        st = get_execution_state_for_run(rid, uid)
+        if not st:
+            raise HTTPException(
+                status_code=404,
+                detail=_http_detail("EXECUTION_RUN_NOT_FOUND", "Execution session not found."),
+            )
+        if str(st.get("workflowId") or "") != str(workflow_id):
+            raise HTTPException(
+                status_code=404,
+                detail=_http_detail("EXECUTION_RUN_NOT_FOUND", "Execution session not found."),
+            )
+        return {"executionState": st}
+    st = get_execution_state_latest_for_workflow(workflow_id, uid)
+    if not st:
+        raise HTTPException(
+            status_code=404,
+            detail=_http_detail("EXECUTION_STATE_NOT_FOUND", "No execution session for this workflow yet."),
+        )
+    return {"executionState": st}
+
+
+@app.get("/api/execution/runs/{run_id}/state")
+def get_execution_run_state(
+    run_id: str,
+    user: Dict[str, Any] = Depends(get_session_user),
+) -> Dict[str, Any]:
+    uid = int(user["user_id"])
+    st = get_execution_state_for_run(run_id, uid)
+    if not st:
+        raise HTTPException(
+            status_code=404,
+            detail=_http_detail("EXECUTION_RUN_NOT_FOUND", "Execution session not found."),
+        )
+    return {"executionState": st}
+
+
+@app.post("/api/execution/runs/{run_id}/outcome")
+def post_execution_run_outcome(
+    run_id: str,
+    body: ExecutionOutcomeBody,
+    user: Dict[str, Any] = Depends(get_session_user),
+) -> Dict[str, Any]:
+    uid = int(user["user_id"])
+    r = submit_execution_outcome(
+        run_id,
+        uid,
+        block_id=body.block_id,
+        outcome_key=body.outcome_key,
+        notes=body.notes,
+        external_flags=body.external_flags,
+        source=body.source,
+    )
+    if not r.get("ok"):
+        code = r.get("code")
+        if code == "NOT_FOUND":
+            raise HTTPException(
+                status_code=404,
+                detail=_http_detail("EXECUTION_RUN_NOT_FOUND", "Execution session not found."),
+            )
+        raise HTTPException(
+            status_code=403,
+            detail=_http_detail("EXECUTION_RUN_FORBIDDEN", "You cannot update this execution session."),
+        )
+    return {
+        "executionState": r["executionState"],
+        "progression": r["progression"],
+    }
 
 
 @app.get("/api/workflows/{workflow_id}/integrity-hints")
@@ -814,7 +1071,7 @@ def get_intake_summary(
     uid = int(session["user_id"])
     return {
         **_workflow_payload_with_progression(workflow_id),
-        "intake": build_customer_intake_summary(uid),
+        "intake": build_customer_intake_summary(uid, workflow_id=workflow_id),
     }
 
 
@@ -3162,6 +3419,153 @@ def post_internal_demo_lead_convert_to_org(
     }
 
 
+@app.get("/internal/admin/execution-outcomes")
+def get_internal_execution_outcomes(
+    workflow_id: Optional[str] = Query(None, alias="workflowId"),
+    run_id: Optional[str] = Query(None, alias="runId"),
+    block_id: Optional[str] = Query(None, alias="blockId"),
+    outcome_key: Optional[str] = Query(None, alias="outcomeKey"),
+    since: Optional[str] = Query(None, description="ISO timestamp: include runs with updated_at >= since"),
+    until: Optional[str] = Query(None, description="ISO timestamp: include runs with updated_at <= until"),
+    has_notes: Optional[bool] = Query(None, alias="hasNotes"),
+    source: Optional[str] = Query(None, description="e.g. user_reported"),
+    limit: int = Query(100, ge=1, le=500),
+    _: None = Depends(require_admin_service),
+) -> Dict[str, Any]:
+    """
+    Operator-only: flat execution outcome records (including free-text notes) for pattern review.
+    ``limit`` caps how many recent runs are scanned (newest ``updated_at`` first), not total outcomes.
+    """
+    outcomes = list_execution_outcomes(
+        workflow_id=workflow_id,
+        run_id=run_id,
+        block_id=block_id,
+        outcome_key=outcome_key,
+        since=since,
+        until=until,
+        has_notes=has_notes,
+        source=source,
+        limit=limit,
+    )
+    return jsonable_encoder({"outcomes": outcomes, "count": len(outcomes)})
+
+
+@app.get("/internal/admin/execution-outcomes/pattern-summary")
+def get_internal_execution_outcomes_pattern_summary(
+    workflow_id: Optional[str] = Query(None, alias="workflowId"),
+    run_id: Optional[str] = Query(None, alias="runId"),
+    since: Optional[str] = Query(None),
+    until: Optional[str] = Query(None),
+    run_scan_limit: int = Query(200, ge=1, le=500, alias="runScanLimit"),
+    max_notes_rows: int = Query(5000, ge=1, le=5000, alias="maxNotesRows"),
+    top_k: int = Query(30, ge=1, le=200, alias="topK"),
+    _: None = Depends(require_admin_service),
+) -> Dict[str, Any]:
+    """
+    Operator-only: deterministic aggregates over ``user_reported`` outcomes with notes (pattern discovery).
+    """
+    payload = summarize_execution_outcome_patterns(
+        workflow_id=workflow_id,
+        run_id=run_id,
+        since=since,
+        until=until,
+        run_scan_limit=run_scan_limit,
+        max_notes_rows=max_notes_rows,
+        top_k=top_k,
+    )
+    return jsonable_encoder(payload)
+
+
+@app.get("/internal/admin/execution-outcomes/pattern-candidates")
+def get_internal_execution_outcomes_pattern_candidates(
+    workflow_id: Optional[str] = Query(None, alias="workflowId"),
+    run_id: Optional[str] = Query(None, alias="runId"),
+    since: Optional[str] = Query(None),
+    until: Optional[str] = Query(None),
+    run_scan_limit: int = Query(200, ge=1, le=500, alias="runScanLimit"),
+    max_notes_rows: int = Query(5000, ge=1, le=5000, alias="maxNotesRows"),
+    top_k: int = Query(30, ge=1, le=200, alias="topK"),
+    _: None = Depends(require_admin_service),
+) -> Dict[str, Any]:
+    """
+    Operator-only: review-only promotion candidates derived from pattern summary (no auto-apply).
+    """
+    summary = summarize_execution_outcome_patterns(
+        workflow_id=workflow_id,
+        run_id=run_id,
+        since=since,
+        until=until,
+        run_scan_limit=run_scan_limit,
+        max_notes_rows=max_notes_rows,
+        top_k=top_k,
+    )
+    built = build_pattern_promotion_candidates(summary)
+    return jsonable_encoder(
+        {
+            "candidates": built["candidates"],
+            "meta": {
+                **built["meta"],
+                "patternSummary": {
+                    "generatedAt": summary.get("generatedAt"),
+                    "recordsIncluded": summary.get("recordsIncluded"),
+                    "truncated": summary.get("truncated"),
+                    "filtersEcho": summary.get("filtersEcho"),
+                },
+            },
+        }
+    )
+
+
+@app.get("/internal/admin/execution-outcomes/upgrade-proposals")
+def get_internal_execution_outcomes_upgrade_proposals(
+    workflow_id: Optional[str] = Query(None, alias="workflowId"),
+    run_id: Optional[str] = Query(None, alias="runId"),
+    since: Optional[str] = Query(None),
+    until: Optional[str] = Query(None),
+    run_scan_limit: int = Query(200, ge=1, le=500, alias="runScanLimit"),
+    max_notes_rows: int = Query(5000, ge=1, le=5000, alias="maxNotesRows"),
+    top_k: int = Query(30, ge=1, le=200, alias="topK"),
+    max_proposals_per_type: Optional[int] = Query(
+        None, ge=1, le=500, alias="maxProposalsPerType"
+    ),
+    _: None = Depends(require_admin_service),
+) -> Dict[str, Any]:
+    """
+    Operator-only: grouped upgrade proposals from promotion candidates (no writes).
+    """
+    summary = summarize_execution_outcome_patterns(
+        workflow_id=workflow_id,
+        run_id=run_id,
+        since=since,
+        until=until,
+        run_scan_limit=run_scan_limit,
+        max_notes_rows=max_notes_rows,
+        top_k=top_k,
+    )
+    built = build_pattern_promotion_candidates(summary)
+    proposals = build_candidate_upgrade_proposals(
+        built["candidates"],
+        max_proposals_per_type=max_proposals_per_type,
+    )
+    return jsonable_encoder(
+        {
+            "proposedPredefinedOutcomes": proposals["proposedPredefinedOutcomes"],
+            "proposedSignalLabels": proposals["proposedSignalLabels"],
+            "proposedBranchExpansions": proposals["proposedBranchExpansions"],
+            "proposedPhraseSignalMappings": proposals["proposedPhraseSignalMappings"],
+            "meta": {
+                **proposals["meta"],
+                "patternSummary": {
+                    "generatedAt": summary.get("generatedAt"),
+                    "recordsIncluded": summary.get("recordsIncluded"),
+                    "truncated": summary.get("truncated"),
+                    "filtersEcho": summary.get("filtersEcho"),
+                },
+            },
+        }
+    )
+
+
 @app.get("/internal/admin/workflows/{workflow_id}/events")
 def get_internal_workflow_events(
     workflow_id: str,
@@ -3173,6 +3577,55 @@ def get_internal_workflow_events(
         return {"ok": False, "error": {"code": "NOT_FOUND"}}
     items = list_workflow_events(workflow_id, limit=limit, oldest_first=True)
     return {"ok": True, "order": "oldest_first", "items": items}
+
+
+@app.get("/internal/admin/observability-events")
+def get_internal_observability_events(
+    workflow_id: Optional[str] = Query(None, alias="workflowId"),
+    user_id: Optional[int] = Query(None, alias="userId"),
+    step_id: Optional[str] = Query(None, alias="stepId"),
+    event_category: Optional[str] = Query(None, alias="eventCategory"),
+    limit: int = Query(500, ge=1, le=2000),
+    _: None = Depends(require_admin_service),
+) -> Dict[str, Any]:
+    """Operator-only: structured observability events (newest first)."""
+    if not (workflow_id and str(workflow_id).strip()) and user_id is None:
+        return {
+            "ok": False,
+            "error": {
+                "code": "BAD_REQUEST",
+                "message": "Provide workflowId and/or userId.",
+            },
+        }
+    items = list_observability_events(
+        workflow_id=str(workflow_id).strip() if workflow_id else None,
+        user_id=user_id,
+        step_id=step_id,
+        event_category=event_category,
+        limit=limit,
+    )
+    return jsonable_encoder({"ok": True, "items": items, "count": len(items)})
+
+
+@app.get("/internal/admin/observability/orion-proof-script-readout")
+def get_internal_orion_proof_script_readout(
+    since: Optional[str] = Query(None),
+    until: Optional[str] = Query(None),
+    event_row_limit: int = Query(100_000, ge=1_000, le=500_000, alias="eventRowLimit"),
+    _: None = Depends(require_admin_service),
+) -> Dict[str, Any]:
+    """
+    ORION V2.5 — JSON roll-up of Proof script signals (rendered / visible / completion / optional interact).
+    Operator-only; no UI.
+    """
+    from services.observability.orion_proof_readout import summarize_orion_proof_script_signals
+
+    out = summarize_orion_proof_script_signals(
+        since=(since.strip() if since and str(since).strip() else None),
+        until=(until.strip() if until and str(until).strip() else None),
+        event_row_limit=event_row_limit,
+    )
+    return jsonable_encoder({"ok": True, **out})
 
 
 @app.post("/api/workflows/{workflow_id}/letters/generate")
@@ -3340,6 +3793,16 @@ def get_letters_bundle_txt(
 @app.get("/api/workflows/{workflow_id}/proof/context")
 def get_proof_context(
     workflow_id: str,
+    include_ai_explanation: bool = Query(
+        False,
+        alias="includeAiExplanation",
+        description="When true, may add nullable aiExplanation (ORION remains authoritative).",
+    ),
+    include_ai_script: bool = Query(
+        False,
+        alias="includeAiScript",
+        description="When true, may add nullable proof_submission_support aiScript (ORION remains authoritative).",
+    ),
     session: Dict[str, Any] = Depends(get_owned_workflow),
     user: Dict[str, Any] = Depends(get_session_user),
 ) -> Dict[str, Any]:
@@ -3349,10 +3812,58 @@ def get_proof_context(
     except FlowEnforcementError as e:
         _raise_flow_violation(e)
     uid = int(session["user_id"])
-    return {
+    base: Dict[str, Any] = {
         **_workflow_payload_with_progression(workflow_id),
         "proof": build_proof_context_payload(uid, workflow_id),
     }
+    if include_ai_explanation:
+        from services.ai_augmentation.intelligent_explanation import (
+            INTELLIGENT_EXPLANATION_FAMILY,
+            merge_customer_workflow_payload_with_proof_ai_explanation,
+        )
+
+        try:
+            base.update(
+                merge_customer_workflow_payload_with_proof_ai_explanation(
+                    payload=base,
+                    workflow_id=workflow_id,
+                    include_ai_explanation=True,
+                )
+            )
+        except Exception:
+            _logger.debug("proof context AI augmentation failed", exc_info=True)
+            base.update(
+                {
+                    "aiExplanation": None,
+                    "aiAugmentationStatus": "failed",
+                    "intelligentExplanationFamily": INTELLIGENT_EXPLANATION_FAMILY,
+                }
+            )
+    if include_ai_script:
+        from services.ai_augmentation.intelligent_scripts import (
+            INTELLIGENT_SCRIPT_FAMILY,
+            merge_customer_workflow_payload_with_proof_ai_script,
+        )
+
+        try:
+            base.update(
+                merge_customer_workflow_payload_with_proof_ai_script(
+                    payload=base,
+                    workflow_id=workflow_id,
+                    include_ai_script=True,
+                )
+            )
+        except Exception:
+            _logger.debug("proof context AI script augmentation failed", exc_info=True)
+            base.update(
+                {
+                    "aiScript": None,
+                    "scriptAugmentationStatus": "failed",
+                    "intelligentScriptFamily": INTELLIGENT_SCRIPT_FAMILY,
+                    "proofScriptRefinementStatus": "not_applicable",
+                }
+            )
+    return base
 
 
 @app.post("/api/workflows/{workflow_id}/proof/upload")
@@ -3697,6 +4208,36 @@ def post_customer_ux_event(
     return {"ok": True}
 
 
+@app.post("/api/workflows/{workflow_id}/observability/orion-signal")
+def post_orion_signal(
+    workflow_id: str,
+    body: OrionSignalBody,
+    session: Dict[str, Any] = Depends(get_owned_workflow),
+) -> Dict[str, Any]:
+    """
+    ORION V2.4 — append-only observability row; always returns ok after auth.
+    Invalid/unknown event names are ignored (forward-compatible clients).
+    """
+    try:
+        enforce_customer_action(workflow_id, ACTION_CUSTOMER_UX_EVENT)
+    except FlowEnforcementError as e:
+        _raise_flow_violation(e)
+    uid = int(session["user_id"])
+    try:
+        from services.observability.orion_signal_events import try_record_orion_signal
+
+        try_record_orion_signal(
+            user_id=uid,
+            workflow_id=workflow_id,
+            event_name=body.event,
+            metadata=body.metadata,
+            client_timestamp=body.timestamp,
+        )
+    except Exception:
+        _logger.debug("orion signal record skipped", exc_info=True)
+    return {"ok": True}
+
+
 @app.post("/api/workflows/{workflow_id}/responses/intake")
 def post_response_intake(
     workflow_id: str,
@@ -3813,6 +4354,22 @@ async def post_workflow_report_upload(
             except OSError:
                 pass
         raise
+
+    # Opt-in (tests / isolated integration): run parse immediately while staged temp paths exist.
+    # With ``WORKFLOW_JOB_WORKER_ENABLED=0`` and no in-process worker, jobs would otherwise sit
+    # pending until an external worker runs — which often loses the race after request teardown
+    # (temp files gone → ``TEMP_FILE_MISSING``).
+    if (os.environ.get("WORKFLOW_E2E_SYNCHRONOUS_PARSE") or "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    ):
+        from services.workflow.workflow_job_worker import _dispatch
+
+        sync_job = claim_job_by_id(jid)
+        if sync_job:
+            _dispatch(sync_job)
 
     _logger.info(
         "workflow_report_upload_queued workflow_id=%s user_id=%s job_id=%s bytes=%s",
@@ -4405,6 +4962,22 @@ def mcc_admin_mc_reminder_candidates(
 @app.get("/health")
 def health() -> Dict[str, str]:
     return {"status": "ok", "service": "workflow-api"}
+
+
+@app.get("/health/workflow-readiness")
+def health_workflow_readiness() -> Dict[str, Any]:
+    """
+    Safe for public probes: counts only (no issue text). Full detail:
+    GET /internal/admin/workflow-env-readiness (WORKFLOW_ADMIN_API_SECRET).
+    """
+    payload = compute_workflow_env_readiness(database_initialized_ok=True)
+    return public_workflow_readiness_summary(payload)
+
+
+@app.get("/internal/admin/workflow-env-readiness")
+def internal_admin_workflow_env_readiness(_: None = Depends(require_admin_service)) -> Dict[str, Any]:
+    """Per-phase issues and integration status for operators (requires admin secret)."""
+    return compute_workflow_env_readiness(database_initialized_ok=True)
 
 
 @app.api_route(

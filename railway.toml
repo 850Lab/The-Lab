@@ -9,8 +9,7 @@ dockerfilePath = "Dockerfile"
 [deploy]
 # Shell expands PORT (Railway sets it); ${PORT:-8000} for local Docker runs without PORT.
 startCommand = "python -m uvicorn api.workflow_app:app --host 0.0.0.0 --port ${PORT:-8000}"
-healthcheckPath = "/api/system/customer-web-status"
+# Minimal probe: no DB/demo work on request path — succeeds once lifespan + DB init finished.
+healthcheckPath = "/health"
 healthcheckTimeout = 120
-# Home waitlist + live demo: add service variable PUBLIC_DEMO_ENABLED=1 when running as
-# production-like (ENVIRONMENT=production or REPLIT_DEPLOYMENT=1). Probe publicDemo.ready at
-# GET /api/system/customer-web-status after deploy.
+# Full stack + SPA/dist + public demo status: GET /api/system/customer-web-status (after deploy).
