@@ -9,6 +9,8 @@ Also strips ``/workflow-api`` from incoming paths so production bundles that use
 from __future__ import annotations
 
 import logging
+import os
+import re
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
@@ -20,8 +22,24 @@ from starlette.requests import Request
 _DIST = Path(__file__).resolve().parent.parent / "web" / "dist"
 _ASSETS = _DIST / "assets"
 
-# Avoid stale HTML shell after deploy (hashed /assets/* still cache well).
-_SPA_INDEX_HEADERS = {"Cache-Control": "no-cache, must-revalidate"}
+# Strong hint: do not store the SPA shell (Vite hashes under /assets/* still cache-bust).
+_SPA_INDEX_HEADERS = {
+    "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+    "Pragma": "no-cache",
+}
+
+
+def _spa_main_script_from_dist_index() -> str | None:
+    """First Vite entry script href from baked dist/index.html (proves which bundle is in the image)."""
+    idx = _DIST / "index.html"
+    if not idx.is_file():
+        return None
+    try:
+        text = idx.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    m = re.search(r'<script[^>]+src="(/assets/[^"]+\.js)"', text)
+    return m.group(1) if m else None
 
 
 class StripWorkflowApiPrefixMiddleware(BaseHTTPMiddleware):
@@ -53,7 +71,16 @@ def register_customer_web_status_route(app: FastAPI) -> None:
             "dist_index_exists": idx.is_file(),
             "assets_dir_exists": _ASSETS.is_dir(),
             "dist_path": str(_DIST),
+            "spaMainScript": _spa_main_script_from_dist_index(),
             "hint": "If dist_index_exists is false, run: cd web && npm install && npm run build",
+            "deploy": {
+                "railwayGitCommitSha": (os.environ.get("RAILWAY_GIT_COMMIT_SHA") or "").strip()
+                or None,
+                "railwayServiceName": (os.environ.get("RAILWAY_SERVICE_NAME") or "").strip()
+                or None,
+                "railwayEnvironment": (os.environ.get("RAILWAY_ENVIRONMENT") or "").strip()
+                or None,
+            },
         }
         try:
             import services.public_demo_service as pds
