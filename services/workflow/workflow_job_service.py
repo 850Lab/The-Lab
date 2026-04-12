@@ -153,6 +153,21 @@ def claim_job() -> Optional[Dict[str, Any]]:
     return _claim_job_postgres()
 
 
+def claim_job_by_id(job_id: str) -> Optional[Dict[str, Any]]:
+    """
+    Atomically claim one pending job by id (same row shape as ``claim_job``).
+
+    Use when a caller already knows the job id (e.g. HTTP returned ``jobId``) and must not
+    risk dequeuing an unrelated pending row.
+    """
+    jid = (job_id or "").strip()
+    if not jid:
+        return None
+    if should_use_workflow_sqlite():
+        return _claim_job_by_id_sqlite(jid)
+    return _claim_job_by_id_postgres(jid)
+
+
 def _claim_job_postgres() -> Optional[Dict[str, Any]]:
     with get_workflow_db(dict_cursor=True) as (conn, cur):
         cur.execute(
@@ -248,6 +263,93 @@ def _claim_job_sqlite() -> Optional[Dict[str, Any]]:
         return d
 
 
+def _claim_job_by_id_postgres(job_id: str) -> Optional[Dict[str, Any]]:
+    with get_workflow_db(dict_cursor=True) as (conn, cur):
+        cur.execute(
+            """
+            UPDATE workflow_jobs j
+            SET status = %s,
+                attempt_count = j.attempt_count + 1,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE j.id = %s
+              AND j.status = %s
+              AND j.attempt_count < j.max_attempts
+              AND (j.run_at IS NULL OR j.run_at <= CURRENT_TIMESTAMP)
+            RETURNING j.id, j.workflow_id, j.job_type, j.status, j.attempt_count, j.max_attempts,
+                      j.payload, j.result, j.error, j.created_at, j.updated_at, j.run_at
+            """,
+            (STATUS_RUNNING, job_id, STATUS_PENDING),
+        )
+        row = cur.fetchone()
+        if not row:
+            conn.rollback()
+            return None
+        d = dict(row)
+        jid = str(d["id"])
+        wf = str(d["workflow_id"])
+        jt = str(d["job_type"])
+        d["payload"] = _load_json(d.get("payload"))
+        d["result"] = _load_json(d.get("result"))
+        _emit_job_event(
+            conn, cur, wf, "job.started", jid, jt, extra_meta={"attempt": d["attempt_count"]}
+        )
+        conn.commit()
+        return d
+
+
+def _claim_job_by_id_sqlite(job_id: str) -> Optional[Dict[str, Any]]:
+    with get_workflow_db(dict_cursor=True) as (conn, cur):
+        cur.execute(
+            """
+            SELECT id, workflow_id, job_type, attempt_count, max_attempts, payload, result, error,
+                   created_at, updated_at, run_at
+            FROM workflow_jobs
+            WHERE id = %s
+              AND status = %s
+              AND attempt_count < max_attempts
+              AND (run_at IS NULL OR run_at <= CURRENT_TIMESTAMP)
+            """,
+            (job_id, STATUS_PENDING),
+        )
+        row = cur.fetchone()
+        if not row:
+            conn.rollback()
+            return None
+        r = _as_map(row)
+        jid = str(r["id"])
+        wf = str(r["workflow_id"])
+        jt = str(r["job_type"])
+        n_attempt = int(r["attempt_count"]) + 1
+        cur.execute(
+            """
+            UPDATE workflow_jobs
+            SET status = %s, attempt_count = %s, updated_at = CURRENT_TIMESTAMP
+            WHERE id = %s AND status = %s
+            """,
+            (STATUS_RUNNING, n_attempt, jid, STATUS_PENDING),
+        )
+        if cur.rowcount != 1:
+            conn.rollback()
+            return None
+        _emit_job_event(conn, cur, wf, "job.started", jid, jt, extra_meta={"attempt": n_attempt})
+        cur.execute(
+            """
+            SELECT id, workflow_id, job_type, status, attempt_count, max_attempts, payload, result, error,
+                   created_at, updated_at, run_at
+            FROM workflow_jobs WHERE id = %s
+            """,
+            (jid,),
+        )
+        out = cur.fetchone()
+        conn.commit()
+        if not out:
+            return None
+        d = _as_map(out)
+        d["payload"] = _load_json(d.get("payload"))
+        d["result"] = _load_json(d.get("result"))
+        return d
+
+
 def complete_job(job_id: str, result: Optional[Dict[str, Any]] = None) -> bool:
     """Set ``completed``, store ``result``, emit ``job.completed``."""
     jid = (job_id or "").strip()
@@ -282,12 +384,21 @@ def complete_job(job_id: str, result: Optional[Dict[str, Any]] = None) -> bool:
     return True
 
 
-def fail_job(job_id: str, error_message: str) -> bool:
-    """Set ``failed``, store error text, emit ``job.failed``."""
+def fail_job(
+    job_id: str,
+    error_message: str,
+    *,
+    error_code: str = "JOB_FAILED",
+) -> bool:
+    """Set ``failed``, store error text + structured ``result`` (``ok``, ``errorCode``), emit ``job.failed``."""
     jid = (job_id or "").strip()
     msg = (error_message or "unknown error").strip()[:8000]
+    code = (error_code or "JOB_FAILED").strip()[:128] or "JOB_FAILED"
     if not jid:
         return False
+    result_body = _dump_json(
+        {"ok": False, "errorCode": code, "messageSafe": msg[:2000]},
+    )
     with get_workflow_db(dict_cursor=True) as (conn, cur):
         cur.execute(
             "SELECT workflow_id, job_type, attempt_count, max_attempts FROM workflow_jobs WHERE id = %s AND status = %s",
@@ -305,10 +416,10 @@ def fail_job(job_id: str, error_message: str) -> bool:
         cur.execute(
             """
             UPDATE workflow_jobs
-            SET status = %s, error = %s, updated_at = CURRENT_TIMESTAMP
+            SET status = %s, error = %s, result = %s::jsonb, updated_at = CURRENT_TIMESTAMP
             WHERE id = %s AND status = %s
             """,
-            (STATUS_FAILED, msg, jid, STATUS_RUNNING),
+            (STATUS_FAILED, msg, result_body, jid, STATUS_RUNNING),
         )
         if cur.rowcount != 1:
             conn.rollback()
@@ -320,7 +431,12 @@ def fail_job(job_id: str, error_message: str) -> bool:
             "job.failed",
             jid,
             jt,
-            extra_meta={"attempt": att, "maxAttempts": mx, "messageSafe": msg[:500]},
+            extra_meta={
+                "attempt": att,
+                "maxAttempts": mx,
+                "messageSafe": msg[:500],
+                "errorCode": code,
+            },
         )
         conn.commit()
     return True
@@ -423,6 +539,10 @@ def public_job_view(d: Dict[str, Any]) -> Dict[str, Any]:
     if jt == JOB_TYPE_REPORT_UPLOAD_PARSE:
         payload = {k: v for k, v in payload.items() if k != "tempPdfPath"}
 
+    res_raw = d.get("result")
+    res_dict = res_raw if isinstance(res_raw, dict) else {}
+    error_code = res_dict.get("errorCode") if isinstance(res_dict, dict) else None
+
     return {
         "jobId": str(d.get("id", "")),
         "workflowId": str(d.get("workflow_id", "")),
@@ -433,6 +553,7 @@ def public_job_view(d: Dict[str, Any]) -> Dict[str, Any]:
         "payload": payload,
         "result": d.get("result") if isinstance(d.get("result"), dict) else None,
         "error": d.get("error"),
+        "errorCode": error_code,
         "createdAt": ts(d.get("created_at")),
         "updatedAt": ts(d.get("updated_at")),
         "runAt": ts(d.get("run_at")),
