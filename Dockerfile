@@ -42,6 +42,7 @@ COPY . .
 # Baked customer SPA for api.customer_web_static.mount_customer_web_dist_if_present
 COPY --from=web-builder /app/web/dist /app/web/dist
 
+# Railway (and many hosts) inject PORT; default 8000 for local `docker run`.
 EXPOSE 8000
 
-CMD ["python", "-m", "uvicorn", "api.workflow_app:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["/bin/sh", "-c", "exec python -m uvicorn api.workflow_app:app --host 0.0.0.0 --port ${PORT:-8000}"]
