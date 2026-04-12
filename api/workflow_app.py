@@ -62,6 +62,7 @@ import logging
 import os
 import re
 import tempfile
+import threading
 import time
 from contextlib import asynccontextmanager
 from typing import Any, Dict, List, Literal, Optional
@@ -399,42 +400,58 @@ def _demo_phone_has_digits(phone: str) -> bool:
 @asynccontextmanager
 async def _workflow_api_lifespan(_app: FastAPI):
     """
-    Align with Streamlit's ``database.init_database()`` so workflow DDL exists.
-    Uvicorn-only processes previously skipped this; Mission Control SQL then
-    failed with undefined-table errors (HTTP 500).
+    Run ``database.init_database()`` in a **background thread** so the lifespan can ``yield``
+    immediately. Uvicorn then accepts connections while Postgres/DDL work continues — deploy
+    health checks (e.g. ``GET /health``) succeed without waiting for retries or slow networks.
 
-    If the database is unreachable (e.g. ``DATABASE_URL`` points at localhost but Postgres is not running),
-    we fail here so operators see a startup error instead of HTTP 500 on the first auth request.
+    API routes that use ``database.get_db`` block on ``wait_for_database_initialized()`` until
+    init finishes or fails. If init fails, logs show the error; DB routes surface the failure
+    after the wait instead of stalling the process before bind.
     """
     _log_resend_env_at_startup()
-    import database as db
 
-    _logger.info(
-        "workflow_api lifespan: starting database init (ENVIRONMENT=%s)",
-        (os.environ.get("ENVIRONMENT") or "").strip() or "(unset)",
-    )
-    db.init_database()
-    _logger.info("workflow_api lifespan: database init completed successfully")
-    try:
-        log_workflow_env_readiness_at_startup(_logger, database_initialized_ok=True)
-    except Exception:
-        _logger.warning(
-            "workflow_api lifespan: env readiness logging failed (non-fatal)",
-            exc_info=True,
+    def _blocking_db_and_worker_startup() -> None:
+        import database as db
+
+        _logger.info(
+            "workflow_api lifespan: database init starting (background thread, ENVIRONMENT=%s)",
+            (os.environ.get("ENVIRONMENT") or "").strip() or "(unset)",
         )
-    if is_production_like():
-        _stub = (os.environ.get("WORKFLOW_REMINDER_FALLBACK_STUB") or "").strip().lower()
-        if _stub in ("1", "true", "yes", "on"):
-            _logger.warning(
-                "WORKFLOW_REMINDER_FALLBACK_STUB is enabled in a production-like environment; "
-                "reminder delivery still records failures (stub success is not applied). "
-                "Unset the flag to avoid misleading configuration."
+        try:
+            db.init_database()
+        except Exception:
+            _logger.exception(
+                "workflow_api lifespan: database init failed — see logs; "
+                "GET /health still works; DB-backed routes will error until fixed."
             )
-    _w = (os.environ.get("WORKFLOW_JOB_WORKER_ENABLED") or "1").strip().lower()
-    if _w not in ("0", "false", "no", "off"):
-        from services.workflow.workflow_job_worker import start_job_worker
+            return
+        _logger.info("workflow_api lifespan: database init completed successfully")
+        try:
+            log_workflow_env_readiness_at_startup(_logger, database_initialized_ok=True)
+        except Exception:
+            _logger.warning(
+                "workflow_api lifespan: env readiness logging failed (non-fatal)",
+                exc_info=True,
+            )
+        if is_production_like():
+            _stub = (os.environ.get("WORKFLOW_REMINDER_FALLBACK_STUB") or "").strip().lower()
+            if _stub in ("1", "true", "yes", "on"):
+                _logger.warning(
+                    "WORKFLOW_REMINDER_FALLBACK_STUB is enabled in a production-like environment; "
+                    "reminder delivery still records failures (stub success is not applied). "
+                    "Unset the flag to avoid misleading configuration."
+                )
+        _w = (os.environ.get("WORKFLOW_JOB_WORKER_ENABLED") or "1").strip().lower()
+        if _w not in ("0", "false", "no", "off"):
+            from services.workflow.workflow_job_worker import start_job_worker
 
-        start_job_worker()
+            start_job_worker()
+
+    threading.Thread(
+        target=_blocking_db_and_worker_startup,
+        name="workflow-db-init",
+        daemon=True,
+    ).start()
     yield
     try:
         from services.workflow.workflow_job_worker import stop_job_worker

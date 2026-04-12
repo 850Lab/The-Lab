@@ -24,12 +24,52 @@ import socket
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 import logging
-from typing import List
+import threading
+from typing import List, Optional
 
 _logger = logging.getLogger(__name__)
 
 _pool = None
-_pool_lock = __import__('threading').Lock()
+_pool_lock = threading.Lock()
+
+# Set when init_database() finishes (success or failure). FastAPI can yield before init so
+# /health responds; get_db() waits here so API routes do not hit Postgres mid-DDL.
+_db_init_done = threading.Event()
+_db_init_exc: Optional[BaseException] = None
+_db_init_exc_lock = threading.Lock()
+
+
+def _signal_database_init_complete(exc: Optional[BaseException]) -> None:
+    global _db_init_exc
+    with _db_init_exc_lock:
+        _db_init_exc = exc
+    _db_init_done.set()
+
+
+def wait_for_database_initialized() -> None:
+    """Block until init_database() has completed (used by get_db after deferred startup)."""
+    if (os.environ.get("DATABASE_SKIP_INIT_WAIT") or "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    ):
+        return
+    raw = (os.environ.get("DATABASE_INIT_WAIT_TIMEOUT_SEC") or "120").strip()
+    try:
+        timeout = float(raw)
+    except ValueError:
+        timeout = 120.0
+    timeout = max(1.0, min(600.0, timeout))
+    if not _db_init_done.wait(timeout=timeout):
+        raise TimeoutError(
+            f"Database initialization did not finish within {timeout}s "
+            "(startup still running or DATABASE_URL unreachable)."
+        )
+    with _db_init_exc_lock:
+        err = _db_init_exc
+    if err is not None:
+        raise err
 
 
 def database_dsn() -> str:
@@ -173,6 +213,7 @@ def _reset_pool():
 
 @contextmanager
 def get_db(dict_cursor=False):
+    wait_for_database_initialized()
     pool = _get_pool()
     conn = None
     try:
@@ -226,37 +267,43 @@ def init_database():
     """Create tables if they don't exist, and migrate schema if needed"""
     from services.workflow.workflow_db_config import assert_postgres_only_in_production, is_production_like
 
-    assert_postgres_only_in_production()
+    try:
+        assert_postgres_only_in_production()
 
-    import time as _time
+        import time as _time
 
-    prod = is_production_like()
-    attempts = 5 if prod else 3
-    backoff_prod = (2, 4, 8, 12, 20)
-    transient = (
-        psycopg2.InterfaceError,
-        psycopg2.OperationalError,
-        ConnectionError,
-        OSError,
-        TimeoutError,
-    )
+        prod = is_production_like()
+        attempts = 5 if prod else 3
+        backoff_prod = (2, 4, 8, 12, 20)
+        transient = (
+            psycopg2.InterfaceError,
+            psycopg2.OperationalError,
+            ConnectionError,
+            OSError,
+            TimeoutError,
+        )
 
-    for attempt in range(attempts):
-        try:
-            return _init_database_inner()
-        except transient as e:
-            _logger.warning(
-                "init_database attempt %s/%s failed: %s",
-                attempt + 1,
-                attempts,
-                e,
-            )
-            _reset_pool()
-            if attempt < attempts - 1:
-                delay = backoff_prod[min(attempt, len(backoff_prod) - 1)] if prod else 1
-                _time.sleep(delay)
-            else:
-                raise
+        for attempt in range(attempts):
+            try:
+                _init_database_inner()
+                break
+            except transient as e:
+                _logger.warning(
+                    "init_database attempt %s/%s failed: %s",
+                    attempt + 1,
+                    attempts,
+                    e,
+                )
+                _reset_pool()
+                if attempt < attempts - 1:
+                    delay = backoff_prod[min(attempt, len(backoff_prod) - 1)] if prod else 1
+                    _time.sleep(delay)
+                else:
+                    raise
+    except BaseException as exc:
+        _signal_database_init_complete(exc)
+        raise
+    _signal_database_init_complete(None)
 
 def _init_database_inner():
     from services.workflow.workflow_db_config import is_production_like, should_use_workflow_sqlite
