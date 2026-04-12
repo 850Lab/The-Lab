@@ -7,8 +7,9 @@ builder = "DOCKERFILE"
 dockerfilePath = "Dockerfile"
 
 [deploy]
-# Shell expands PORT (Railway sets it); ${PORT:-8000} for local Docker runs without PORT.
-startCommand = "python -m uvicorn api.workflow_app:app --host 0.0.0.0 --port ${PORT:-8000}"
+# Railway runs this without a shell unless we wrap it — uvicorn must receive a numeric --port.
+# sh expands PORT; ${PORT:-8000} when PORT is unset (e.g. local docker run).
+startCommand = "/bin/sh -c 'exec python -m uvicorn api.workflow_app:app --host 0.0.0.0 --port ${PORT:-8000}'"
 # Minimal probe: no DB/demo work on request path — succeeds once lifespan + DB init finished.
 healthcheckPath = "/health"
 healthcheckTimeout = 120
