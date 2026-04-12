@@ -1,0 +1,201 @@
+[
+  {
+    "rule_id": "pivot_rule_cb_late_payment_v1",
+    "version": "1.0.0",
+    "status": "active",
+    "applicable_scenarios": [
+      {
+        "scenario_type": "cross_bureau_late_payment_misalignment",
+        "allowed_statuses": ["detected"],
+        "min_count": 1
+      }
+    ],
+    "required_conditions": [],
+    "exclusion_conditions": [],
+    "pivot_type": "pivot_cross_bureau_late_payment",
+    "priority": 20,
+    "reason_code_template": "PIVOT_CB_LATE_PAY_V1",
+    "directives_template": [
+      {
+        "category": "target_focus",
+        "value": { "mode": "all_mismatch_bureaus" },
+        "param_sources": { "bureau_codes": "bureaus_compared" }
+      },
+      {
+        "category": "dispute_framing_type",
+        "value": { "type": "consistency_challenge" }
+      },
+      {
+        "category": "grouping_strategy",
+        "value": { "strategy": "per_bureau_tradeline" }
+      },
+      {
+        "category": "sequencing_hint",
+        "value": { "hint": "bureau_with_strongest_documentation_first" }
+      }
+    ]
+  },
+  {
+    "rule_id": "pivot_rule_cb_account_status_v1",
+    "version": "1.0.0",
+    "status": "active",
+    "applicable_scenarios": [
+      {
+        "scenario_type": "cross_bureau_account_status_misalignment",
+        "allowed_statuses": ["detected"],
+        "min_count": 1
+      }
+    ],
+    "required_conditions": [],
+    "exclusion_conditions": [],
+    "pivot_type": "pivot_cross_bureau_account_status",
+    "priority": 18,
+    "reason_code_template": "PIVOT_CB_STATUS_V1",
+    "directives_template": [
+      {
+        "category": "dispute_framing_type",
+        "value": { "type": "account_status_conflict" }
+      },
+      {
+        "category": "priority_adjustment",
+        "value": {
+          "adjustment": "raise_tradeline_priority",
+          "magnitude": "medium"
+        }
+      },
+      {
+        "category": "target_focus",
+        "value": { "mode": "mismatch_bureaus_only" },
+        "param_sources": { "bureau_codes": "bureaus_compared" }
+      }
+    ]
+  },
+  {
+    "rule_id": "pivot_rule_payment_arrangement_delinq_v1",
+    "version": "1.0.0",
+    "status": "active",
+    "applicable_scenarios": [
+      {
+        "scenario_type": "payment_arrangement_with_persistent_delinquency",
+        "allowed_statuses": ["detected"],
+        "min_count": 1
+      }
+    ],
+    "required_conditions": [],
+    "exclusion_conditions": [],
+    "pivot_type": "pivot_payment_arrangement_delinquency",
+    "priority": 15,
+    "reason_code_template": "PIVOT_ARR_DELINQ_V1",
+    "directives_template": [
+      {
+        "category": "dispute_framing_type",
+        "value": { "type": "remedy_state_contradiction" }
+      },
+      {
+        "category": "sequencing_hint",
+        "value": { "hint": "establish_arrangement_evidence_before_status_challenge" }
+      },
+      {
+        "category": "grouping_strategy",
+        "value": { "strategy": "single_account_deep_dive" }
+      }
+    ]
+  },
+  {
+    "rule_id": "pivot_rule_adverse_action_context_v1",
+    "version": "1.0.0",
+    "status": "active",
+    "applicable_scenarios": [
+      {
+        "scenario_type": "adverse_action_context_incomplete_or_contradictory",
+        "allowed_statuses": ["detected"],
+        "min_count": 1
+      }
+    ],
+    "required_conditions": [],
+    "exclusion_conditions": [],
+    "pivot_type": "pivot_adverse_action_context",
+    "priority": 10,
+    "reason_code_template": "PIVOT_ADV_ACTION_CONTEXT_V1",
+    "directives_template": [
+      {
+        "category": "escalation_path_preference",
+        "value": { "preference": "fact_completion_first" }
+      },
+      {
+        "category": "sequencing_hint",
+        "value": { "hint": "defer_account_level_dispute_until_adv_action_context_resolved" }
+      },
+      {
+        "category": "priority_adjustment",
+        "value": {
+          "adjustment": "lower_nonblocking_tradelines_until_workflow_gate_cleared",
+          "magnitude": "medium"
+        }
+      }
+    ]
+  },
+  {
+    "rule_id": "pivot_rule_cro_fee_gap_v1",
+    "version": "1.0.0",
+    "status": "active",
+    "applicable_scenarios": [
+      {
+        "scenario_type": "cro_engagement_fee_timing_gap_or_conflict",
+        "allowed_statuses": ["detected"],
+        "min_count": 1
+      }
+    ],
+    "required_conditions": [],
+    "exclusion_conditions": [],
+    "pivot_type": "pivot_cro_compliance_review",
+    "priority": 12,
+    "reason_code_template": "PIVOT_CRO_FEE_GAP_V1",
+    "directives_template": [
+      {
+        "category": "dispute_framing_type",
+        "value": { "type": "compliance_sensitive_review" }
+      },
+      {
+        "category": "sequencing_hint",
+        "value": { "hint": "avoid_aggressive_deadline_pressure" }
+      },
+      {
+        "category": "escalation_path_preference",
+        "value": { "preference": "internal_review_before_external_push" }
+      }
+    ]
+  },
+  {
+    "rule_id": "pivot_rule_cfpb_unresolved_v1",
+    "version": "1.0.0",
+    "status": "active",
+    "applicable_scenarios": [
+      {
+        "scenario_type": "cfpb_complaint_with_unresolved_account_facts",
+        "allowed_statuses": ["detected"],
+        "min_count": 1
+      }
+    ],
+    "required_conditions": [],
+    "exclusion_conditions": [],
+    "pivot_type": "pivot_cfpb_unresolved_facts",
+    "priority": 8,
+    "reason_code_template": "PIVOT_CFPB_UNRESOLVED_V1",
+    "directives_template": [
+      {
+        "category": "escalation_path_preference",
+        "value": { "preference": "resolve_account_fingerprints_before_regulatory_followup" }
+      },
+      {
+        "category": "priority_adjustment",
+        "value": { "adjustment": "raise_fact_gathering", "magnitude": "high" }
+      },
+      {
+        "category": "target_focus",
+        "value": { "mode": "unresolved_accounts_from_scenario_evidence" },
+        "param_sources": { "account_fingerprint_ids": "related_account_fingerprints" }
+      }
+    ]
+  }
+]

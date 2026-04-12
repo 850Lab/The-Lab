@@ -1,0 +1,21 @@
+# Prompt registry metadata only (no secrets). Actual prompts live in product ops.
+registry_version: "prompts@1.0.0"
+categories:
+  summary_explanation:
+    description: "High-level narrative over sanitized deterministic snapshot"
+    output_type: "narrative_summary"
+  scenario_interpretation:
+    description: "Plain-language interpretation of detected scenarios"
+    output_type: "scenario_narrative"
+  strategy_explanation:
+    description: "Explains pivot/guidance context without prescribing execution"
+    output_type: "strategy_narrative"
+  anomaly_suggestion:
+    description: "Non-binding observation of possible anomalies"
+    output_type: "suggestion"
+  pattern_suggestion:
+    description: "Non-binding pattern hints for operator review"
+    output_type: "suggestion"
+  operator_assist:
+    description: "Internal operator-facing assist text"
+    output_type: "operator_note"

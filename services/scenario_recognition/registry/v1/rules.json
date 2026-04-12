@@ -1,0 +1,286 @@
+[
+  {
+    "rule_id": "rule_cb_late_payment_v1",
+    "version": "1.0.0",
+    "status": "active",
+    "scenario_type": "cross_bureau_late_payment_misalignment",
+    "applicable_scope": {
+      "scope_types": ["account_fingerprint"],
+      "min_bureaus": 2,
+      "insufficient_evidence_policy": "blocked"
+    },
+    "required_conditions": [
+      {
+        "kind": "slice_present",
+        "dimension": "late_payment_indicator",
+        "min_bureau_count": 2
+      },
+      {
+        "kind": "slice_compare",
+        "dimension": "late_payment_indicator",
+        "compare": "string_mismatch",
+        "min_bureaus_with_value": 2
+      }
+    ],
+    "optional_conditions": [],
+    "exclusion_conditions": [],
+    "priority": 20,
+    "reason_code_template": "CB_LATE_PAY_MISMATCH_V1"
+  },
+  {
+    "rule_id": "rule_cb_account_status_v1",
+    "version": "1.0.0",
+    "status": "active",
+    "scenario_type": "cross_bureau_account_status_misalignment",
+    "applicable_scope": {
+      "scope_types": ["account_fingerprint"],
+      "min_bureaus": 2,
+      "insufficient_evidence_policy": "omit"
+    },
+    "required_conditions": [
+      {
+        "kind": "slice_present",
+        "dimension": "account_status_normalized",
+        "min_bureau_count": 2
+      },
+      {
+        "kind": "slice_compare",
+        "dimension": "account_status_normalized",
+        "compare": "string_mismatch",
+        "min_bureaus_with_value": 2
+      }
+    ],
+    "optional_conditions": [],
+    "exclusion_conditions": [],
+    "priority": 18,
+    "reason_code_template": "CB_STATUS_MISMATCH_V1"
+  },
+  {
+    "rule_id": "rule_cb_balance_or_pastdue_v1",
+    "version": "1.0.0",
+    "status": "active",
+    "scenario_type": "cross_bureau_balance_past_due_mismatch",
+    "applicable_scope": {
+      "scope_types": ["account_fingerprint"],
+      "min_bureaus": 2,
+      "insufficient_evidence_policy": "omit"
+    },
+    "required_conditions": [
+      {
+        "kind": "any_of",
+        "conditions": [
+          {
+            "kind": "all_of",
+            "conditions": [
+              {
+                "kind": "slice_present",
+                "dimension": "balance_normalized",
+                "min_bureau_count": 2
+              },
+              {
+                "kind": "slice_compare",
+                "dimension": "balance_normalized",
+                "compare": "balance_or_past_due_mismatch",
+                "min_bureaus_with_value": 2,
+                "tolerance": 0
+              }
+            ]
+          },
+          {
+            "kind": "all_of",
+            "conditions": [
+              {
+                "kind": "slice_present",
+                "dimension": "past_due_normalized",
+                "min_bureau_count": 2
+              },
+              {
+                "kind": "slice_compare",
+                "dimension": "past_due_normalized",
+                "compare": "balance_or_past_due_mismatch",
+                "min_bureaus_with_value": 2,
+                "tolerance": 0
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "optional_conditions": [],
+    "exclusion_conditions": [],
+    "priority": 16,
+    "reason_code_template": "CB_BALANCE_PASTDUE_MISMATCH_V1"
+  },
+  {
+    "rule_id": "rule_nb_payment_arrangement_delinq_v1",
+    "version": "1.0.0",
+    "status": "active",
+    "scenario_type": "payment_arrangement_with_persistent_delinquency",
+    "applicable_scope": {
+      "scope_types": ["workflow"],
+      "min_bureaus": 2,
+      "insufficient_evidence_policy": "omit"
+    },
+    "required_conditions": [
+      {
+        "kind": "canonical_field_all",
+        "conditions": [
+          {
+            "field_id": "cf_payment_arrangement_active",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "field_id": "cf_delinquency_reported",
+            "operator": "eq",
+            "value": true
+          }
+        ]
+      }
+    ],
+    "optional_conditions": [],
+    "exclusion_conditions": [],
+    "priority": 15,
+    "reason_code_template": "NB_ARR_DELINQ_CONFLICT_V1"
+  },
+  {
+    "rule_id": "rule_nb_adverse_notice_without_app_v1",
+    "version": "1.0.0",
+    "status": "active",
+    "scenario_type": "adverse_action_context_incomplete_or_contradictory",
+    "applicable_scope": {
+      "scope_types": ["workflow"],
+      "min_bureaus": 2,
+      "insufficient_evidence_policy": "omit"
+    },
+    "required_conditions": [
+      {
+        "kind": "all_of",
+        "conditions": [
+          {
+            "kind": "canonical_field",
+            "field_id": "cf_adverse_action_notice_received",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "kind": "canonical_field",
+            "field_id": "cf_credit_application_submitted_recent",
+            "operator": "neq",
+            "value": true
+          }
+        ]
+      }
+    ],
+    "optional_conditions": [],
+    "exclusion_conditions": [],
+    "priority": 10,
+    "reason_code_template": "NB_ADV_ACTION_NOTICE_WITHOUT_APP_V1"
+  },
+  {
+    "rule_id": "rule_nb_adverse_app_without_notice_v1",
+    "version": "1.0.0",
+    "status": "active",
+    "scenario_type": "adverse_action_context_incomplete_or_contradictory",
+    "applicable_scope": {
+      "scope_types": ["workflow"],
+      "min_bureaus": 2,
+      "insufficient_evidence_policy": "omit"
+    },
+    "required_conditions": [
+      {
+        "kind": "all_of",
+        "conditions": [
+          {
+            "kind": "canonical_field",
+            "field_id": "cf_credit_application_submitted_recent",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "kind": "canonical_field",
+            "field_id": "cf_adverse_action_notice_received",
+            "operator": "neq",
+            "value": true
+          }
+        ]
+      }
+    ],
+    "optional_conditions": [],
+    "exclusion_conditions": [],
+    "priority": 11,
+    "reason_code_template": "NB_ADV_ACTION_APP_WITHOUT_NOTICE_V1"
+  },
+  {
+    "rule_id": "rule_nb_cro_fee_gap_v1",
+    "version": "1.0.0",
+    "status": "active",
+    "scenario_type": "cro_engagement_fee_timing_gap_or_conflict",
+    "applicable_scope": {
+      "scope_types": ["workflow"],
+      "min_bureaus": 2,
+      "insufficient_evidence_policy": "omit"
+    },
+    "required_conditions": [
+      {
+        "kind": "canonical_field",
+        "field_id": "cf_credit_repair_organization_engaged",
+        "operator": "eq",
+        "value": "yes"
+      },
+      {
+        "kind": "any_of",
+        "conditions": [
+          {
+            "kind": "canonical_field",
+            "field_id": "cf_cro_fee_or_payment_before_outcome",
+            "operator": "neq",
+            "value": true
+          },
+          {
+            "kind": "field_ineligible",
+            "field_id": "cf_cro_fee_or_payment_before_outcome"
+          }
+        ]
+      }
+    ],
+    "optional_conditions": [],
+    "exclusion_conditions": [],
+    "priority": 12,
+    "reason_code_template": "NB_CRO_FEE_SIGNAL_GAP_V1"
+  },
+  {
+    "rule_id": "rule_nb_cfpb_unresolved_v1",
+    "version": "1.0.0",
+    "status": "active",
+    "scenario_type": "cfpb_complaint_with_unresolved_account_facts",
+    "applicable_scope": {
+      "scope_types": ["workflow"],
+      "min_bureaus": 2,
+      "insufficient_evidence_policy": "omit"
+    },
+    "required_conditions": [
+      {
+        "kind": "all_of",
+        "conditions": [
+          {
+            "kind": "canonical_field",
+            "field_id": "cf_regulatory_complaint_filed_cfpb",
+            "operator": "eq",
+            "value": true
+          },
+          {
+            "kind": "canonical_field",
+            "field_id": "cf_account_facts_fully_resolved",
+            "operator": "eq",
+            "value": false
+          }
+        ]
+      }
+    ],
+    "optional_conditions": [],
+    "exclusion_conditions": [],
+    "priority": 8,
+    "reason_code_template": "NB_CFPB_ACCOUNT_FACTS_UNRESOLVED_V1"
+  }
+]

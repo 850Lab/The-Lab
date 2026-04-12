@@ -1,0 +1,48 @@
+{
+  "version": "1.0.0",
+  "target_focus": {
+    "modes": [
+      "all_mismatch_bureaus",
+      "mismatch_bureaus_only",
+      "workflow_wide",
+      "unresolved_accounts_from_scenario_evidence"
+    ]
+  },
+  "dispute_framing_type": {
+    "types": [
+      "consistency_challenge",
+      "account_status_conflict",
+      "remedy_state_contradiction",
+      "compliance_sensitive_review"
+    ]
+  },
+  "escalation_path_preference": {
+    "preferences": [
+      "fact_completion_first",
+      "internal_review_before_external_push",
+      "resolve_account_fingerprints_before_regulatory_followup"
+    ]
+  },
+  "grouping_strategy": {
+    "strategies": [
+      "per_bureau_tradeline",
+      "single_account_deep_dive"
+    ]
+  },
+  "priority_adjustment": {
+    "adjustments": [
+      "raise_tradeline_priority",
+      "lower_nonblocking_tradelines_until_workflow_gate_cleared",
+      "raise_fact_gathering"
+    ],
+    "magnitudes": ["low", "medium", "high"]
+  },
+  "sequencing_hint": {
+    "hints": [
+      "bureau_with_strongest_documentation_first",
+      "establish_arrangement_evidence_before_status_challenge",
+      "defer_account_level_dispute_until_adv_action_context_resolved",
+      "avoid_aggressive_deadline_pressure"
+    ]
+  }
+}

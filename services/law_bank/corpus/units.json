@@ -1,0 +1,268 @@
+[
+  {
+    "unitId": "law_fcra_cra_reinvestigation_v1",
+    "version": "1.0.0",
+    "status": "published",
+    "title": "CRA reinvestigation of disputed information",
+    "summary": "Federal law requires consumer reporting agencies to reinvestigate disputed items and record outcomes under prescribed procedures.",
+    "domains": [
+      "credit_reporting",
+      "bureau_obligations"
+    ],
+    "subjectMatterTags": [
+      "investigation",
+      "accuracy",
+      "dispute"
+    ],
+    "leverageType": "obligation",
+    "enforcementShape": "bureau_process",
+    "triggerConditions": {
+      "hasBureauTarget": true,
+      "disputeRoundGte": 1,
+      "subjectMatterTagsAny": [
+        "investigation"
+      ]
+    },
+    "leverageImpact": "Frames bureau-side dispute and reinvestigation expectations when tradeline accuracy is contested.",
+    "applicabilityNotes": "Applies when consumer targets a CRA and dispute round is active; does not assert outcome.",
+    "relatedOutcomePatterns": [
+      "op_dispute_round_active"
+    ],
+    "primaryCitations": [
+      {
+        "instrument": "FCRA",
+        "section": "611",
+        "label": "15 U.S.C. \u00a7 1681i"
+      }
+    ],
+    "effectiveAsOf": "2026-01-01",
+    "reviewedAt": "2026-04-08T00:00:00Z",
+    "reviewedBy": "850-lab-compliance-placeholder",
+    "contentHash": "f015eb4359dd2fe0b0f8d7d5ea9e10ec1db20be819bd69926d7464cf8ebb97d5"
+  },
+  {
+    "unitId": "law_fcra_maximum_possible_accuracy_v1",
+    "version": "1.0.0",
+    "status": "published",
+    "title": "Maximum possible accuracy standard (reporting)",
+    "summary": "Consumer reports must exclude information known to be inaccurate and updated when completeness or accuracy cannot be verified.",
+    "domains": [
+      "credit_reporting",
+      "bureau_obligations"
+    ],
+    "subjectMatterTags": [
+      "accuracy",
+      "reporting_standard"
+    ],
+    "leverageType": "obligation",
+    "enforcementShape": "bureau_process",
+    "triggerConditions": {
+      "hasBureauTarget": true,
+      "subjectMatterTagsAny": [
+        "accuracy"
+      ]
+    },
+    "leverageImpact": "Supports accuracy-based dispute framing against CRAs.",
+    "applicabilityNotes": "High-level reporting standard; pair with item-specific facts in operations.",
+    "relatedOutcomePatterns": [
+      "op_eligible_pool_non_empty"
+    ],
+    "primaryCitations": [
+      {
+        "instrument": "FCRA",
+        "section": "607",
+        "label": "15 U.S.C. \u00a7 1681e"
+      }
+    ],
+    "effectiveAsOf": "2026-01-01",
+    "reviewedAt": "2026-04-08T00:00:00Z",
+    "reviewedBy": "850-lab-compliance-placeholder",
+    "contentHash": "3d41884aa754c7eb951f23a6874690c29209a9b975544f49230c9c046b89b5e3"
+  },
+  {
+    "unitId": "law_fcra_furnisher_accuracy_duties_v1",
+    "version": "1.0.0",
+    "status": "published",
+    "title": "Furnisher duties to correct and update information",
+    "summary": "Entities furnishing information to CRAs have duties to correct and update information following disputes and when information is incomplete or inaccurate.",
+    "domains": [
+      "credit_reporting",
+      "furnisher_obligations"
+    ],
+    "subjectMatterTags": [
+      "accuracy",
+      "furnisher_reporting"
+    ],
+    "leverageType": "obligation",
+    "enforcementShape": "furnisher_process",
+    "triggerConditions": {
+      "hasFurnisherTarget": true,
+      "subjectMatterTagsAny": [
+        "accuracy"
+      ]
+    },
+    "leverageImpact": "Supports furnisher-directed dispute and correction posture when data origin is material.",
+    "applicabilityNotes": "Trigger when furnisher path is structurally available or tradeline-level accuracy is in play.",
+    "relatedOutcomePatterns": [
+      "op_eligible_pool_non_empty"
+    ],
+    "primaryCitations": [
+      {
+        "instrument": "FCRA",
+        "section": "623",
+        "label": "15 U.S.C. \u00a7 1681s-2"
+      }
+    ],
+    "effectiveAsOf": "2026-01-01",
+    "reviewedAt": "2026-04-08T00:00:00Z",
+    "reviewedBy": "850-lab-compliance-placeholder",
+    "contentHash": "e465335322d801cd3805f7c4275a83871aed66c0781c3bc116218bf25fc2073f"
+  },
+  {
+    "unitId": "law_fcra_identity_blocking_v1",
+    "version": "1.0.0",
+    "status": "published",
+    "title": "Identity theft and blocking of information",
+    "summary": "Federal law provides for blocking of adverse information resulting from identity theft when identity theft is asserted under prescribed conditions.",
+    "domains": [
+      "credit_reporting",
+      "identity_blocking"
+    ],
+    "subjectMatterTags": [
+      "identity_theft",
+      "block"
+    ],
+    "leverageType": "consumer_right",
+    "enforcementShape": "identity_block_process",
+    "triggerConditions": {
+      "identityContext": true
+    },
+    "leverageImpact": "Frames identity-theft-related blocking concepts when identity discrepancies are present in structured intake.",
+    "applicabilityNotes": "Requires structured identity-context flag from claims; not a substitute for fraud affidavit workflow.",
+    "relatedOutcomePatterns": [
+      "op_identity_context"
+    ],
+    "primaryCitations": [
+      {
+        "instrument": "FCRA",
+        "section": "605B",
+        "label": "15 U.S.C. \u00a7 1681c-2"
+      }
+    ],
+    "effectiveAsOf": "2026-01-01",
+    "reviewedAt": "2026-04-08T00:00:00Z",
+    "reviewedBy": "850-lab-compliance-placeholder",
+    "contentHash": "d3bf23f1fccbcb083f8dcdb59d9253cefb39206e4d87b8be1a1e827e2f011827"
+  },
+  {
+    "unitId": "law_fdcpa_validation_right_v1",
+    "version": "1.0.0",
+    "status": "published",
+    "title": "Debt validation in collection",
+    "summary": "Federal law provides consumers a right to request validation of a debt from collectors within prescribed timelines.",
+    "domains": [
+      "debt_validation",
+      "collection_conduct"
+    ],
+    "subjectMatterTags": [
+      "validation",
+      "collection_conduct"
+    ],
+    "leverageType": "consumer_right",
+    "enforcementShape": "collector_process",
+    "triggerConditions": {
+      "hasCollectionAccountSignals": true
+    },
+    "leverageImpact": "Frames validation leverage when collection tradelines are structurally indicated.",
+    "applicabilityNotes": "Thin proxy: structured negative/collection-styled tradeline pool only; expand flags later if needed.",
+    "relatedOutcomePatterns": [
+      "op_collections_signal"
+    ],
+    "primaryCitations": [
+      {
+        "instrument": "FDCPA",
+        "section": "809",
+        "label": "15 U.S.C. \u00a7 1692g"
+      }
+    ],
+    "effectiveAsOf": "2026-01-01",
+    "reviewedAt": "2026-04-08T00:00:00Z",
+    "reviewedBy": "850-lab-compliance-placeholder",
+    "contentHash": "cb0d38be577a0a980681c1695f85e6d19614e2bd4214090cadf2eac0f727cb5a"
+  },
+  {
+    "unitId": "law_fdcpa_collection_misrepresentation_signal_v1",
+    "version": "1.0.0",
+    "status": "published",
+    "title": "False or misleading representations (collections)",
+    "summary": "Federal law prohibits false, deceptive, or misleading representations in debt collection communications.",
+    "domains": [
+      "collection_conduct"
+    ],
+    "subjectMatterTags": [
+      "collection_conduct",
+      "accuracy"
+    ],
+    "leverageType": "informational",
+    "enforcementShape": "collector_process",
+    "triggerConditions": {
+      "hasCollectionAccountSignals": true,
+      "escalationEligible": true
+    },
+    "leverageImpact": "Context for collection conduct review when escalation signals are already present.",
+    "applicabilityNotes": "Informational leverage slice; pair with operational response review, not automatic escalation text.",
+    "relatedOutcomePatterns": [
+      "op_collections_signal",
+      "op_escalation_signal_present"
+    ],
+    "primaryCitations": [
+      {
+        "instrument": "FDCPA",
+        "section": "807",
+        "label": "15 U.S.C. \u00a7 1692e"
+      }
+    ],
+    "effectiveAsOf": "2026-01-01",
+    "reviewedAt": "2026-04-08T00:00:00Z",
+    "reviewedBy": "850-lab-compliance-placeholder",
+    "contentHash": "db76c34a5325289c0c016b1e5215e9eba5f7776a6be8df6321aa10baac43f734"
+  },
+  {
+    "unitId": "law_cfpb_complaint_channel_v1",
+    "version": "1.0.0",
+    "status": "published",
+    "title": "CFPB complaint channel (escalation)",
+    "summary": "The CFPB maintains a consumer complaint mechanism that can be used as a structured escalation channel for certain market participants.",
+    "domains": [
+      "escalation_channels"
+    ],
+    "subjectMatterTags": [
+      "complaint_channel",
+      "escalation"
+    ],
+    "leverageType": "remedy_channel",
+    "enforcementShape": "escalation_channel",
+    "triggerConditions": {
+      "escalationEligible": true,
+      "requiredOutcomePatternsAny": [
+        "op_cfpb_action_available"
+      ]
+    },
+    "leverageImpact": "Documents a structured regulatory complaint path when workflow escalation already surfaces CFPB as an action type.",
+    "applicabilityNotes": "Only attaches when CFPB action is structurally present in escalation payload.",
+    "relatedOutcomePatterns": [
+      "op_cfpb_action_available"
+    ],
+    "primaryCitations": [
+      {
+        "instrument": "CFPB",
+        "section": "complaint_portal",
+        "label": "Consumer Financial Protection Bureau complaint system (federal)"
+      }
+    ],
+    "effectiveAsOf": "2026-01-01",
+    "reviewedAt": "2026-04-08T00:00:00Z",
+    "reviewedBy": "850-lab-compliance-placeholder",
+    "contentHash": "e8ba9a5e81444bc89f428f5e68be001bb2a84273b0586bf57935a95905e6fc91"
+  }
+]

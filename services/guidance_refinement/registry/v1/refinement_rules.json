@@ -1,0 +1,83 @@
+{
+  "rules_version": "refinement_rules@1.0.0",
+  "priority_bounds": { "min": 0, "max": 200 },
+  "priority_tier_bands": [
+    { "min": 0, "max": 9, "tier": "P0" },
+    { "min": 10, "max": 24, "tier": "P1" },
+    { "min": 25, "max": 49, "tier": "P2" },
+    { "min": 50, "max": 200, "tier": "P3" }
+  ],
+  "scenario_severity_tier": {
+    "cross_bureau_late_payment_misalignment": "P1",
+    "cross_bureau_account_status_misalignment": "P1",
+    "payment_arrangement_with_persistent_delinquency": "P0",
+    "adverse_action_context_incomplete_or_contradictory": "P0",
+    "cro_engagement_fee_timing_gap_or_conflict": "P1",
+    "cfpb_complaint_with_unresolved_account_facts": "P0"
+  },
+  "severity_priority_delta": {
+    "P0": -4,
+    "P1": -2,
+    "P2": 0,
+    "P3": 1
+  },
+  "pivot_link_rules": [
+    {
+      "rule_id": "pl_cb_late_elevate",
+      "pivot_types": ["pivot_cross_bureau_late_payment"],
+      "guidance_kind": "cross_bureau_tradeline",
+      "link_kind": "elevate",
+      "priority_delta": 8,
+      "emphasis_level": "primary",
+      "max_accumulated_delta": 24
+    },
+    {
+      "rule_id": "pl_cfpb_deemphasize",
+      "pivot_types": ["pivot_cfpb_unresolved_facts"],
+      "guidance_kind": "low_stakes_hygiene",
+      "link_kind": "deemphasize",
+      "priority_delta": 15,
+      "emphasis_level": "secondary",
+      "max_accumulated_delta": 30
+    }
+  ],
+  "pivot_priority_total_cap": 32,
+  "scope_focus_rules": [
+    {
+      "rule_id": "sf_bureau_detail",
+      "when_step_scope_mode": "bureau_detail",
+      "require_matching_scope_key_from_context_key": "focused_scope_key",
+      "applies_to_scope_types": ["bureau"],
+      "mismatch_visibility": "hidden",
+      "reason_code": "BUREAU_FOCUS_MISMATCH"
+    }
+  ],
+  "pivot_suppress_rules": [
+    {
+      "rule_id": "ps_cfpb_vs_hygiene",
+      "when_pivot_types": ["pivot_cfpb_unresolved_facts"],
+      "guidance_kind": "low_stakes_hygiene",
+      "visibility": "suppressed",
+      "reason_code": "SUPPRESS_HYGIENE_UNDER_CFPB_PIVOT"
+    }
+  ],
+  "step_scope_policies": {
+    "workflow_only": {
+      "primary_scope_types": ["workflow"],
+      "non_primary_visibility": "deferred",
+      "reason_code": "DEFER_NON_WORKFLOW_IN_WORKFLOW_STEP"
+    },
+    "account_detail": {
+      "primary_scope_types": ["workflow", "account_fingerprint"],
+      "non_primary_visibility": "visible",
+      "reason_code": null
+    }
+  },
+  "default_display_category": "execution",
+  "default_emphasis_level": "standard",
+  "guidance_kind_display_category": {
+    "cross_bureau_tradeline": "execution",
+    "low_stakes_hygiene": "timing",
+    "workflow_gate": "escalation"
+  }
+}

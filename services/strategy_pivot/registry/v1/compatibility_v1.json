@@ -1,0 +1,21 @@
+{
+  "version": "1.0.0",
+  "exclusive_pivot_pairs": [
+    ["pivot_adverse_action_context", "pivot_cfpb_unresolved_facts"]
+  ],
+  "dominance": [
+    {
+      "dominant": "pivot_cfpb_unresolved_facts",
+      "over": "pivot_adverse_action_context",
+      "scope_types": ["workflow"]
+    }
+  ],
+  "compatible_categories": [
+    "target_focus",
+    "dispute_framing_type",
+    "escalation_path_preference",
+    "grouping_strategy",
+    "priority_adjustment",
+    "sequencing_hint"
+  ]
+}
