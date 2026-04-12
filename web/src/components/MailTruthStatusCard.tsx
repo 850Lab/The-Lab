@@ -38,30 +38,30 @@ export function MailTruthStatusCard({ mail }: { mail: MailContextPayload }) {
 
       <ul className="mt-4 space-y-1.5 border-t border-white/[0.08] pt-3 text-xs text-lab-subtle">
         <li>
-          Dispute letters ready to mail:{" "}
+          Letters for this round:{" "}
           <span className="font-medium text-lab-text">
-            {ms.lettersGenerated ? "Yes" : "Not yet"}
+            {ms.lettersGenerated ? "Ready" : "Not ready yet"}
           </span>
         </li>
         <li>
-          Government ID & proof of address:{" "}
+          Proof on file:{" "}
           <span className="font-medium text-lab-text">
-            {ms.proofComplete ? "On file" : "Still needed"}
+            {ms.proofComplete ? "Yes" : "Still needed"}
           </span>
         </li>
         <li>
-          Mailing balance (used at certified send):{" "}
+          Mailing credits:{" "}
           <span className="font-medium text-lab-text">
             {ms.mailingCreditsAvailable
-              ? `${mail.mailingsBalance} ready — one credit per live bureau send`
-              : "Add mailings before you submit — send is the spend moment"}
+              ? `${mail.mailingsBalance} available (one credit per live bureau send)`
+              : "Add mailings before you can send — credits apply when you confirm each send"}
           </span>
         </li>
         <li>
-          Certified send mode:{" "}
+          Send mode:{" "}
           <span className="font-medium text-lab-text">
             {ms.requiresLiveForCustomerSend && ms.isTestMode
-              ? "Blocked — live mail key required"
+              ? "Blocked — live mail key required on the server"
               : ms.isTestMode
                 ? "Test (no physical USPS letter)"
                 : "Live USPS certified mail"}
@@ -69,8 +69,7 @@ export function MailTruthStatusCard({ mail }: { mail: MailContextPayload }) {
         </li>
         {ms.hasTracking ? (
           <li className="text-lab-muted">
-            At least one bureau has USPS tracking (shows handoff and transit — not proof the bureau
-            finished its review).
+            At least one send has USPS tracking — that shows mail movement, not bureau results yet.
           </li>
         ) : null}
       </ul>

@@ -293,6 +293,105 @@ class ReviewClaim:
             result["letter_eligibility"] = self.letter_eligibility.to_dict()
         
         return result
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "ReviewClaim":
+        """Deserialize from ``to_dict()`` / intake JSON (workflow snapshot, API)."""
+        if not isinstance(data, dict):
+            raise TypeError("ReviewClaim.from_dict expects a dict")
+
+        rts = (data.get("review_type") or "").strip()
+        try:
+            rt = ReviewType(rts)
+        except ValueError:
+            rt = ReviewType.ACCURACY_VERIFICATION
+
+        es = data.get("evidence_summary") if isinstance(data.get("evidence_summary"), dict) else {}
+        cb_raw = (es.get("cross_bureau_status") or "unknown").strip()
+        try:
+            cb = CrossBureauStatus(cb_raw)
+        except ValueError:
+            cb = CrossBureauStatus.UNKNOWN
+
+        ccs_raw = es.get("claim_confidence_summary")
+        ccs: Optional[ClaimConfidenceSummary] = None
+        if isinstance(ccs_raw, dict):
+            ccs = ClaimConfidenceSummary(
+                high=int(ccs_raw.get("high") or 0),
+                medium=int(ccs_raw.get("medium") or 0),
+                low=int(ccs_raw.get("low") or 0),
+            )
+
+        evidence = EvidenceSummary(
+            system_observations=list(es.get("system_observations") or []),
+            cross_bureau_status=cb,
+            claim_confidence_summary=ccs,
+        )
+
+        cr = data.get("consumer_response") if isinstance(data.get("consumer_response"), dict) else {}
+        crs_raw = (cr.get("status") or "unreviewed").strip()
+        try:
+            crs = ConsumerResponseStatus(crs_raw)
+        except ValueError:
+            crs = ConsumerResponseStatus.UNREVIEWED
+        consumer = ConsumerResponse(
+            status=crs,
+            allowed_responses=list(cr.get("allowed_responses") or ["accurate", "inaccurate", "unsure"]),
+        )
+
+        ia = data.get("impact_assessment") if isinstance(data.get("impact_assessment"), dict) else {}
+        ci_raw = (ia.get("credit_impact") or "unknown").strip()
+        sev_raw = (ia.get("severity") or "unknown").strip()
+        try:
+            ci = CreditImpact(ci_raw)
+        except ValueError:
+            ci = CreditImpact.UNKNOWN
+        try:
+            sev = Severity(sev_raw)
+        except ValueError:
+            sev = Severity.UNKNOWN
+        impact = ImpactAssessment(credit_impact=ci, severity=sev)
+
+        ad = data.get("audit") if isinstance(data.get("audit"), dict) else {}
+        audit = Audit(
+            created_at=str(ad.get("created_at") or datetime.now().isoformat()),
+            derived_from=str(ad.get("derived_from") or "compression_layer_v1"),
+            immutable_summary=bool(ad.get("immutable_summary", True)),
+        )
+
+        le: Optional[LetterEligibility] = None
+        le_raw = data.get("letter_eligibility")
+        if isinstance(le_raw, dict):
+            le = LetterEligibility(
+                letter_eligible=bool(le_raw.get("letter_eligible")),
+                default_selected=bool(le_raw.get("default_selected")),
+                requires_user_confirmation=bool(le_raw.get("requires_user_confirmation", True)),
+                hidden_by_default=bool(le_raw.get("hidden_by_default")),
+                letter_ready=bool(le_raw.get("letter_ready")),
+                letter_block_reason=(
+                    str(le_raw["letter_block_reason"])
+                    if le_raw.get("letter_block_reason") is not None
+                    else None
+                ),
+            )
+
+        ent = data.get("entities")
+        if not isinstance(ent, dict):
+            ent = {}
+
+        return cls(
+            review_claim_id=str(data.get("review_claim_id") or ""),
+            review_type=rt,
+            summary=str(data.get("summary") or ""),
+            question=str(data.get("question") or ""),
+            entities={k: (str(v) if v is not None else None) for k, v in ent.items()},
+            supporting_claim_ids=[str(x) for x in (data.get("supporting_claim_ids") or []) if x],
+            evidence_summary=evidence,
+            consumer_response=consumer,
+            impact_assessment=impact,
+            audit=audit,
+            letter_eligibility=le,
+        )
     
     def passes_litmus_test(self) -> bool:
         """

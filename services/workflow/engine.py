@@ -30,6 +30,16 @@ from services.workflow.responses import safe_error, workflow_envelope
 _log = logging.getLogger(__name__)
 
 
+def _orion_after_commit(workflow_id: str) -> None:
+    """Non-blocking O.R.I.O.N. refresh after durable workflow writes."""
+    try:
+        from services.guidance.orion_scheduler import schedule_guidance_evaluation
+
+        schedule_guidance_evaluation(workflow_id)
+    except Exception:
+        pass
+
+
 def _linear_order_from_session(session: Optional[Dict[str, Any]]) -> Tuple[str, ...]:
     if not session:
         return reg.LINEAR_STEP_ORDER
@@ -249,6 +259,7 @@ class WorkflowEngine:
             if repair_linear_availability_tx(conn, cur, workflow_id, smap, order):
                 wf_inst.touch_session_updated_at(conn, cur, workflow_id)
                 conn.commit()
+                _orion_after_commit(workflow_id)
                 steps = fetch_steps(workflow_id)
                 smap = _steps_by_id(steps)
             else:
@@ -455,6 +466,7 @@ class WorkflowEngine:
                     last_error_message_safe=None,
                 )
             conn.commit()
+            _orion_after_commit(workflow_id)
         log_workflow_event(
             "service_complete",
             workflow_id=workflow_id,
@@ -530,6 +542,7 @@ class WorkflowEngine:
                 last_error_message_safe=None,
             )
             conn.commit()
+            _orion_after_commit(workflow_id)
 
         from services.workflow.dispute_round_execution import snapshot_round_close_before_next
         from services.workflow.repository import merge_into_workflow_metadata
@@ -652,6 +665,7 @@ class WorkflowEngine:
                 last_error_message_safe=message_safe,
             )
             conn.commit()
+            _orion_after_commit(workflow_id)
         log_workflow_event(
             "service_fail",
             workflow_id=workflow_id,
@@ -696,6 +710,7 @@ class WorkflowEngine:
             )
             wf_inst.touch_session_updated_at(conn, cur, workflow_id)
             conn.commit()
+            _orion_after_commit(workflow_id)
         log_workflow_event(
             "async_state",
             workflow_id=workflow_id,
@@ -754,6 +769,7 @@ class WorkflowEngine:
                 last_error_message_safe=None,
             )
             conn.commit()
+            _orion_after_commit(workflow_id)
         log_workflow_event(
             "service_reopen_failed",
             workflow_id=workflow_id,
@@ -837,6 +853,7 @@ class WorkflowEngine:
                 conn, cur, workflow_id, {"mail": patch_mail}
             )
             conn.commit()
+            _orion_after_commit(workflow_id)
 
         log_workflow_event(
             "mail_recovery_retry_marked",
@@ -961,6 +978,7 @@ class WorkflowEngine:
                 last_error_message_safe=None,
             )
             conn.commit()
+            _orion_after_commit(workflow_id)
 
         log_workflow_event(
             "step_start",
@@ -1072,6 +1090,7 @@ class WorkflowEngine:
                     last_error_message_safe=None,
                 )
             conn.commit()
+            _orion_after_commit(workflow_id)
 
         # Refresh for response
         if not finish_session and next_open:
@@ -1141,6 +1160,7 @@ class WorkflowEngine:
                 last_error_message_safe=message_safe,
             )
             conn.commit()
+            _orion_after_commit(workflow_id)
 
         return self.build_response(
             action_result="ok",

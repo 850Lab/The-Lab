@@ -100,7 +100,7 @@ export function ProgramHomePage() {
         </p>
         <Link
           to="/"
-          className="mt-6 inline-flex rounded-md bg-lab-accent px-4 py-2 text-sm font-medium text-slate-950 hover:bg-sky-400"
+          className="mt-6 inline-flex rounded-md bg-lab-accent px-4 py-2 text-sm font-medium text-zinc-950 hover:brightness-110"
         >
           Return home
         </Link>
@@ -173,7 +173,7 @@ export function ProgramHomePage() {
                     done
                       ? "border-emerald-500/25 bg-emerald-500/5 text-emerald-100"
                       : active
-                        ? "border-lab-accent/40 bg-lab-accent/10 text-lab-text"
+                        ? "border-zinc-500/40 bg-zinc-500/[0.1] text-lab-text"
                         : "border-white/[0.06] text-lab-muted",
                   ].join(" ")}
                 >
@@ -183,7 +183,7 @@ export function ProgramHomePage() {
                     <span className="ml-auto text-xs text-emerald-200/80">Done</span>
                   )}
                   {active && (
-                    <span className="ml-auto text-xs text-sky-200/90">You are here with the cohort</span>
+                    <span className="ml-auto text-xs text-zinc-300/90">You are here with the cohort</span>
                   )}
                 </li>
               );
@@ -242,7 +242,7 @@ export function ProgramHomePage() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
         <Link
           to={next}
-          className="inline-flex justify-center rounded-md bg-lab-accent px-5 py-2.5 text-center text-sm font-semibold text-slate-950 hover:bg-sky-400"
+          className="inline-flex justify-center rounded-md bg-lab-accent px-5 py-2.5 text-center text-sm font-semibold text-zinc-950 hover:brightness-110"
         >
           {paused
             ? "See your status"

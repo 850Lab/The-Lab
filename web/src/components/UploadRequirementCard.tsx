@@ -4,6 +4,8 @@ import { useId, useRef, type ReactNode } from "react";
 export type UploadRequirementCardProps = {
   title: string;
   supportText: string;
+  /** Short reassurance, e.g. acceptable file formats in plain language. */
+  formatHint?: string;
   examples?: ReactNode;
   footerSlot?: ReactNode;
   fileName: string | null;
@@ -20,6 +22,7 @@ export type UploadRequirementCardProps = {
 export function UploadRequirementCard({
   title,
   supportText,
+  formatHint,
   examples,
   footerSlot,
   fileName,
@@ -54,6 +57,9 @@ export function UploadRequirementCard({
           <p className="mt-1.5 text-sm leading-relaxed text-lab-muted">
             {supportText}
           </p>
+          {formatHint ? (
+            <p className="mt-2 text-xs leading-relaxed text-lab-subtle">{formatHint}</p>
+          ) : null}
         </div>
         <AnimatePresence mode="wait">
           {complete ? (
@@ -153,7 +159,7 @@ export function UploadRequirementCard({
                   Upload a photo or PDF
                 </span>
                 <span className="mt-1.5 text-center text-xs text-lab-subtle">
-                  JPG, PNG, or PDF — keep it clear and readable
+                  JPG, PNG, or PDF — clear photos or scans are usually fine
                 </span>
                 <span className="mt-5 inline-flex rounded-lg bg-lab-accent/15 px-4 py-2.5 text-sm font-semibold text-lab-accent">
                   Choose file

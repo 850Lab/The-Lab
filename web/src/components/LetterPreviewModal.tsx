@@ -58,7 +58,7 @@ export function LetterPreviewModal({ open, onClose, bureau, body, loading }: Pro
                 id="letter-preview-title"
                 className="text-[15px] font-semibold text-lab-text"
               >
-                {bureau} letter
+                Preview: {bureau}
               </h2>
               <button
                 type="button"
@@ -71,7 +71,7 @@ export function LetterPreviewModal({ open, onClose, bureau, body, loading }: Pro
             <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-6 sm:py-6">
               <div className="rounded-lg border border-white/[0.06] bg-lab-bg/80 px-4 py-5 sm:px-5 sm:py-6">
                 {loading ? (
-                  <p className="text-sm text-lab-muted">Loading letter…</p>
+                  <p className="text-sm text-lab-muted">Loading preview…</p>
                 ) : (
                   <pre className="whitespace-pre-wrap font-sans text-[13px] leading-[1.65] text-lab-text/95 sm:text-[14px]">
                     {body}

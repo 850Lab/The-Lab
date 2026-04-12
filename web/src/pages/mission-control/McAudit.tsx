@@ -71,7 +71,7 @@ export function McAudit() {
                   {r.workflow_id ? (
                     <Link
                       to={`/mission-control/workflows/${String(r.workflow_id)}`}
-                      className="text-sky-300 hover:underline"
+                      className="text-zinc-400 hover:underline"
                     >
                       {String(r.workflow_id).slice(0, 8)}…
                     </Link>

@@ -1,15 +1,15 @@
 import { motion } from "framer-motion";
-import { lettersPurposeBlock } from "@/lib/intelligenceExpression";
 
 /** Indeterminate activity — generation completion is server-driven, not this animation. */
 export function LetterGeneratingState() {
-  const purpose = lettersPurposeBlock();
   return (
-    <div className="mx-auto flex max-w-sm flex-col items-center px-2 pt-6 sm:pt-10">
-      <p className="text-center text-[10px] font-semibold uppercase tracking-[0.18em] text-lab-accent">
-        Your program · Letters
-      </p>
-      <div className="relative mt-4 h-1 w-full max-w-[240px] overflow-hidden rounded-full bg-white/[0.06]">
+    <motion.div
+      className="mx-auto flex max-w-sm flex-col items-center px-2 pt-4 sm:pt-6"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+    >
+      <div className="relative h-1 w-full max-w-[240px] overflow-hidden rounded-full bg-white/[0.06]">
         <motion.div
           className="absolute inset-y-0 w-1/3 rounded-full bg-lab-accent/85"
           initial={{ left: "-33%" }}
@@ -24,15 +24,15 @@ export function LetterGeneratingState() {
         aria-hidden
       />
       <h2 className="mt-6 text-center text-lg font-semibold tracking-tight text-lab-text sm:text-xl">
-        Now we&apos;re generating your dispute letters
+        Preparing your letters…
       </h2>
       <p className="mt-2 text-center text-sm leading-relaxed text-lab-muted">
-        Creating bureau-ready dispute text from the plan you locked in — the same letter engine as
-        the rest of your program. Nothing else required from you here.
+        We&apos;re turning your confirmed round into draft documents now. This usually only takes a
+        moment.
       </p>
       <p className="mt-4 max-w-sm text-center text-xs leading-relaxed text-lab-subtle sm:text-sm">
-        {purpose.paragraphs[0]}
+        Nothing is mailed from this step — you&apos;ll review each draft here first.
       </p>
-    </div>
+    </motion.div>
   );
 }

@@ -109,7 +109,7 @@ export function EscalationProgramSection({
                     </div>
                     <Link
                       to={`/escalation-action?action=${encodeURIComponent(a.id)}`}
-                      className="shrink-0 text-xs font-semibold text-lab-accent hover:text-sky-300"
+                      className="shrink-0 text-xs font-semibold text-lab-accent hover:text-zinc-100"
                     >
                       Full screen →
                     </Link>
@@ -175,7 +175,7 @@ export function EscalationProgramSection({
       ))}
 
       <p className="text-center text-[11px] text-lab-subtle">
-        <Link to="/escalation" className="font-semibold text-lab-accent hover:text-sky-300">
+        <Link to="/escalation" className="font-semibold text-lab-accent hover:text-zinc-100">
           Open full escalation toolkit →
         </Link>
       </p>

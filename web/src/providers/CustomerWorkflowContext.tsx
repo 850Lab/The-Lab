@@ -13,6 +13,7 @@ import {
   computeAuthoritativeStep,
   customerRouteForBackendStep,
 } from "@/lib/workflowStepRoutes";
+import { buildOrionViewModel, type OrionViewModel } from "@/lib/orion/orionViewModel";
 import type { WorkflowEnvelope } from "@/lib/workflowTypes";
 import { useAuth } from "@/providers/AuthContext";
 
@@ -22,6 +23,8 @@ export type CustomerWorkflowContextValue = {
   error: string | null;
   workflowId: string | null;
   envelope: WorkflowEnvelope | null;
+  /** Normalized ORION consumption (V1.6); use instead of ad hoc envelope field reads. */
+  orionViewModel: OrionViewModel;
   canonicalCustomerPath: string;
   authoritativeStepId: string | null;
   phase: "active" | "done";
@@ -106,6 +109,11 @@ export function CustomerWorkflowProvider({ children }: { children: ReactNode }) 
 
   const nextRequiredAction = integrityHints?.nextRequiredAction ?? null;
 
+  const orionViewModel = useMemo(
+    () => buildOrionViewModel(envelope),
+    [envelope],
+  );
+
   const initWorkflow = useCallback(async () => {
     const t = authToken;
     if (!t) throw new Error("Sign in required");
@@ -177,6 +185,7 @@ export function CustomerWorkflowProvider({ children }: { children: ReactNode }) 
     error,
     workflowId,
     envelope,
+    orionViewModel,
     canonicalCustomerPath,
     authoritativeStepId,
     phase,

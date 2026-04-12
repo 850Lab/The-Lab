@@ -8,7 +8,7 @@ const tones: Record<Tone, string> = {
   ok: "border-emerald-500/40 bg-emerald-950/50 text-emerald-200",
   warn: "border-amber-500/40 bg-amber-950/40 text-amber-100",
   bad: "border-red-500/40 bg-red-950/50 text-red-200",
-  info: "border-sky-500/40 bg-sky-950/40 text-sky-100",
+  info: "border-zinc-600/50 bg-zinc-950/50 text-zinc-200",
 };
 
 export function McStatusChip({

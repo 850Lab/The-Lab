@@ -35,35 +35,37 @@ function summarizeNames(files: File[], max = 3): string {
   return `${shown.join(", ")}${more}`;
 }
 
-function MergeStackIcon({ className }: { className?: string }) {
+function ReportSheetIcon({ className }: { className?: string }) {
   return (
     <svg
       className={className}
-      viewBox="0 0 64 56"
+      viewBox="0 0 56 64"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
       aria-hidden
     >
-      <rect x="8" y="4" width="48" height="36" rx="3" className="stroke-white/25" strokeWidth="1.5" />
-      <rect x="4" y="12" width="48" height="36" rx="3" className="stroke-lab-accent/50" strokeWidth="1.5" />
-      <rect
-        x="0"
-        y="20"
-        width="48"
-        height="36"
-        rx="3"
-        className="fill-lab-surface stroke-lab-accent"
-        strokeWidth="2"
-      />
       <path
-        d="M14 38h20M14 32h14"
-        className="stroke-lab-muted/80"
+        d="M12 4h22l12 12v44H12V4z"
+        className="stroke-white/20"
+        strokeWidth="1.75"
+        strokeLinejoin="round"
+      />
+      <path d="M34 4v14h12" className="stroke-white/20" strokeWidth="1.75" strokeLinejoin="round" />
+      <path
+        d="M18 36h20M18 28h20M18 44h14"
+        className="stroke-lab-muted/70"
         strokeWidth="1.5"
         strokeLinecap="round"
       />
     </svg>
   );
 }
+
+const TRUST_ITEMS = [
+  { label: "Encrypted in transit" },
+  { label: "Stays yours" },
+  { label: "No bureau mail yet" },
+] as const;
 
 export function UploadDropzoneCard({ disabled, onUploadPdfs }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -154,6 +156,11 @@ export function UploadDropzoneCard({ disabled, onUploadPdfs }: Props) {
   const interactive = !disabled && (phase === "idle" || phase === "dragging");
   const partCount = pendingFiles?.length ?? 0;
 
+  const openPicker = () => {
+    if (!interactive) return;
+    inputRef.current?.click();
+  };
+
   return (
     <motion.div
       layout
@@ -164,19 +171,25 @@ export function UploadDropzoneCard({ disabled, onUploadPdfs }: Props) {
         layout
         role="region"
         aria-label="PDF upload"
-        className={`relative overflow-hidden rounded-2xl border-2 transition-[box-shadow,border-color,background] duration-300 ${
+        className={`relative overflow-hidden rounded-2xl border transition-[box-shadow,border-color,background-color] duration-500 ease-out ${
           phase === "uploading"
-            ? "border-lab-accent/35 bg-gradient-to-b from-lab-accent/[0.08] to-lab-elevated shadow-[0_0_56px_-20px_rgba(56,189,248,0.45)]"
+            ? "border-neutral-500/25 bg-gradient-to-b from-white/[0.07] via-lab-elevated to-black/[0.22] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.07),0_0_0_1px_rgba(255,255,255,0.05),0_26px_70px_-30px_rgba(0,0,0,0.58)]"
             : phase === "dragging"
-              ? "border-lab-accent bg-gradient-to-b from-lab-accent/[0.12] to-lab-elevated shadow-[0_0_0_1px_rgba(56,189,248,0.4),0_0_60px_-12px_rgba(56,189,248,0.35)]"
+              ? "border-neutral-300/55 bg-gradient-to-b from-white/[0.1] via-lab-elevated/95 to-black/[0.18] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.1),0_0_0_1px_rgba(212,212,212,0.28),0_0_56px_-18px_rgba(255,255,255,0.1)]"
               : disabled
-                ? "border-white/[0.06] bg-lab-elevated/60 opacity-75"
+                ? "border-white/[0.06] bg-lab-elevated/50 opacity-70"
                 : cardHover && phase === "idle"
-                  ? "border-white/[0.14] bg-lab-elevated shadow-[0_20px_50px_-24px_rgba(0,0,0,0.65)]"
-                  : "border-white/[0.1] bg-gradient-to-b from-lab-elevated to-lab-surface/30 shadow-[0_24px_64px_-28px_rgba(0,0,0,0.55)]"
+                  ? "border-neutral-400/42 bg-gradient-to-b from-white/[0.06] via-lab-elevated to-black/[0.2] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.08),0_0_0_1px_rgba(163,163,163,0.14),0_32px_80px_-34px_rgba(0,0,0,0.62)]"
+                  : "border-neutral-600/30 bg-gradient-to-b from-white/[0.035] via-lab-elevated to-black/[0.24] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05),0_0_0_1px_rgba(255,255,255,0.04),0_24px_64px_-30px_rgba(0,0,0,0.56)]"
         }`}
-        animate={phase === "dragging" ? { scale: 1.008 } : { scale: 1 }}
-        transition={{ type: "spring", stiffness: 420, damping: 30 }}
+        animate={
+          phase === "dragging"
+            ? { scale: 1.014 }
+            : interactive && cardHover
+              ? { scale: 1.005 }
+              : { scale: 1 }
+        }
+        transition={{ type: "spring", stiffness: 420, damping: 32 }}
         onMouseEnter={() => setCardHover(true)}
         onMouseLeave={() => setCardHover(false)}
         onDragEnter={onDragEnter}
@@ -185,9 +198,16 @@ export function UploadDropzoneCard({ disabled, onUploadPdfs }: Props) {
         onDrop={onDrop}
       >
         <div
-          className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_80%_60%_at_50%_-20%,rgba(56,189,248,0.14),transparent)]"
+          className={`pointer-events-none absolute inset-0 transition-opacity duration-500 ${
+            interactive && (cardHover || phase === "dragging")
+              ? "opacity-100"
+              : "opacity-75"
+          }`}
           aria-hidden
-        />
+        >
+          <div className="absolute inset-0 bg-[radial-gradient(ellipse_95%_60%_at_50%_-8%,rgba(255,255,255,0.085),transparent_58%)]" />
+          <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-neutral-400/35 to-transparent" />
+        </div>
 
         <AnimatePresence mode="wait">
           {showDropzone ? (
@@ -197,33 +217,77 @@ export function UploadDropzoneCard({ disabled, onUploadPdfs }: Props) {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
-              className="relative px-4 py-5 sm:px-6 sm:py-6"
+              className="relative px-4 py-8 sm:px-8 sm:py-10"
             >
-              <div className="flex flex-col items-center text-center">
-                <div className="flex items-center gap-2">
-                  <MergeStackIcon className="h-9 w-11 shrink-0 text-lab-accent sm:h-10 sm:w-[2.85rem]" />
-                </div>
+              <input
+                ref={inputRef}
+                type="file"
+                accept=".pdf,application/pdf"
+                multiple
+                className="sr-only"
+                disabled={!interactive}
+                onChange={onInputChange}
+                aria-label="Choose PDF credit report files"
+              />
 
-                <h3 className="mt-2.5 text-lg font-bold tracking-tight text-lab-text sm:mt-3 sm:text-xl">
-                  {disabled ? "Confirm privacy below to upload" : "Drop PDFs here — we turn them into one report"}
-                </h3>
-                <p className="mt-1 max-w-md text-pretty text-xs font-medium leading-snug text-lab-muted sm:mt-1.5 sm:text-sm sm:leading-relaxed">
+              <motion.button
+                type="button"
+                disabled={!interactive}
+                onClick={openPicker}
+                whileTap={interactive ? { scale: 0.992 } : undefined}
+                transition={{ type: "spring", stiffness: 520, damping: 28 }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    openPicker();
+                  }
+                }}
+                className={`group relative flex w-full min-h-[200px] flex-col items-center justify-center rounded-xl border border-dashed px-4 py-8 text-center transition-[border-color,background-color,box-shadow] duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20 focus-visible:ring-offset-2 focus-visible:ring-offset-lab-bg disabled:pointer-events-none disabled:opacity-45 sm:min-h-[220px] ${
+                  phase === "dragging"
+                    ? "border-neutral-300/55 bg-black/22 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]"
+                    : "border-white/[0.12] bg-black/[0.14] shadow-[inset_0_2px_12px_rgba(0,0,0,0.2)] hover:border-neutral-400/45 hover:bg-black/[0.18] hover:shadow-[inset_0_2px_16px_rgba(0,0,0,0.22)]"
+                }`}
+              >
+                <motion.div
+                  animate={{
+                    y: phase === "dragging" ? -3 : cardHover && !disabled ? -2 : 0,
+                    scale: phase === "dragging" ? 1.05 : cardHover && !disabled ? 1.03 : 1,
+                  }}
+                  transition={{ type: "spring", stiffness: 400, damping: 22 }}
+                >
+                  <ReportSheetIcon className="h-14 w-12 text-neutral-200/90 sm:h-16 sm:w-14" />
+                </motion.div>
+
+                <motion.span
+                  className="mt-4 block text-xl font-bold tracking-tight text-lab-text sm:text-2xl"
+                  animate={{
+                    y: phase === "dragging" ? 1 : cardHover && !disabled ? -1 : 0,
+                  }}
+                  transition={{ type: "spring", stiffness: 380, damping: 24 }}
+                >
+                  {disabled ? "Almost there — confirm above" : "Drop your report here"}
+                </motion.span>
+                <span className="mt-2 block max-w-md text-pretty text-sm font-medium leading-relaxed text-lab-muted">
                   {disabled
-                    ? "Check the consent box, then upload."
-                    : "One large bureau file (we split & merge on our servers) or several parts — same pipeline either way."}
-                </p>
+                    ? "Check the box, then drop your file or tap — we take it from there."
+                    : "Easiest step — release it or tap to browse. We organize everything from here."}
+                </span>
 
-                <div className="mt-2.5 flex flex-wrap items-center justify-center gap-1.5 sm:mt-3 sm:gap-2">
+                <span className="mt-4 inline-flex items-center rounded-full border border-white/[0.1] bg-white/[0.04] px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-lab-subtle sm:text-xs">
+                  PDF · single bureau
+                </span>
+
+                <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
                   {[
-                    { k: "Parts", v: "≤25 MB each" },
-                    { k: "Bundle", v: "Up to 12 PDFs" },
+                    { k: "Parts", v: "≤25 MB" },
+                    { k: "Bundle", v: "≤12 files" },
                     { k: "Single", v: "≤200 MB" },
                   ].map((row) => (
                     <span
                       key={row.k}
-                      className="inline-flex items-baseline gap-1 rounded-full border border-white/[0.1] bg-black/20 px-2 py-1 text-[10px] sm:gap-1.5 sm:px-2.5 sm:py-1.5 sm:text-[11px]"
+                      className="inline-flex items-baseline gap-1 rounded-md border border-white/[0.08] bg-black/25 px-2 py-1 text-[10px] sm:gap-1.5 sm:px-2.5 sm:py-1.5 sm:text-[11px]"
                     >
-                      <span className="font-bold uppercase tracking-[0.12em] text-lab-accent">{row.k}</span>
+                      <span className="font-bold uppercase tracking-[0.1em] text-neutral-400">{row.k}</span>
                       <span className="text-lab-muted">{row.v}</span>
                     </span>
                   ))}
@@ -231,7 +295,7 @@ export function UploadDropzoneCard({ disabled, onUploadPdfs }: Props) {
 
                 {labelHint && phase === "idle" ? (
                   <motion.p
-                    className="mt-2 max-w-full rounded-md border border-white/[0.06] bg-white/[0.03] px-2 py-1.5 text-[11px] text-lab-subtle sm:mt-2.5 sm:px-3 sm:py-2 sm:text-xs"
+                    className="mt-3 max-w-full rounded-md border border-white/[0.06] bg-white/[0.03] px-2 py-1.5 text-[11px] text-lab-subtle sm:px-3 sm:py-2 sm:text-xs"
                     initial={{ opacity: 0, y: 4 }}
                     animate={{ opacity: 1, y: 0 }}
                   >
@@ -240,41 +304,21 @@ export function UploadDropzoneCard({ disabled, onUploadPdfs }: Props) {
                 ) : null}
 
                 {error ? (
-                  <p className="mt-2 rounded-md border border-red-500/30 bg-red-500/10 px-2 py-1.5 text-xs text-red-200/95 sm:mt-2.5 sm:px-3 sm:py-2 sm:text-sm" role="alert">
+                  <p
+                    className="mt-3 max-w-md rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-200/95 sm:text-sm"
+                    role="alert"
+                  >
                     {error}
                   </p>
                 ) : null}
+              </motion.button>
 
-                <motion.div
-                  className="mt-4 w-full max-w-xs sm:mt-5 sm:max-w-sm"
-                  whileHover={interactive && phase === "idle" ? { scale: 1.02 } : undefined}
-                  whileTap={interactive && phase === "idle" ? { scale: 0.98 } : undefined}
-                >
-                  <input
-                    ref={inputRef}
-                    type="file"
-                    accept=".pdf,application/pdf"
-                    multiple
-                    className="hidden"
-                    disabled={!interactive}
-                    onChange={onInputChange}
-                  />
-                  <button
-                    type="button"
-                    disabled={!interactive}
-                    onClick={() => inputRef.current?.click()}
-                    className="w-full rounded-xl bg-lab-accent py-3 text-sm font-bold text-white shadow-lg shadow-lab-accent/30 transition-[box-shadow,filter] hover:brightness-110 hover:shadow-lab-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-lab-accent/60 focus-visible:ring-offset-2 focus-visible:ring-offset-lab-bg disabled:pointer-events-none disabled:opacity-40 sm:py-3.5 sm:text-base"
-                  >
-                    Choose PDF file(s)
-                  </button>
-                </motion.div>
-
-                <p className="mt-3 max-w-sm text-pretty text-[10px] leading-snug text-lab-subtle sm:mt-3.5 sm:text-[11px] sm:leading-relaxed">
-                  Multi-part: use names like <span className="font-medium text-lab-muted">report_01.pdf</span>,{" "}
-                  <span className="font-medium text-lab-muted">report_02.pdf</span> so sort order matches your
-                  pages. We merge, then parse as <span className="font-semibold text-lab-text/90">one bureau report</span>.
-                </p>
-              </div>
+              <p className="mx-auto mt-4 max-w-md text-pretty text-center text-[10px] leading-relaxed text-lab-subtle sm:text-[11px]">
+                Multi-part exports: name files{" "}
+                <span className="font-medium text-lab-muted/90">report_01.pdf</span>,{" "}
+                <span className="font-medium text-lab-muted/90">report_02.pdf</span> so page order stays
+                correct.
+              </p>
             </motion.div>
           ) : (
             <motion.div
@@ -286,19 +330,45 @@ export function UploadDropzoneCard({ disabled, onUploadPdfs }: Props) {
               className="relative px-4 sm:px-6"
             >
               {labelHint ? (
-                <p className="pt-3 text-center text-[11px] font-medium text-lab-subtle line-clamp-2 sm:pt-4 sm:text-xs">
+                <p className="pt-4 text-center text-[11px] font-medium text-lab-subtle line-clamp-2 sm:pt-5 sm:text-xs">
                   {partCount > 1 ? `${partCount} parts` : "1 file"} · {labelHint}
                 </p>
               ) : null}
               <UploadProgressState
                 compact
-                title={partCount > 1 ? "Merging parts & parsing…" : "Uploading & parsing…"}
-                subtitle="Building one report for analysis — keep this tab open."
+                title={
+                  partCount > 1
+                    ? "Putting your report together…"
+                    : "Working through your report…"
+                }
+                subtitle="We’re already finding what deserves your attention — usually under a minute."
               />
             </motion.div>
           )}
         </AnimatePresence>
       </motion.div>
+
+      {showDropzone ? (
+        <motion.p
+          initial={{ opacity: 0, y: 4 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.08, duration: 0.35 }}
+          className="mt-4 flex flex-wrap items-center justify-center gap-x-1 gap-y-1 text-center text-[11px] font-medium tracking-wide text-lab-muted sm:mt-5 sm:text-xs"
+          role="group"
+          aria-label="Upload assurances"
+        >
+          {TRUST_ITEMS.map((item, i) => (
+            <span key={item.label} className="inline-flex items-center gap-x-1">
+              {i > 0 ? (
+                <span className="px-1 text-neutral-500/45" aria-hidden>
+                  ·
+                </span>
+              ) : null}
+              <span className="text-neutral-400/95">{item.label}</span>
+            </span>
+          ))}
+        </motion.p>
+      ) : null}
     </motion.div>
   );
 }

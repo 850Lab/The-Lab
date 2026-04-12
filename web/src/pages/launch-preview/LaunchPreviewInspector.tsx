@@ -148,7 +148,7 @@ export function LaunchPreviewInspector() {
               href={iframeSrc}
               target="_blank"
               rel="noreferrer"
-              className="text-xs text-sky-300 hover:underline"
+              className="text-xs text-zinc-400 hover:underline"
             >
               Open in new tab
             </a>

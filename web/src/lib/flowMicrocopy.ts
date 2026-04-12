@@ -3,11 +3,11 @@
  */
 
 export const PAYMENT_WHAT_HAPPENS_NEXT_LINES = [
-  "Letter moment: you only pay when the plan is real — next screen generates bureau-ready dispute text from your selection (credits from this purchase or ones you already have).",
-  "Certified mail moment: mailing balance from your pack is used when you choose to submit each bureau — after proof is on file. No surprise charge at send unless you need more mailings on your account.",
-  "Tracking moment: after a live send, USPS status shows handoff and transit here when the processor returns a number — separate from bureau review.",
-  "Response moment: when a letter or notice lands, you log a short summary — we classify it and point you to the next move in the same program.",
+  "Dispute package preparation for this round: bureau-ready letters from the Strategy selections you confirmed.",
+  "The same path continues — letter prep, proof, and send — with clear visibility at each stage.",
+  "Nothing is mailed here. Certified mail draws from your mailing balance only when you send, after proofs are in place.",
+  "After checkout you stay in-flow; Responses and Tracking stay organized as the round advances.",
 ] as const;
 
 export const NEXT_STEP_AFTER_PAYMENT_LINE =
-  "Next up: letter generation from the plan you locked — the deliverable you just paid for.";
+  "Next: letter preparation from your confirmed round — review before anything is sent.";

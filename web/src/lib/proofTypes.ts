@@ -22,7 +22,24 @@ export type ProofContextPayload = {
   allRequirementsMet: boolean;
 };
 
+/** Present only when proof context was requested with `includeAiExplanation=true`. */
+export type ProofContextAiAugmentationFields = {
+  aiExplanation: unknown;
+  aiAugmentationStatus?: string;
+  intelligentExplanationFamily?: string;
+};
+
+/** Present only when proof context was requested with `includeAiScript=true`. */
+export type ProofContextScriptAugmentationFields = {
+  aiScript: unknown;
+  scriptAugmentationStatus?: string;
+  intelligentScriptFamily?: string;
+  /** Internal / debug-friendly: distinctiveness gate result for proof scripts (V2.3B). */
+  proofScriptRefinementStatus?: string;
+};
+
 export type ProofContextResponse = {
   workflow: WorkflowEnvelope;
   proof: ProofContextPayload;
-};
+} & Partial<ProofContextAiAugmentationFields> &
+  Partial<ProofContextScriptAugmentationFields>;

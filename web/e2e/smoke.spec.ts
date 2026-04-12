@@ -1,32 +1,37 @@
 import { test, expect } from "@playwright/test";
 
 /**
- * These expectations match `WAITLIST_MODE === true` in `src/lib/productGates.ts`.
- * If you turn waitlist off, update this file accordingly.
+ * Expectations match default production: `VITE_WAITLIST_MODE` unset / not "true"
+ * (`WAITLIST_MODE === false` in `src/lib/productGates.ts`).
+ * To e2e waitlist mode locally: `VITE_WAITLIST_MODE=true npm run dev` and adjust this file.
  */
-test.describe("public marketing + auth entry (waitlist mode)", () => {
-  test("home shows waitlist hero, live demo, and capture form", async ({ page }) => {
+test.describe("public marketing + auth entry (guided product / open shell)", () => {
+  test("home shows guided hero, live demo, and lead capture form", async ({
+    page,
+  }) => {
     await page.goto("/");
     await expect(page.getByTestId("home-hero-headline")).toBeVisible();
-    await expect(page.getByTestId("home-hero-headline")).toContainText(/Be first when/i);
+    await expect(page.getByTestId("home-hero-headline")).toContainText(
+      /story|matters|credit report/i,
+    );
     await expect(page.getByText("850 Lab").first()).toBeVisible();
     await expect(page.locator("#live-demo")).toBeVisible();
     await expect(page.getByTestId("live-demo-section")).toBeVisible();
     await expect(page.getByTestId("demo-slide-deck")).toBeVisible();
-    const run = page.getByRole("button", { name: "Generate demo preview" });
+    const run = page.getByRole("button", { name: "See what shows up" });
     await expect(run).toBeVisible();
-    await expect(page.getByTestId("waitlist-form")).toBeVisible();
+    await expect(page.locator("#lead-form")).toBeVisible();
   });
 
-  test("home: Waitlist in top bar goes to /waitlist; /signup redirects away", async ({
+  test("home: Sign in in top bar goes to /login; /signup is reachable", async ({
     page,
   }) => {
     await page.goto("/");
-    await page.getByRole("link", { name: "Waitlist" }).first().click();
-    await expect(page).toHaveURL(/\/waitlist$/);
+    await page.getByRole("link", { name: "Sign in" }).first().click();
+    await expect(page).toHaveURL(/\/login$/);
 
     await page.goto("/signup");
-    await expect(page).toHaveURL(/\/waitlist$/);
+    await expect(page).toHaveURL(/\/signup$/);
   });
 
   test("/demo redirects to home with live-demo anchor", async ({ page }) => {
@@ -35,9 +40,9 @@ test.describe("public marketing + auth entry (waitlist mode)", () => {
     await expect(page.locator("#live-demo")).toBeVisible();
   });
 
-  test("login URL redirects to waitlist when signed out", async ({ page }) => {
+  test("login page loads when signed out", async ({ page }) => {
     await page.goto("/login");
-    await expect(page).toHaveURL(/\/waitlist$/);
+    await expect(page).toHaveURL(/\/login$/);
   });
 
   test("forgot-password page remains reachable", async ({ page }) => {
@@ -49,20 +54,20 @@ test.describe("public marketing + auth entry (waitlist mode)", () => {
   });
 });
 
-test.describe("guest pre-upload funnel (no session, waitlist mode)", () => {
-  test("upload and get-report redirect to waitlist", async ({ page }) => {
+test.describe("guest pre-upload funnel (no session, open shell)", () => {
+  test("upload and get-report are reachable", async ({ page }) => {
     await page.goto("/upload");
-    await expect(page).toHaveURL(/\/waitlist$/);
+    await expect(page).toHaveURL(/\/upload$/);
 
     await page.goto("/get-report");
-    await expect(page).toHaveURL(/\/waitlist$/);
+    await expect(page).toHaveURL(/\/get-report$/);
   });
 });
 
-test.describe("route guards (no session, waitlist mode)", () => {
-  test("post-upload funnel redirects to waitlist", async ({ page }) => {
+test.describe("route guards (no session, open shell)", () => {
+  test("post-upload funnel redirects to login", async ({ page }) => {
     await page.goto("/payment");
-    await expect(page).toHaveURL(/\/waitlist$/);
+    await expect(page).toHaveURL(/\/login$/);
   });
 });
 

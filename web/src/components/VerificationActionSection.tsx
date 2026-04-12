@@ -1,10 +1,20 @@
 import { motion } from "framer-motion";
 
+const DEFAULT_SEND_BUTTON_CLASS =
+  "w-full rounded-xl bg-lab-accent py-3.5 text-[15px] font-semibold text-white shadow-lg shadow-black/40 transition-shadow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-lab-accent/45 disabled:cursor-not-allowed disabled:bg-lab-accent/35 disabled:text-white/70 disabled:shadow-none";
+
 type Props = {
   canSend: boolean;
   onSend: () => void;
   onSaveLater: () => void;
   sendBusy?: boolean;
+  headline?: string;
+  supportText?: string;
+  helperText?: string;
+  sendLabel?: string;
+  incompleteMessage?: string;
+  /** Override primary CTA styles (e.g. ORION-driven emphasis); default keeps existing accent button. */
+  sendButtonClassName?: string;
 };
 
 export function VerificationActionSection({
@@ -12,6 +22,12 @@ export function VerificationActionSection({
   onSend,
   onSaveLater,
   sendBusy,
+  headline = "Ready to complete this verification step?",
+  supportText = "Once this step is complete, you’ll move to the final mailing screen where nothing is sent until you confirm there.",
+  helperText = "Mailing is still reviewed on the next step.",
+  sendLabel = "Continue to mailing",
+  incompleteMessage = "Add the required items above to continue. If something is missing, we’ll let you know before you move on.",
+  sendButtonClassName,
 }: Props) {
   return (
     <motion.div
@@ -25,33 +41,31 @@ export function VerificationActionSection({
       }}
       className="mt-10 space-y-3 sm:mt-11"
     >
+      <div className="space-y-1 text-center">
+        <p className="text-sm font-semibold text-lab-text">{headline}</p>
+        <p className="text-sm leading-relaxed text-lab-muted">{supportText}</p>
+      </div>
       <motion.button
         type="button"
         disabled={!canSend || sendBusy}
         onClick={onSend}
-        className="w-full rounded-xl bg-lab-accent py-3.5 text-[15px] font-semibold text-white shadow-lg shadow-lab-accent/25 transition-shadow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-lab-accent/45 disabled:cursor-not-allowed disabled:bg-lab-accent/35 disabled:text-white/70 disabled:shadow-none"
+        className={sendButtonClassName ?? DEFAULT_SEND_BUTTON_CLASS}
         whileHover={
           canSend && !sendBusy
             ? {
                 scale: 1.015,
-                boxShadow: "0 14px 44px -10px rgba(59,130,246,0.42)",
+                boxShadow: "0 14px 44px -10px rgba(0,0,0,0.55)",
               }
             : undefined
         }
         whileTap={canSend && !sendBusy ? { scale: 0.985 } : undefined}
         transition={{ type: "spring", stiffness: 420, damping: 28 }}
       >
-        {sendBusy ? "Continuing…" : "Continue to certified send"}
+        {sendBusy ? "Continuing…" : sendLabel}
       </motion.button>
-      <p className="text-center text-xs text-lab-subtle sm:text-sm">
-        This saves proof to your workflow — the next screen is where certified mail goes out (real
-        USPS action when live).
-      </p>
+      <p className="text-center text-xs text-lab-subtle sm:text-sm">{helperText}</p>
       {!canSend ? (
-        <p className="text-center text-sm text-lab-muted">
-          Complete all three items above — one continue control when you&apos;re ready; we&apos;ll
-          hold your place.
-        </p>
+        <p className="text-center text-sm text-lab-muted">{incompleteMessage}</p>
       ) : null}
       <motion.button
         type="button"

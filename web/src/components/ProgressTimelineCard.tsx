@@ -1,10 +1,26 @@
 import { motion } from "framer-motion";
 
 const STEPS = [
-  { dayLabel: "Phase 1", title: "Sent", range: "Certified piece handed to USPS (live sends only)" },
-  { dayLabel: "Phase 2", title: "In process", range: "In transit; bureau receives and logs mail" },
-  { dayLabel: "Phase 3", title: "Under review", range: "Bureau investigation window (typical)" },
-  { dayLabel: "Phase 4", title: "Response", range: "Reply, update, or no change — then your next step" },
+  {
+    dayLabel: "Mail · 1",
+    title: "Mailed",
+    range: "Certified piece handed to USPS (live sends only). This is mail progress, not a bureau decision.",
+  },
+  {
+    dayLabel: "Mail · 2",
+    title: "In transit",
+    range: "Carrier and delivery — tracking shows movement. Still not the same as bureau review.",
+  },
+  {
+    dayLabel: "After delivery",
+    title: "Bureau review",
+    range: "Investigation window after the bureau receives your mail — often weeks, varies by bureau.",
+  },
+  {
+    dayLabel: "Outcome",
+    title: "Response or update",
+    range: "Reply, update, or no change — then your next step in the program.",
+  },
 ] as const;
 
 type Props = {
@@ -48,11 +64,14 @@ export function ProgressTimelineCard({ dayCurrent, totalDays }: Props) {
     >
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h3 className="text-[15px] font-semibold text-lab-text sm:text-base">
-            Sent → in process → response
+          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-lab-subtle">
+            Typical path (mail first, then bureau)
+          </p>
+          <h3 className="mt-1 text-[15px] font-semibold text-lab-text sm:text-base">
+            What has happened · what usually happens next
           </h3>
           <p className="mt-1 text-xs text-lab-subtle">
-            Typical pacing — exact timing depends on USPS and each bureau.
+            Timing varies. A quiet stretch does not necessarily mean something is wrong.
           </p>
         </div>
         <p className="shrink-0 text-sm font-medium text-lab-accent sm:text-right">
@@ -72,7 +91,7 @@ export function ProgressTimelineCard({ dayCurrent, totalDays }: Props) {
               <li key={step.title} className="relative flex gap-4 pb-7 last:pb-0">
                 <div className="relative z-[1] flex shrink-0 flex-col items-center pt-0.5">
                   <span
-                    className={`flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full border-2 ${
+                    className={`flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full border-2 transition-[border-color,background-color,color] duration-300 ease-out ${
                       state === "done"
                         ? "border-emerald-400/70 bg-emerald-500/15 text-emerald-300"
                         : state === "current"

@@ -1,4 +1,4 @@
-import type { WorkflowEnvelope } from "@/lib/workflowTypes";
+import type { WorkflowEnvelope, WorkflowSyncPayload } from "@/lib/workflowTypes";
 
 export type ReportIntakeRow = {
   reportId: number;
@@ -35,5 +35,9 @@ export type CustomerIntakeSummary = {
 
 export type IntakeSummaryBundle = {
   workflow: WorkflowEnvelope;
+  /** Same as GET resume — prefer merging into workflow when applying envelope. */
+  workflowSync?: WorkflowSyncPayload;
   intake: CustomerIntakeSummary;
+  /** Intake claims: ``snapshot_v1`` when metadata snapshot matched; else ``recomputed``. */
+  claimsProvenance?: { source: string };
 };

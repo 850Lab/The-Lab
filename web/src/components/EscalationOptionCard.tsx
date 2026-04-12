@@ -5,12 +5,15 @@ type Props = {
   option: EscalationOption;
   selected: boolean;
   onSelect: () => void;
+  /** Short framing line (e.g. “Common next step”) — presentation only */
+  orderingHint?: string;
 };
 
 export function EscalationOptionCard({
   option,
   selected,
   onSelect,
+  orderingHint,
 }: Props) {
   return (
     <motion.button
@@ -26,7 +29,7 @@ export function EscalationOptionCard({
       }}
       className={`w-full rounded-xl border px-4 py-4 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-lab-accent/35 sm:px-5 sm:py-4 ${
         selected
-          ? "border-lab-accent/45 bg-lab-accent/[0.08] shadow-md shadow-lab-accent/10"
+          ? "border-zinc-500/45 bg-zinc-500/[0.1] shadow-md shadow-black/25"
           : "border-white/[0.08] bg-lab-surface hover:border-white/[0.14] hover:bg-lab-elevated/60"
       }`}
       whileTap={{ scale: 0.992 }}
@@ -40,10 +43,13 @@ export function EscalationOptionCard({
             </h3>
             {option.recommended ? (
               <span className="shrink-0 rounded-full bg-lab-accent/12 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-lab-accent">
-                Recommended
+                Common next step
               </span>
             ) : null}
           </div>
+          {orderingHint ? (
+            <p className="mt-1.5 text-xs font-medium text-lab-accent/90">{orderingHint}</p>
+          ) : null}
           <p className="mt-2 text-sm leading-relaxed text-lab-muted">
             {option.support}
           </p>
@@ -80,7 +86,7 @@ export function EscalationOptionCard({
           transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
           className="mt-3 text-xs font-medium text-lab-accent"
         >
-          Selected — we’ll use this for your next action
+          Selected — we&apos;ll open the checklist for this path
         </motion.p>
       ) : null}
     </motion.button>

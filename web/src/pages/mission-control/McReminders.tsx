@@ -133,7 +133,7 @@ export function McReminders() {
                   <td className="p-2 font-mono">
                     <Link
                       to={`/mission-control/workflows/${String(r.workflow_id)}`}
-                      className="text-sky-300 hover:underline"
+                      className="text-zinc-400 hover:underline"
                     >
                       {String(r.workflow_id).slice(0, 8)}…
                     </Link>
@@ -155,7 +155,7 @@ export function McReminders() {
                     {st !== "sent" ? (
                       <button
                         type="button"
-                        className="text-sky-300 hover:underline"
+                        className="text-zinc-400 hover:underline"
                         onClick={() =>
                           setRemOp({
                             kind: "skip",
@@ -169,7 +169,7 @@ export function McReminders() {
                     {st === "eligible" ? (
                       <button
                         type="button"
-                        className="text-sky-300 hover:underline"
+                        className="text-zinc-400 hover:underline"
                         onClick={() =>
                           setRemOp({
                             kind: "queue",
@@ -183,7 +183,7 @@ export function McReminders() {
                     {st === "queued" ? (
                       <button
                         type="button"
-                        className="text-sky-300 hover:underline"
+                        className="text-zinc-400 hover:underline"
                         onClick={() =>
                           setRemOp({
                             kind: "deliver",

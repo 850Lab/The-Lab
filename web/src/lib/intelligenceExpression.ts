@@ -82,12 +82,12 @@ export function selectionImpactForReviewType(
   isRecommended: boolean,
 ): SelectionImpact {
   const rec = isRecommended
-    ? "This was in the program's starting set for this round — it fits the filters we use after findings."
-    : "This wasn't in the starting set; you can still add it if it matters for your situation.";
+    ? "This is in the program's recommended starting set for this round."
+    : "Optional — add only if it fits your priorities this round.";
   return {
-    ifSelected: `${rec} Including it means bureau-facing letters will argue this specific pattern this round.`,
+    ifSelected: `${rec} Checked: your dispute package can include this item.`,
     ifOmitted:
-      "Leaving it out this round skips bureau letter text for this item now — you can often address it in a later round if your program allows.",
+      "Unchecked: skipped for this round — focused rounds are often stronger; you can revisit later if your program allows.",
   };
 }
 
@@ -118,49 +118,47 @@ export function buildStrategyNarrative(
 
   const whyDoing =
     det?.rationale?.trim() ||
-    "The program applies the same rules it used after findings: eligible items are the ones that cleared accuracy and impact checks for this round. You're confirming the final set, not guessing from scratch.";
+    "These items are the ones that cleared the same checks you already saw after findings. You're confirming direction — not inventing a strategy from scratch.";
 
   const outcome =
-    "We expect bureaus to investigate what you mail. Outcomes range from deletion or correction to verification — timelines vary, and not every dispute wins.";
+    "After you mail, bureaus investigate what you sent. Results vary: deletion, correction, or verification — timelines vary too, and not every dispute wins.";
 
   const ifFails =
-    "If responses are slow, thin, or unsatisfying, the next beats in your program are built for that: tracking, logging what came back, and escalation paths when you're stuck.";
+    "If replies are slow or weak, your program keeps going: tracking, logging responses, and escalation options when you're stuck.";
 
   return [
-    { title: "What we're doing", body: whatDoing },
-    { title: "Why we're doing it", body: whyDoing },
-    { title: "What we expect", body: outcome },
-    { title: "If it doesn't land", body: ifFails },
+    { title: "This round focuses on…", body: whatDoing },
+    { title: "Why these items lead first", body: whyDoing },
+    { title: "What to expect after you mail", body: outcome },
+    { title: "If things move slowly", body: ifFails },
   ];
 }
 
 /** Intro before letter list: ties findings → strategy → letters (no new data). */
 export function lettersPurposeBlock(): { headline: string; paragraphs: string[] } {
   return {
-    headline: "Here's what these letters are designed to do",
+    headline: "What you’re looking at on this screen",
     paragraphs: [
-      "Each letter is built from the same story we showed in findings and the dispute set you locked on the strategy screen — not a one-size template.",
-      "They're meant to challenge specific reporting patterns bureau by bureau, using the items you included. Certified mail and proof come next in the program so sends are serious and complete.",
+      "Each letter is built from your findings and the items you confirmed in Strategy — draft dispute documents for you to review, not a one-size template.",
+      "Proof and mailing come later in the same program. You stay in control of when things are sent.",
     ],
   };
 }
 
 export function postLettersWhatHappensNext(): { headline: string; bullets: string[] } {
   return {
-    headline: "What happens next in your program",
+    headline: "What happens next",
     bullets: [
-      "After you review letters, you'll move to proof and certified mail so disputes actually reach the bureaus.",
-      "Bureaus typically have a limited window to respond after receipt; many replies land within a few weeks, some take longer — patience is normal.",
-      "Use tracking for mail status, then record bureau mail or portal responses when they arrive — that unlocks the next guidance in the same workflow.",
-      "If progress stalls or responses are weak, escalation tools in your program pick up where first-round letters leave off.",
+      "You’ll add proof documents, then move toward mailing when you’re ready — nothing is sent until you complete those steps.",
+      "Bureau response times vary after mail is received; your program keeps tracking and replies organized in one place.",
     ],
   };
 }
 
 export function trackingQuietProgressMessage(): string {
   return (
-    "Quiet stretches are normal: USPS and bureau intake don't send you daily updates. " +
-    "Tracking here shows handoff and transit — not that a dispute analyst finished their review."
+    "Quiet stretches are normal — USPS and bureaus don’t send daily updates. " +
+    "This page is for watching movement and knowing what to expect, not constant change."
   );
 }
 
@@ -168,27 +166,27 @@ export function trackingStatusGuideRows(): { status: string; meaning: string }[]
   return [
     {
       status: "Not submitted",
-      meaning: "No certified send on file yet for this bureau — mail step still pending or not started.",
+      meaning: "No send on file for this bureau yet — finish mailing from the send step first.",
     },
     {
       status: "Processing",
-      meaning: "The mail partner accepted the job; carrier or print steps may still be in motion.",
+      meaning: "The mail partner has the job; carrier steps may still be in motion.",
     },
     {
       status: "Submitted — tracking pending",
-      meaning: "Sent, but a public tracking link may not be available yet — check back after refresh.",
+      meaning: "Sent, but a tracking link may not show yet — delivery updates can take a little time to appear.",
     },
     {
       status: "Submitted — tracking active",
-      meaning: "Live mail with carrier visibility — watch transit; bureau review is a separate clock.",
+      meaning: "Live mail with carrier visibility — watch transit here; bureau review is separate.",
     },
     {
       status: "Test — no USPS mail",
-      meaning: "Sandbox or test key — nothing entered the real USPS certified stream.",
+      meaning: "Test mode — nothing entered the real USPS stream.",
     },
     {
       status: "Send failed",
-      meaning: "The submission didn't complete; retry from the mail step or contact support if it persists.",
+      meaning: "This send didn’t complete — you can retry from the mail step or contact support if it keeps happening.",
     },
   ];
 }

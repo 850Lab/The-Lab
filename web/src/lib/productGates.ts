@@ -1,10 +1,17 @@
 /**
  * Product-facing gates (marketing entry, public shell paths).
  * Add future modes here; keep toggles centralized.
+ *
+ * Build-time: set `VITE_WAITLIST_MODE=true` (Vite) so the bundle uses waitlist shell behavior.
+ * Omit or use any other value for the open guided landing + guest funnel (`LandingFirstTime`).
+ *
+ * - `true`: waitlist shell paths; home is `LandingWaitlist`; `/get-report` etc. redirect for signed-out users.
+ * - `false`: open marketing + guest funnel paths from `OPEN_PUBLIC_UNAUTH_PATHS`.
  */
 
 /** When true: public site is waitlist-only — no open guest funnel or auth entry from the shell. */
-export const WAITLIST_MODE = true;
+export const WAITLIST_MODE =
+  String(import.meta.env.VITE_WAITLIST_MODE ?? "").toLowerCase() === "true";
 
 const OPEN_PUBLIC_UNAUTH_PATHS = [
   "/",

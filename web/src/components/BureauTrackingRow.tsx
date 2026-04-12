@@ -6,13 +6,26 @@ type Props = {
   onViewDetails: () => void;
 };
 
+/** Shorter labels for badges; full status kept for accessibility. */
+function friendlyStatusLabel(s: string): string {
+  const m: Record<string, string> = {
+    "Submitted — tracking active": "In transit",
+    "Submitted — tracking pending": "Tracking pending",
+    Processing: "Processing",
+    "Test — no USPS mail": "Test (no USPS mail)",
+    "Send failed": "Send failed",
+    "Not submitted": "Not mailed yet",
+  };
+  return m[s] ?? s;
+}
+
 function statusTone(s: string): string {
   switch (s) {
     case "Submitted — tracking active":
       return "text-emerald-300/95 bg-emerald-500/12";
     case "Submitted — tracking pending":
     case "Processing":
-      return "text-sky-200/95 bg-sky-500/12";
+      return "text-zinc-300/95 bg-zinc-500/15";
     case "Test — no USPS mail":
       return "text-amber-200/95 bg-amber-500/12";
     case "Send failed":
@@ -43,19 +56,20 @@ export function BureauTrackingRow({ bureau, status, onViewDetails }: Props) {
         </span>
         <span
           className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${statusTone(status)}`}
+          title={status}
         >
-          {status}
+          {friendlyStatusLabel(status)}
         </span>
       </div>
       <motion.button
         type="button"
         onClick={onViewDetails}
-        className="shrink-0 self-start rounded-lg border border-white/[0.1] bg-white/[0.03] px-3.5 py-2 text-sm font-medium text-lab-text transition-colors hover:border-lab-accent/35 hover:bg-lab-accent/[0.08] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-lab-accent/35 sm:self-center"
+        className="shrink-0 self-start rounded-lg border border-white/[0.1] bg-white/[0.03] px-3.5 py-2 text-sm font-medium text-lab-text transition-colors hover:border-white/[0.22] hover:bg-white/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-500/35 sm:self-center"
         whileHover={{ y: -1 }}
         whileTap={{ scale: 0.98 }}
         transition={{ type: "spring", stiffness: 480, damping: 28 }}
       >
-        View details
+        View mail details
       </motion.button>
     </motion.div>
   );

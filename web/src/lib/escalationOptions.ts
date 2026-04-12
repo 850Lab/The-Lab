@@ -15,25 +15,25 @@ export const ESCALATION_OPTIONS: EscalationOption[] = [
     id: "furnisher",
     title: "Contact the company reporting this",
     support:
-      "We’ll prepare a dispute directed to the company furnishing the account information.",
+      "We’ll prepare a dispute aimed at the company furnishing the account — a common follow-up after bureau mail.",
     reason:
-      "This is often the right next move after a bureau verifies an item.",
+      "Often the clearest path when a bureau has already replied and you need the furnisher in the loop.",
     recommended: true,
   },
   {
     id: "reverify",
     title: "Ask them to verify it again",
     support:
-      "We’ll request method of verification for the item they reviewed.",
+      "We’ll request method-of-verification detail for the item they already reviewed.",
     reason:
-      "Useful when something about their review doesn’t line up with what you know.",
+      "Fits when something in their review doesn’t line up with your records or feels incomplete.",
   },
   {
     id: "cfpb",
     title: "File a formal complaint",
     support:
-      "We’ll help you prepare a CFPB complaint if stronger escalation is needed.",
-    reason: "Best when you’ve tried the standard paths and still need traction.",
+      "We’ll help you prepare a CFPB complaint when you need a stronger, documented channel.",
+    reason: "Usually considered later — after you’ve given ordinary follow-up a fair shot.",
   },
 ];
 

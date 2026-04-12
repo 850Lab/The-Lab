@@ -153,7 +153,7 @@ export function ProgramUploadPage() {
       )}
       {parseBusy && (
         <div
-          className="rounded-md border border-sky-500/35 bg-sky-500/10 p-3 text-sm text-sky-100"
+          className="rounded-md border border-zinc-600/40 bg-zinc-500/10 p-3 text-sm text-zinc-200"
           role="status"
           aria-live="polite"
         >
@@ -203,7 +203,7 @@ export function ProgramUploadPage() {
             type="file"
             accept="application/pdf,.pdf"
             multiple
-            className="mt-2 block w-full text-sm text-lab-muted file:mr-4 file:rounded-md file:border-0 file:bg-lab-accent file:px-4 file:py-2 file:text-sm file:font-medium file:text-slate-950"
+            className="mt-2 block w-full text-sm text-lab-muted file:mr-4 file:rounded-md file:border-0 file:bg-lab-accent file:px-4 file:py-2 file:text-sm file:font-medium file:text-zinc-950"
             onChange={(e) => {
               const list = Array.from(e.target.files ?? []).sort((a, b) =>
                 a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" }),
@@ -233,7 +233,7 @@ export function ProgramUploadPage() {
           type="button"
           disabled={files.length === 0 || !consent || uploadBusy || parseBusy}
           onClick={() => void onUpload()}
-          className="mt-6 w-full rounded-md bg-lab-accent py-2.5 text-sm font-semibold text-slate-950 disabled:opacity-40 sm:w-auto sm:px-6"
+          className="mt-6 w-full rounded-md bg-lab-accent py-2.5 text-sm font-semibold text-zinc-950 disabled:opacity-40 sm:w-auto sm:px-6"
         >
           {uploadBusy ? "Uploading…" : "Upload report"}
         </button>
@@ -249,7 +249,7 @@ export function ProgramUploadPage() {
             type="button"
             disabled={analyzeBusy}
             onClick={() => void onAnalyze()}
-            className="mt-3 rounded-md bg-lab-accent px-5 py-2 text-sm font-semibold text-slate-950 disabled:opacity-40"
+            className="mt-3 rounded-md bg-lab-accent px-5 py-2 text-sm font-semibold text-zinc-950 disabled:opacity-40"
           >
             {analyzeBusy ? "Reading your report…" : "Read my report"}
           </button>

@@ -91,7 +91,7 @@ export function McWorkflowDetail() {
       <div className="flex items-center gap-3">
         <Link
           to="/mission-control/workflows"
-          className="text-sm text-sky-300 hover:underline"
+          className="text-sm text-zinc-400 hover:underline"
         >
           ← Workflows
         </Link>
@@ -116,8 +116,8 @@ export function McWorkflowDetail() {
         <h3 className="text-sm font-semibold text-lab-muted mb-2">Session</h3>
         <p className="text-xs text-lab-muted mb-2">
           DB row fields. Customer app uses the same engine read as{" "}
-          <span className="font-mono text-sky-200/90">workflowState</span> from{" "}
-          <span className="font-mono text-sky-200/90">GET …/state</span> (see
+          <span className="font-mono text-zinc-300/90">workflowState</span> from{" "}
+          <span className="font-mono text-zinc-300/90">GET …/state</span> (see
           envelope below).
         </p>
         {instanceDrift ? (
@@ -157,7 +157,7 @@ export function McWorkflowDetail() {
               >
                 <div className="text-lab-muted">
                   {e.createdAt ?? "—"} ·{" "}
-                  <span className="font-mono text-sky-200/90">{e.eventType}</span>
+                  <span className="font-mono text-zinc-300/90">{e.eventType}</span>
                 </div>
                 <div className="text-lab-muted mt-0.5">
                   actor: <span className="font-mono">{e.actor}</span> · source:{" "}

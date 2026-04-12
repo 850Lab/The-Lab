@@ -7,6 +7,13 @@ type Props = {
   downloadDisabled: boolean;
   bundleBusy?: boolean;
   continueLabel?: string;
+  /** Framing above the primary action — trust and next-step clarity. */
+  headline?: string;
+  supportText?: string;
+  /** Calm note under secondary action (e.g. mailing is later). */
+  helperText?: string;
+  /** ORION-driven visual emphasis on continue; default keeps `btn-primary-step`. */
+  continueButtonClassName?: string;
 };
 
 export function LettersActionSection({
@@ -15,25 +22,23 @@ export function LettersActionSection({
   continueDisabled,
   downloadDisabled,
   bundleBusy,
-  continueLabel = "Continue to proof & send",
+  continueLabel = "Continue to proof",
+  headline = "Ready to continue preparing this round?",
+  supportText = "Your letters are ready for review. The next step is to add proof documents and continue toward mailing.",
+  helperText = "Mailing happens later, after the next verification step.",
+  continueButtonClassName,
 }: Props) {
   return (
     <div className="mt-10 space-y-3 sm:mt-11">
+      <div className="space-y-1 text-center">
+        <p className="text-sm font-semibold text-lab-text">{headline}</p>
+        <p className="text-sm leading-relaxed text-lab-muted">{supportText}</p>
+      </div>
       <motion.button
         type="button"
         onClick={onContinue}
         disabled={continueDisabled}
-        className="w-full rounded-xl bg-lab-accent py-3.5 text-[15px] font-semibold text-white shadow-lg shadow-lab-accent/25 transition-shadow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-lab-accent/45 disabled:pointer-events-none disabled:opacity-45"
-        whileHover={
-          continueDisabled
-            ? undefined
-            : {
-                scale: 1.015,
-                boxShadow: "0 14px 44px -10px rgba(59,130,246,0.42)",
-              }
-        }
-        whileTap={continueDisabled ? undefined : { scale: 0.985 }}
-        transition={{ type: "spring", stiffness: 420, damping: 28 }}
+        className={continueButtonClassName ?? "btn-primary-step w-full disabled:!opacity-[0.45]"}
       >
         {continueLabel}
       </motion.button>
@@ -46,8 +51,9 @@ export function LettersActionSection({
         whileTap={downloadDisabled || bundleBusy ? undefined : { scale: 0.99 }}
         transition={{ type: "spring", stiffness: 480, damping: 30 }}
       >
-        {bundleBusy ? "Preparing download…" : "Download letters"}
+        {bundleBusy ? "Preparing download…" : "Download all letters"}
       </motion.button>
+      <p className="text-center text-xs text-lab-subtle">{helperText}</p>
     </div>
   );
 }

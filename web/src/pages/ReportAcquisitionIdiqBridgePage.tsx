@@ -37,7 +37,7 @@ export function ReportAcquisitionIdiqBridgePage() {
   return (
     <div className="relative min-h-full bg-lab-bg">
       <div
-        className="pointer-events-none absolute left-1/2 top-[34%] z-0 h-[min(72vw,480px)] w-[min(72vw,480px)] -translate-x-1/2 -translate-y-1/2 rounded-full bg-lab-accent/[0.09] blur-[110px]"
+        className="pointer-events-none absolute left-1/2 top-[34%] z-0 h-[min(72vw,480px)] w-[min(72vw,480px)] -translate-x-1/2 -translate-y-1/2 rounded-full bg-white/[0.045] blur-[110px]"
         aria-hidden
       />
       <TopBarMinimal />
@@ -46,7 +46,7 @@ export function ReportAcquisitionIdiqBridgePage() {
         <div className="mb-6 text-center">
           <Link
             to="/get-report"
-            className="text-sm font-medium text-lab-accent hover:text-sky-300"
+            className="text-sm font-medium text-lab-accent hover:text-zinc-100"
           >
             ← Back to report options
           </Link>
@@ -57,9 +57,7 @@ export function ReportAcquisitionIdiqBridgePage() {
           animate={{ opacity: 1, y: 0 }}
           className="rounded-xl border border-white/[0.1] bg-lab-surface/95 px-5 py-6 sm:px-6"
         >
-          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-lab-accent">
-            Your program · Get report
-          </p>
+          <p className="step-eyebrow-left">850 Lab · Get your report</p>
           <h1 className="mt-2 text-xl font-semibold tracking-tight text-lab-text">
             Continue to IdentityIQ
           </h1>
@@ -79,7 +77,7 @@ export function ReportAcquisitionIdiqBridgePage() {
           <button
             type="button"
             onClick={onContinue}
-            className="mt-8 w-full rounded-lg bg-lab-accent py-3 text-[15px] font-semibold text-white shadow-lg shadow-lab-accent/20"
+            className="mt-8 w-full rounded-lg bg-lab-accent py-3 text-[15px] font-semibold text-white shadow-lg shadow-black/35"
           >
             Continue to IdentityIQ
           </button>

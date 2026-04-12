@@ -68,27 +68,23 @@ export function SignupPage() {
     <div className="relative min-h-full bg-lab-bg">
       <TopBarMinimal />
       <main className="relative z-10 mx-auto max-w-md px-4 pb-16 pt-24 sm:px-6 sm:pt-28">
-        {programEyebrow ? (
-          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-lab-accent">
-            Your program · Create account
-          </p>
-        ) : null}
+        <p className="step-eyebrow-left">850 Lab · Create account</p>
         <motion.h1
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
-          className={`text-2xl font-semibold text-lab-text ${programEyebrow ? "mt-2" : ""}`}
+          className="mt-2 text-2xl font-semibold text-lab-text"
         >
           Create account
         </motion.h1>
         <p className="mt-2 text-sm leading-relaxed text-lab-muted">
           {programEyebrow ? (
             <>
-              Your program runs on this account — same system before and after you sign in. Next we
-              confirm your email so we can continue securely.
+              One account for your whole guided round — same path before and after you sign in. Next
+              we confirm your email so we can continue securely.
             </>
           ) : (
             <>
-              Create an account to save your progress across 850 Lab. You’ll verify your email next.
+              Create an account to save your progress in 850 Lab. You&apos;ll verify your email next.
             </>
           )}
         </p>
@@ -151,7 +147,7 @@ export function SignupPage() {
           Already have an account?{" "}
           <Link
             to={`/login${location.search}`}
-            className="font-medium text-lab-accent hover:text-sky-300"
+            className="font-medium text-lab-accent hover:text-zinc-100"
           >
             Sign in
           </Link>

@@ -14,32 +14,78 @@ type Props = {
   layout?: "default" | "publicDemoExpandable";
   /** Shown under chips when layout is publicDemoExpandable (e.g. chosen scenario title) */
   scenarioHeadline?: string | null;
+  /** White marketing shell for landing demo (`publicDemoExpandable` only). */
+  surfaceLight?: boolean;
 };
 
-function CommandPlanActionCard({ action }: { action: CreditCommandPlanAction }) {
+function CommandPlanActionCard({
+  action,
+  surfaceLight,
+}: {
+  action: CreditCommandPlanAction;
+  surfaceLight?: boolean;
+}) {
+  const light = surfaceLight === true;
   return (
-    <li className="rounded-lg border border-white/[0.06] bg-lab-surface/80 px-3 py-3 sm:px-4">
-      <p className="text-sm font-semibold text-lab-text">{action.title}</p>
-      <div className="mt-2.5 rounded-lg border border-lab-accent/25 bg-lab-accent/[0.06] px-3 py-2.5">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-lab-accent">
+    <li
+      className={
+        light
+          ? "rounded-lg border border-neutral-200/90 bg-white px-3 py-3 sm:px-4"
+          : "rounded-lg border border-white/[0.06] bg-lab-surface/80 px-3 py-3 sm:px-4"
+      }
+    >
+      <p className={light ? "text-sm font-semibold text-neutral-950" : "text-sm font-semibold text-lab-text"}>
+        {action.title}
+      </p>
+      <div
+        className={
+          light
+            ? "mt-2.5 rounded-lg border border-neutral-300/80 bg-neutral-100/80 px-3 py-2.5"
+            : "mt-2.5 rounded-lg border border-zinc-700/45 bg-white/[0.03] px-3 py-2.5"
+        }
+      >
+        <p
+          className={
+            light
+              ? "text-[10px] font-semibold uppercase tracking-[0.12em] text-neutral-600"
+              : "text-[10px] font-semibold uppercase tracking-[0.12em] text-lab-accent"
+          }
+        >
           Do this now
         </p>
-        <p className="mt-1.5 text-sm leading-relaxed text-lab-text">{action.do_next}</p>
+        <p className={light ? "mt-1.5 text-sm leading-relaxed text-neutral-950" : "mt-1.5 text-sm leading-relaxed text-lab-text"}>
+          {action.do_next}
+        </p>
       </div>
-      <p className="mt-2.5 text-xs leading-relaxed text-lab-muted sm:text-[13px]">
-        <span className="font-medium text-lab-text/80">Why it matters:</span> {action.why}
+      <p className={light ? "mt-2.5 text-xs leading-relaxed text-neutral-600 sm:text-[13px]" : "mt-2.5 text-xs leading-relaxed text-lab-muted sm:text-[13px]"}>
+        <span className={light ? "font-medium text-neutral-800" : "font-medium text-lab-text/80"}>Why it matters:</span>{" "}
+        {action.why}
       </p>
       {action.warning ? (
-        <p className="mt-2 text-xs leading-relaxed text-amber-200/85">
+        <p className={light ? "mt-2 text-xs leading-relaxed text-amber-800/90" : "mt-2 text-xs leading-relaxed text-amber-200/85"}>
           <span className="font-medium">Watch out:</span> {action.warning}
         </p>
       ) : null}
       {action.script ? (
-        <details className="mt-3 rounded-md border border-white/[0.08] bg-black/20 px-2 py-2">
-          <summary className="cursor-pointer text-xs font-semibold text-lab-muted">
+        <details
+          className={
+            light
+              ? "mt-3 rounded-md border border-neutral-200/90 bg-neutral-50 px-2 py-2"
+              : "mt-3 rounded-md border border-white/[0.08] bg-black/20 px-2 py-2"
+          }
+        >
+          <summary
+            className={light ? "cursor-pointer text-xs font-semibold text-neutral-600" : "cursor-pointer text-xs font-semibold text-lab-muted"}
+          >
             Call script — open when you are on the line
           </summary>
-          <pre className="mt-2 whitespace-pre-wrap font-sans text-[11px] leading-relaxed text-lab-text/90">
+          <pre
+            className={
+              light
+                ? "mt-2 whitespace-pre-wrap font-sans text-[11px] leading-relaxed text-neutral-900"
+                : "mt-2 whitespace-pre-wrap font-sans text-[11px] leading-relaxed text-lab-text/90"
+            }
+          >
             {action.script}
           </pre>
         </details>
@@ -113,6 +159,7 @@ export function CreditCommandPlanSection({
   variant = "letters",
   layout = "default",
   scenarioHeadline,
+  surfaceLight,
 }: Props) {
   const [open, setOpen] = useState(true);
   const [expandedDay, setExpandedDay] = useState<number | null>(null);
@@ -129,42 +176,85 @@ export function CreditCommandPlanSection({
   const { total_issues, high_impact, score_damaging, quick_wins, days } = plan;
 
   if (layout === "publicDemoExpandable") {
+    const light = surfaceLight === true;
     return (
-      <section className="overflow-hidden rounded-xl border border-lab-accent/25 bg-gradient-to-b from-lab-accent/[0.07] to-transparent px-3 py-4 sm:px-4 sm:py-5">
+      <section
+        className={
+          light
+            ? "overflow-hidden rounded-xl border border-neutral-200/90 bg-gradient-to-b from-neutral-50/90 to-white px-3 py-4 sm:px-4 sm:py-5"
+            : "overflow-hidden rounded-xl border border-zinc-700/45 bg-gradient-to-b from-white/[0.04] to-transparent px-3 py-4 sm:px-4 sm:py-5"
+        }
+      >
         <div>
-          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-lab-accent">
+          <p
+            className={
+              light
+                ? "text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-500"
+                : "text-[10px] font-semibold uppercase tracking-[0.16em] text-lab-accent"
+            }
+          >
             Execution
           </p>
-          <h3 className="mt-1 text-[15px] font-semibold text-lab-text sm:text-base">
+          <h3 className={light ? "mt-1 text-[15px] font-semibold text-neutral-950 sm:text-base" : "mt-1 text-[15px] font-semibold text-lab-text sm:text-base"}>
             72-hour gameplan
           </h3>
-          <p className="mt-2 text-sm font-medium leading-snug text-lab-text sm:text-[15px]">
+          <p className={light ? "mt-2 text-sm font-medium leading-snug text-neutral-950 sm:text-[15px]" : "mt-2 text-sm font-medium leading-snug text-lab-text sm:text-[15px]"}>
             Here&apos;s what you can do right now
           </p>
-          <p className="mt-1.5 text-xs leading-relaxed text-lab-muted sm:text-sm">
+          <p className={light ? "mt-1.5 text-xs leading-relaxed text-neutral-600 sm:text-sm" : "mt-1.5 text-xs leading-relaxed text-lab-muted sm:text-sm"}>
             Concrete moves tied to this scenario — same engine members use. Tap a day to see the full
             checklist.
           </p>
         </div>
 
         <div className="mt-3 flex flex-wrap gap-2">
-          <span className="rounded-full border border-white/[0.1] bg-white/[0.04] px-2.5 py-0.5 text-[11px] font-medium text-lab-text">
+          <span
+            className={
+              light
+                ? "rounded-full border border-neutral-200/90 bg-white px-2.5 py-0.5 text-[11px] font-medium text-neutral-900"
+                : "rounded-full border border-white/[0.1] bg-white/[0.04] px-2.5 py-0.5 text-[11px] font-medium text-lab-text"
+            }
+          >
             {total_issues} issue{total_issues === 1 ? "" : "s"} in play
           </span>
-          <span className="rounded-full border border-amber-500/25 bg-amber-500/10 px-2.5 py-0.5 text-[11px] font-medium text-amber-200/90">
+          <span
+            className={
+              light
+                ? "rounded-full border border-amber-200/90 bg-amber-50 px-2.5 py-0.5 text-[11px] font-medium text-amber-900/90"
+                : "rounded-full border border-amber-500/25 bg-amber-500/10 px-2.5 py-0.5 text-[11px] font-medium text-amber-200/90"
+            }
+          >
             {high_impact} high impact
           </span>
-          <span className="rounded-full border border-red-400/20 bg-red-500/10 px-2.5 py-0.5 text-[11px] font-medium text-red-200/85">
+          <span
+            className={
+              light
+                ? "rounded-full border border-red-200/90 bg-red-50 px-2.5 py-0.5 text-[11px] font-medium text-red-900/85"
+                : "rounded-full border border-red-400/20 bg-red-500/10 px-2.5 py-0.5 text-[11px] font-medium text-red-200/85"
+            }
+          >
             {score_damaging} score-damaging
           </span>
-          <span className="rounded-full border border-emerald-400/20 bg-emerald-500/10 px-2.5 py-0.5 text-[11px] font-medium text-emerald-200/85">
+          <span
+            className={
+              light
+                ? "rounded-full border border-emerald-200/90 bg-emerald-50 px-2.5 py-0.5 text-[11px] font-medium text-emerald-900/85"
+                : "rounded-full border border-emerald-400/20 bg-emerald-500/10 px-2.5 py-0.5 text-[11px] font-medium text-emerald-200/85"
+            }
+          >
             {quick_wins} quick win{quick_wins === 1 ? "" : "s"}
           </span>
         </div>
 
         {scenarioHeadline ? (
-          <p className="mt-3 rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-xs leading-relaxed text-lab-muted">
-            <span className="font-semibold text-lab-text">Scenario: </span>
+          <p
+            className={
+              light
+                ? "mt-3 rounded-lg border border-neutral-200/90 bg-white px-3 py-2 text-xs leading-relaxed text-neutral-600"
+                : "mt-3 rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-xs leading-relaxed text-lab-muted"
+            }
+          >
+            <span className={light ? "font-semibold text-neutral-950" : "font-semibold text-lab-text"}>Scenario: </span>
             {scenarioHeadline}
           </p>
         ) : null}
@@ -178,17 +268,29 @@ export function CreditCommandPlanSection({
                 type="button"
                 data-testid={`demo-gameplan-day-${di}`}
                 onClick={() => setExpandedDay(active ? null : di)}
-                className={`flex min-h-[4.25rem] flex-col items-center justify-center rounded-xl border px-2 py-2.5 text-center transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-lab-accent/40 ${
-                  active
-                    ? "border-lab-accent/50 bg-lab-accent/15 shadow-md shadow-lab-accent/10"
-                    : "border-white/[0.1] bg-lab-surface/60 hover:border-white/[0.18] hover:bg-lab-surface/80"
+                className={`flex min-h-[4.25rem] flex-col items-center justify-center rounded-xl border px-2 py-2.5 text-center transition-all focus-visible:outline-none focus-visible:ring-2 ${
+                  light
+                    ? active
+                      ? "border-neutral-400 bg-neutral-200/80 shadow-md shadow-neutral-900/10 focus-visible:ring-neutral-400/50"
+                      : "border-neutral-200/90 bg-white hover:border-neutral-300 focus-visible:ring-neutral-400/40"
+                    : active
+                      ? "border-zinc-500/45 bg-zinc-500/[0.12] shadow-md shadow-black/25 focus-visible:ring-zinc-500/40"
+                      : "border-white/[0.1] bg-lab-surface/60 hover:border-white/[0.18] hover:bg-lab-surface/80 focus-visible:ring-lab-accent/40"
                 }`}
               >
-                <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-lab-subtle">
+                <span
+                  className={
+                    light
+                      ? "text-[10px] font-semibold uppercase tracking-[0.1em] text-neutral-500"
+                      : "text-[10px] font-semibold uppercase tracking-[0.1em] text-lab-subtle"
+                  }
+                >
                   {day.label}
                 </span>
-                <span className="mt-1 text-lg font-semibold tabular-nums text-lab-text">{di + 1}</span>
-                <span className="mt-0.5 text-[10px] text-lab-muted">
+                <span className={light ? "mt-1 text-lg font-semibold tabular-nums text-neutral-950" : "mt-1 text-lg font-semibold tabular-nums text-lab-text"}>
+                  {di + 1}
+                </span>
+                <span className={light ? "mt-0.5 text-[10px] text-neutral-600" : "mt-0.5 text-[10px] text-lab-muted"}>
                   {day.actions.length} move{day.actions.length === 1 ? "" : "s"}
                 </span>
               </button>
@@ -206,13 +308,29 @@ export function CreditCommandPlanSection({
               transition={{ duration: 0.26, ease: [0.22, 1, 0.36, 1] }}
               className="overflow-hidden"
             >
-              <div className="mt-4 rounded-xl border border-lab-accent/20 bg-lab-bg/30 px-3 py-4 sm:px-4">
-                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-lab-accent">
+              <div
+                className={
+                  light
+                    ? "mt-4 rounded-xl border border-neutral-200/90 bg-neutral-50/90 px-3 py-4 sm:px-4"
+                    : "mt-4 rounded-xl border border-zinc-800/60 bg-lab-bg/30 px-3 py-4 sm:px-4"
+                }
+              >
+                <p
+                  className={
+                    light
+                      ? "text-xs font-semibold uppercase tracking-[0.12em] text-neutral-600"
+                      : "text-xs font-semibold uppercase tracking-[0.12em] text-lab-accent"
+                  }
+                >
                   {days[expandedDay].label}
                 </p>
                 <ul className="mt-3 space-y-4">
                   {days[expandedDay].actions.map((action, ai) => (
-                    <CommandPlanActionCard key={`${action.title}-${ai}`} action={action} />
+                    <CommandPlanActionCard
+                      key={`${action.title}-${ai}`}
+                      action={action}
+                      surfaceLight={light}
+                    />
                   ))}
                 </ul>
               </div>
@@ -228,7 +346,7 @@ export function CreditCommandPlanSection({
   return (
     <motion.section
       layout
-      className="mt-10 overflow-hidden rounded-xl border border-lab-accent/25 bg-gradient-to-b from-lab-accent/[0.07] to-transparent px-4 py-4 sm:mt-11 sm:px-5 sm:py-5"
+      className="mt-10 overflow-hidden rounded-xl border border-zinc-700/45 bg-gradient-to-b from-white/[0.04] to-transparent px-4 py-4 sm:mt-11 sm:px-5 sm:py-5"
     >
       <button
         type="button"

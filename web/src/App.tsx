@@ -22,6 +22,7 @@ import { ProofVerificationPage } from "@/pages/ProofVerificationPage";
 import { EscalationActionPage } from "@/pages/EscalationActionPage";
 import { EscalationPage } from "@/pages/EscalationPage";
 import { TrackingPage } from "@/pages/TrackingPage";
+import { ExecutionPage } from "@/pages/ExecutionPage";
 import { ResponseIntakePage } from "@/pages/ResponseIntakePage";
 import { ReportAcquisitionPage } from "@/pages/ReportAcquisitionPage";
 import { ReportAcquisitionIdiqBridgePage } from "@/pages/ReportAcquisitionIdiqBridgePage";
@@ -116,6 +117,7 @@ export default function App() {
           <Route path="get-report/idiq" element={<ReportAcquisitionIdiqBridgePage />} />
           <Route path="upload" element={<UploadStep />} />
           <Route path="analyze" element={<AnalysisPage />} />
+          <Route path="execute" element={<ExecutionPage />} />
           <Route path="prepare" element={<ConfirmationPage />} />
           <Route path="strategy" element={<StrategyPage />} />
           <Route path="payment" element={<PaymentPage />} />

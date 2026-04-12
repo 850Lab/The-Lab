@@ -13,7 +13,7 @@ export function ProgramFlowBridge({
 }) {
   return (
     <div
-      className={`rounded-xl border border-white/[0.1] bg-lab-surface/55 px-4 py-3.5 text-center text-sm leading-relaxed text-lab-muted sm:px-5 ${className}`}
+      className={`surface-where-fits text-center text-sm leading-relaxed text-lab-muted transition-[border-color,background-color,box-shadow,color] duration-200 ease-out hover:border-white/[0.12] ${className}`}
     >
       {children}
     </div>

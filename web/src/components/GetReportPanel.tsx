@@ -78,7 +78,7 @@ export function GetReportPanel({ open, onClose }: Props) {
                     id="get-report-title"
                     className="text-lg font-semibold leading-snug text-lab-text sm:text-xl"
                   >
-                    Step 1: get your report, then continue upload
+                    Don&apos;t have your report yet?
                   </h2>
                   <button
                     type="button"
@@ -95,16 +95,16 @@ export function GetReportPanel({ open, onClose }: Props) {
 
               <div className="space-y-5 px-5 py-5 sm:px-6">
                 <p className="text-sm leading-relaxed text-lab-muted sm:text-[15px]">
-                  You&apos;re still in the same program — this step is about obtaining the PDF. Download
-                  your bureau report, then come back here to upload (Step 2).
+                  Pull your free report online, save it as a PDF, then return here to upload. You stay in the
+                  same program — this only gets the file you need for Step 1.
                 </p>
 
                 <button
                   type="button"
                   onClick={getReport}
-                  className="w-full rounded-lg bg-lab-accent py-3 text-[15px] font-semibold text-white shadow-lg shadow-lab-accent/20 transition-shadow hover:shadow-lab-accent/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-lab-accent/50"
+                  className="btn-primary-step w-full"
                 >
-                  Get my report
+                  Get your report
                 </button>
 
                 <p className="text-center text-xs text-lab-subtle sm:text-sm">
@@ -169,7 +169,7 @@ export function GetReportPanel({ open, onClose }: Props) {
                   <Link
                     to="/get-report"
                     onClick={onClose}
-                    className="text-sm font-medium text-lab-accent hover:text-sky-300"
+                    className="text-sm font-medium text-lab-accent hover:text-zinc-100"
                   >
                     View all ways to get a report (recommended + free)
                   </Link>

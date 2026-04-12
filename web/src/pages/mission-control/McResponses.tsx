@@ -81,7 +81,7 @@ export function McResponses() {
                 <td className="p-2 font-mono">
                   <Link
                     to={`/mission-control/workflows/${String(r.workflow_id)}`}
-                    className="text-sky-300 hover:underline"
+                    className="text-zinc-400 hover:underline"
                   >
                     {String(r.workflow_id).slice(0, 8)}…
                   </Link>
@@ -111,7 +111,7 @@ export function McResponses() {
                 <td className="p-2 space-x-2 whitespace-nowrap">
                   <button
                     type="button"
-                    className="text-sky-300 hover:underline"
+                    className="text-zinc-400 hover:underline"
                     onClick={() =>
                       setOverrideOp({ type: "classification", row: r })
                     }
@@ -120,7 +120,7 @@ export function McResponses() {
                   </button>
                   <button
                     type="button"
-                    className="text-sky-300 hover:underline"
+                    className="text-zinc-400 hover:underline"
                     onClick={() =>
                       setOverrideOp({ type: "escalation", row: r })
                     }

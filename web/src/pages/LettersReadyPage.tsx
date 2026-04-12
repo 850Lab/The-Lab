@@ -7,6 +7,8 @@ import { LetterGroupCard } from "@/components/LetterGroupCard";
 import { CreditCommandPlanSection } from "@/components/CreditCommandPlanSection";
 import { LetterPreviewModal } from "@/components/LetterPreviewModal";
 import { LettersActionSection } from "@/components/LettersActionSection";
+import { StepPageAmbientBackground } from "@/components/StepPageAmbientBackground";
+import { StepMainColumn } from "@/components/StepMainColumn";
 import { TopBarMinimal } from "@/components/TopBarMinimal";
 import type { CreditCommandPlanResponse, LetterRow, LettersUiFlags } from "@/lib/letterTypes";
 import {
@@ -23,36 +25,102 @@ import {
 } from "@/lib/workflowStepRoutes";
 import { useCustomerWorkflow } from "@/providers/CustomerWorkflowContext";
 import { lettersPurposeBlock, postLettersWhatHappensNext } from "@/lib/intelligenceExpression";
+import {
+  lettersContinuePrimaryButtonClass,
+  orionNarrativeCoherent,
+  orionStepHeroCopy,
+  resolveOrionAuthority,
+} from "@/lib/orion/orionAuthority";
+import {
+  easeStep,
+  stepChildVariants as headerVariants,
+  stepListGroupVariants as listVariants,
+  stepPageVariants as pageVariants,
+} from "@/lib/motionStep";
 
-const pageVariants = {
-  hidden: { opacity: 0 },
-  show: {
-    opacity: 1,
-    transition: { staggerChildren: 0.09, delayChildren: 0.05 },
-  },
-};
+type LettersStripPhase = "generating" | "ready" | "failed";
 
-const headerVariants = {
-  hidden: { opacity: 0, y: 12 },
-  show: {
-    opacity: 1,
-    y: 0,
-    transition: { duration: 0.42, ease: [0.22, 1, 0.36, 1] },
-  },
-};
+function LettersProgressStrip({ phase }: { phase: LettersStripPhase }) {
+  const step2Done = phase === "ready";
+  const step3Next = phase === "ready";
 
-const listVariants = {
-  hidden: { opacity: 0 },
-  show: {
-    opacity: 1,
-    transition: { staggerChildren: 0.1, delayChildren: 0.06 },
-  },
-};
+  return (
+    <motion.div
+      variants={headerVariants}
+      className="surface-where-fits mx-auto mt-6 max-w-2xl"
+    >
+      <p className="text-center text-[10px] font-bold uppercase tracking-[0.16em] text-lab-subtle">
+        What happens next
+      </p>
+      <ol className="mt-3 flex flex-col gap-2 text-sm sm:mt-4 sm:flex-row sm:justify-center sm:gap-3 sm:text-[13px]">
+        <li className="progress-strip-pill flex flex-1 items-center justify-center rounded-lg border border-emerald-500/30 bg-emerald-500/[0.08] px-3 py-2.5 text-center text-lab-muted">
+          <span className="font-semibold text-emerald-200/95">1.</span>
+          <span className="ml-1.5">Payment completed</span>
+        </li>
+        <li
+          className={
+            step2Done
+              ? "progress-strip-pill flex flex-1 items-center justify-center rounded-lg border border-emerald-500/30 bg-emerald-500/[0.08] px-3 py-2.5 text-center text-lab-muted"
+              : "progress-strip-pill flex flex-1 items-center justify-center rounded-lg border border-zinc-500/35 bg-zinc-500/[0.1] px-3 py-2.5 text-center font-semibold text-lab-text"
+          }
+        >
+          <span className={step2Done ? "font-semibold text-emerald-200/95" : "text-lab-accent"}>
+            2.
+          </span>
+          <span className="ml-1.5">Letters prepared</span>
+        </li>
+        <li
+          className={
+            step3Next
+              ? "progress-strip-pill flex flex-1 items-center justify-center rounded-lg border border-zinc-500/35 bg-zinc-500/[0.1] px-3 py-2.5 text-center font-semibold text-lab-text"
+              : "progress-strip-pill flex flex-1 items-center justify-center rounded-lg border border-white/[0.08] bg-black/25 px-3 py-2.5 text-center text-lab-muted"
+          }
+        >
+          <span className={step3Next ? "text-lab-accent" : "text-lab-subtle"}>3.</span>
+          <span className="ml-1.5">Proof and mailing next</span>
+        </li>
+      </ol>
+    </motion.div>
+  );
+}
+
+function RoundContinuityModule({
+  selectedCount,
+  letterGroups,
+  bureauCount,
+  phase,
+}: {
+  selectedCount: number;
+  letterGroups: number;
+  bureauCount: number;
+  phase: LettersStripPhase;
+}) {
+  const summary =
+    phase === "ready" && letterGroups > 0
+      ? `These ${letterGroups} letter group${letterGroups === 1 ? "" : "s"} cover ${bureauCount} bureau target${bureauCount === 1 ? "" : "s"} for the ${selectedCount} item${selectedCount === 1 ? "" : "s"} you confirmed in Strategy. This is the document stage for the round you already approved — review before proof and mailing.`
+      : selectedCount > 0
+        ? `These drafts reflect the ${selectedCount} item${selectedCount === 1 ? "" : "s"} you confirmed in Strategy. This is the document stage for the round you already approved — nothing is mailed from this screen.`
+        : "These drafts come from the round you confirmed in Strategy. Review them here before proof and mailing — nothing is mailed from this screen.";
+
+  return (
+    <div className="surface-round-continuity">
+      <p className="text-xs font-medium uppercase tracking-[0.08em] text-lab-subtle">Your current round</p>
+      <p className="mt-2 text-sm leading-relaxed text-lab-muted">{summary}</p>
+    </div>
+  );
+}
 
 export function LettersReadyPage() {
   const navigate = useNavigate();
-  const { token, workflowId, authoritativeStepId, envelope, applyWorkflowEnvelope } =
-    useCustomerWorkflow();
+  const {
+    token,
+    workflowId,
+    authoritativeStepId,
+    envelope,
+    applyWorkflowEnvelope,
+    orionViewModel,
+    integrityHints,
+  } = useCustomerWorkflow();
 
   const lettersPurpose = useMemo(() => lettersPurposeBlock(), []);
   const lettersProgramNext = useMemo(() => postLettersWhatHappensNext(), []);
@@ -251,42 +319,192 @@ export function LettersReadyPage() {
     letters.length === 0 &&
     !!genError;
 
+  const bureauCount = useMemo(
+    () => new Set(letters.map((l) => (l.bureauDisplay || l.bureau).trim())).size,
+    [letters],
+  );
+
+  const stripPhase: LettersStripPhase = showGenFailure
+    ? "failed"
+    : showReadyBlock
+      ? "ready"
+      : "generating";
+
+  const pageHeadline = showGenFailure
+    ? "Your letters were not completed yet"
+    : showReadyBlock
+      ? "Your dispute letters are ready to review"
+      : "Your dispute letters are being prepared for this round";
+
+  const supportText = showGenFailure
+    ? "You can try again without losing your round. Your selections and payment stay in place."
+    : showReadyBlock
+      ? "These letters are based on the selections you confirmed earlier. Review what was generated here before moving into proof and mailing steps."
+      : "We’re preparing draft letters from your confirmed round. You’ll review them here before proof and mailing — nothing is sent from this page.";
+
+  const phaseHeroFallback = useMemo(
+    () => ({ title: pageHeadline, subtitle: supportText }),
+    [pageHeadline, supportText],
+  );
+
+  const orionAuthority = useMemo(
+    () => resolveOrionAuthority(orionViewModel, integrityHints),
+    [orionViewModel, integrityHints],
+  );
+
+  const lettersHero = useMemo(() => {
+    if (showGenFailure) {
+      return {
+        title: phaseHeroFallback.title,
+        subtitle: phaseHeroFallback.subtitle,
+        ctaEmphasis: "standard" as const,
+      };
+    }
+    return orionStepHeroCopy(orionAuthority, orionViewModel, phaseHeroFallback);
+  }, [showGenFailure, orionAuthority, orionViewModel, phaseHeroFallback]);
+
+  const lettersCoherent = useMemo(
+    () => orionNarrativeCoherent(orionAuthority, orionViewModel),
+    [orionAuthority, orionViewModel],
+  );
+
+  const lettersActionProps = useMemo(() => {
+    if (!lettersCoherent) return {};
+    if (lettersHero.ctaEmphasis === "muted") {
+      return {
+        headline: "No rush — drafts are on this page when you want them",
+        supportText: "Preview or download, then continue; proof comes next in the same program.",
+        helperText: "Mailing stays later — nothing goes out from this step.",
+      };
+    }
+    return {
+      headline: "Review on this page",
+      supportText: "Preview or download drafts, then continue when you’re ready.",
+      helperText: "Proof is next; mailing stays later in the program.",
+    };
+  }, [lettersCoherent, lettersHero.ctaEmphasis]);
+
+  const showLettersShell =
+    !pageLoading && !loadError && (showGenerating || showGenFailure || showReadyBlock);
+
   return (
-    <div className="relative min-h-full bg-lab-bg">
-      <div
-        className="pointer-events-none absolute left-1/2 top-[38%] z-0 h-[min(72vw,480px)] w-[min(72vw,480px)] -translate-x-1/2 -translate-y-1/2 rounded-full bg-lab-accent/[0.09] blur-[110px]"
-        aria-hidden
-      />
-      <div
-        className="pointer-events-none absolute left-1/2 top-[42%] z-0 h-[min(48vw,300px)] w-[min(48vw,300px)] -translate-x-1/2 -translate-y-1/2 rounded-full bg-lab-accent/[0.04] blur-[90px]"
-        aria-hidden
-      />
+    <div
+      className="relative min-h-full bg-lab-bg"
+      data-orion-fallback={orionViewModel.fallbackMode}
+    >
+      <StepPageAmbientBackground />
 
       <TopBarMinimal />
 
-      <main className="relative z-10 mx-auto max-w-md px-4 pb-24 pt-24 sm:px-6 sm:pb-28 sm:pt-28">
+      <StepMainColumn className="relative z-10 mx-auto max-w-xl px-4 pb-24 pt-24 sm:px-6 sm:pb-28 sm:pt-28">
         {pageLoading ? (
-          <p className="text-center text-sm text-lab-muted">Loading letters…</p>
+          <motion.p
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.2, ease: easeStep }}
+            className="text-center text-sm text-lab-muted"
+          >
+            Loading your letter workspace…
+          </motion.p>
         ) : null}
 
         {loadError ? (
-          <p className="text-center text-sm text-red-300/90">{loadError}</p>
+          <motion.p
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.2, ease: easeStep }}
+            className="text-center text-sm text-red-300/90"
+          >
+            {loadError}
+          </motion.p>
+        ) : null}
+
+        {showLettersShell ? (
+          <motion.div
+            variants={pageVariants}
+            initial="hidden"
+            animate="show"
+            className="pb-2"
+          >
+            <motion.p
+              variants={headerVariants}
+              className="step-eyebrow"
+            >
+              STEP 5 • PREPARE YOUR LETTERS
+            </motion.p>
+            <motion.h1
+              variants={headerVariants}
+              className="step-title"
+            >
+              {lettersHero.title}
+            </motion.h1>
+            <motion.p
+              variants={headerVariants}
+              className="step-support"
+            >
+              {lettersHero.subtitle}
+            </motion.p>
+            <motion.div
+              variants={headerVariants}
+              className="surface-emerald-reassure mx-auto mt-6 max-w-lg"
+            >
+              <ul className="space-y-2 text-left text-sm leading-relaxed text-emerald-50/95 sm:text-[15px]">
+                <li className="flex gap-2">
+                  <span className="mt-0.5 shrink-0 text-emerald-300" aria-hidden>
+                    •
+                  </span>
+                  <span>These letters were prepared from your confirmed round</span>
+                </li>
+                <li className="flex gap-2">
+                  <span className="mt-0.5 shrink-0 text-emerald-300" aria-hidden>
+                    •
+                  </span>
+                  <span>You are still in the preparation phase</span>
+                </li>
+                <li className="flex gap-2">
+                  <span className="mt-0.5 shrink-0 text-emerald-300" aria-hidden>
+                    •
+                  </span>
+                  <span>Nothing is mailed from this page</span>
+                </li>
+              </ul>
+            </motion.div>
+            <LettersProgressStrip phase={stripPhase} />
+            <motion.div variants={headerVariants} className="mx-auto mt-6 max-w-lg">
+              <RoundContinuityModule
+                selectedCount={lettersUi?.selectedReviewClaimCount ?? 0}
+                letterGroups={letters.length}
+                bureauCount={bureauCount}
+                phase={stripPhase}
+              />
+            </motion.div>
+          </motion.div>
         ) : null}
 
         <AnimatePresence mode="wait">
           {showGenerating ? (
             <motion.div
               key="gen"
-              initial={{ opacity: 0, y: 10 }}
+              initial={{ opacity: 0, y: 4 }}
               animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
-              transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+              exit={{ opacity: 0, y: -3 }}
+              transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
               className="space-y-5"
             >
-              <ProgramFlowBridge className="mx-auto max-w-sm">
-                <span className="font-medium text-lab-text">Now that your dispute plan is set for this round,</span>{" "}
-                we&apos;re generating letters — the next beat in the same program, not a separate tool
-                to hunt for.
+              <ProgramFlowBridge className="mx-auto max-w-lg">
+                {lettersCoherent ? (
+                  <>
+                    <span className="font-medium text-lab-text">Preparation in progress.</span>{" "}
+                    Draft letters are generating from your confirmed round — this screen is still
+                    before proof or mailing.
+                  </>
+                ) : (
+                  <>
+                    <span className="font-medium text-lab-text">Same program, next step:</span>{" "}
+                    we&apos;re turning your confirmed round into draft documents — this usually only
+                    takes a moment. Payment didn&apos;t mail anything; this screen is still preparation.
+                  </>
+                )}
               </ProgramFlowBridge>
               <LetterGeneratingState />
             </motion.div>
@@ -295,11 +513,16 @@ export function LettersReadyPage() {
           {showGenFailure ? (
             <motion.div
               key="fail"
-              initial={{ opacity: 0, y: 10 }}
+              initial={{ opacity: 0, y: 4 }}
               animate={{ opacity: 1, y: 0 }}
-              className="mx-auto max-w-sm space-y-4 pt-4"
+              exit={{ opacity: 0, y: -3 }}
+              transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+              className="mx-auto max-w-lg space-y-4 pt-2"
             >
               <p className="text-center text-sm text-red-300/90">{genError}</p>
+              <p className="text-center text-xs text-lab-subtle">
+                You can try again without losing your round — your selections stay saved.
+              </p>
               <button
                 type="button"
                 onClick={handleRetryGenerate}
@@ -319,21 +542,9 @@ export function LettersReadyPage() {
               animate="show"
               className="pb-4"
             >
-              <motion.p
-                variants={headerVariants}
-                className="text-center text-[10px] font-semibold uppercase tracking-[0.16em] text-lab-accent"
-              >
-                Your program · Letters
-              </motion.p>
-              <motion.h1
-                variants={headerVariants}
-                className="mt-2 text-center text-2xl font-semibold tracking-tight text-lab-text sm:text-[1.65rem]"
-              >
-                Your dispute letters are ready
-              </motion.h1>
               <motion.div
                 variants={headerVariants}
-                className="mx-auto mt-5 max-w-sm rounded-xl border border-lab-accent/20 bg-lab-surface/80 px-4 py-4 text-left sm:px-5 sm:py-5"
+                className="mx-auto mt-6 max-w-lg rounded-xl border border-zinc-800/60 bg-lab-surface/80 px-4 py-4 text-left sm:px-5 sm:py-5"
               >
                 <p className="text-xs font-semibold uppercase tracking-wide text-lab-accent">
                   {lettersPurpose.headline}
@@ -347,64 +558,54 @@ export function LettersReadyPage() {
                   </p>
                 ))}
               </motion.div>
-              <motion.p
-                variants={headerVariants}
-                className="mx-auto mt-4 max-w-sm text-center text-sm leading-relaxed text-lab-muted sm:text-[15px]"
-              >
-                This is a real outcome: bureau-specific dispute letter text built from your report
-                and the items you chose — not a generic form. Use them to challenge inaccurate
-                reporting; certified mail and proof come in the next steps of the same program.
-              </motion.p>
-              <motion.p
-                variants={headerVariants}
-                className="mx-auto mt-3 max-w-sm text-center text-sm leading-relaxed text-lab-muted sm:text-[15px]"
-              >
-                <span className="font-medium text-lab-text">Next:</span> open each letter to review,
-                download if you want a copy, then continue to proof and send when you&apos;re ready.
-              </motion.p>
-              <motion.div
-                variants={headerVariants}
-                className="mx-auto mt-6 max-w-sm rounded-xl border border-white/[0.1] bg-lab-bg/60 px-4 py-4 sm:px-5 sm:py-5"
-              >
-                <p className="text-sm font-semibold text-lab-text">{lettersProgramNext.headline}</p>
-                <ul className="mt-3 list-disc space-y-2 pl-5 text-sm leading-relaxed text-lab-muted">
-                  {lettersProgramNext.bullets.map((b) => (
-                    <li key={b.slice(0, 40)}>{b}</li>
-                  ))}
-                </ul>
-              </motion.div>
 
-              <motion.div variants={headerVariants} className="mx-auto mt-5 max-w-sm">
+              {!lettersCoherent ? (
+                <motion.div variants={headerVariants} className="mx-auto mt-5 max-w-lg">
+                  <details className="details-calm rounded-xl border border-white/[0.1] bg-lab-bg/60 px-4 py-3 sm:px-5 sm:py-4">
+                    <summary className="cursor-pointer list-none text-center text-sm font-medium text-lab-muted [&::-webkit-details-marker]:hidden">
+                      More about what happens next (optional)
+                    </summary>
+                    <p className="mt-3 text-sm font-semibold text-lab-text">{lettersProgramNext.headline}</p>
+                    <ul className="mt-3 list-disc space-y-2 pl-5 text-sm leading-relaxed text-lab-muted">
+                      {lettersProgramNext.bullets.map((b) => (
+                        <li key={b.slice(0, 40)}>{b}</li>
+                      ))}
+                    </ul>
+                  </details>
+                </motion.div>
+              ) : null}
+
+              <motion.div variants={headerVariants} className="mx-auto mt-5 max-w-lg">
                 <ProgramFlowBridge>
-                  <span className="font-medium text-lab-text">Now we&apos;ve prepared your dispute letters</span>{" "}
-                  in this program — they&apos;re real outputs from the plan you locked in. Two clear
-                  actions below: continue the program, or download everything.
+                  {lettersCoherent ? (
+                    <>
+                      <span className="font-medium text-lab-text">Drafts from your round are below.</span>{" "}
+                      Preview or download, then continue — proof and mailing stay in the same program when
+                      you choose.
+                    </>
+                  ) : (
+                    <>
+                      <span className="font-medium text-lab-text">Your confirmed round is now on the page as drafts.</span>{" "}
+                      Preview each letter, download a copy if helpful, then continue — proof and mailing
+                      come next, only when you&apos;re ready.
+                    </>
+                  )}
                 </ProgramFlowBridge>
               </motion.div>
-
-              {lettersUi && lettersUi.selectedReviewClaimCount > 0 ? (
-                <motion.p
-                  variants={headerVariants}
-                  className="mx-auto mt-2 max-w-sm text-center text-xs text-lab-subtle"
-                >
-                  Selection: {lettersUi.selectedReviewClaimCount} item
-                  {lettersUi.selectedReviewClaimCount === 1 ? "" : "s"}
-                </motion.p>
-              ) : null}
 
               <motion.div
                 variants={listVariants}
                 initial="hidden"
                 animate="show"
-                className="mt-10 flex flex-col gap-3 sm:mt-11 sm:gap-3.5"
+                className="mt-8 flex flex-col gap-3 sm:mt-9 sm:gap-3.5"
               >
                 {letters.length === 0 ? (
                   <motion.p
                     variants={headerVariants}
                     className="text-center text-sm text-lab-muted"
                   >
-                    No letter files are on record for your account yet. If you just finished an
-                    earlier step, refresh or go back to program home.
+                    No letter files are on record yet. If you just finished an earlier step, refresh
+                    or return to your program home.
                   </motion.p>
                 ) : (
                   letters.map((letter) => (
@@ -434,12 +635,14 @@ export function LettersReadyPage() {
                   continueDisabled={!canContinue}
                   downloadDisabled={letters.length === 0}
                   bundleBusy={bundleBusy}
+                  continueButtonClassName={lettersContinuePrimaryButtonClass(lettersHero.ctaEmphasis)}
+                  {...lettersActionProps}
                 />
               </motion.div>
             </motion.div>
           ) : null}
         </AnimatePresence>
-      </main>
+      </StepMainColumn>
 
       <LetterPreviewModal
         open={previewLetter !== null}

@@ -12,7 +12,7 @@ export function AddressHelpDisclosure() {
         aria-expanded={open}
         aria-controls={panelId}
         onClick={() => setOpen((o) => !o)}
-        className="flex w-full items-center justify-between gap-3 rounded-lg py-1 text-left text-sm font-medium text-lab-accent transition-colors hover:text-sky-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-lab-accent/35"
+        className="flex w-full items-center justify-between gap-3 rounded-lg py-1 text-left text-sm font-medium text-lab-accent transition-colors hover:text-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-lab-accent/35"
       >
         <span>Don’t have one of these?</span>
         <motion.span

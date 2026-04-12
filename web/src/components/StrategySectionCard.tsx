@@ -32,10 +32,7 @@ export function StrategySectionCard({ title, lines, variants = defaultVariants }
       <ul className="mt-4 space-y-3">
         {lines.map((line) => (
           <li key={line} className="flex gap-3 text-sm leading-relaxed text-lab-muted sm:text-[15px]">
-            <span
-              className="mt-2 h-1 w-1 shrink-0 rounded-full bg-lab-accent/60"
-              aria-hidden
-            />
+            <span className="lab-list-marker" aria-hidden />
             <span>{line}</span>
           </li>
         ))}

@@ -175,7 +175,7 @@ export function McWorkflowOperatorPanel({
                   {st !== "sent" ? (
                     <button
                       type="button"
-                      className="text-sky-300 hover:underline"
+                      className="text-zinc-400 hover:underline"
                       onClick={() => {
                         setRemTargetId(id);
                         setModal("skipRem");
@@ -187,7 +187,7 @@ export function McWorkflowOperatorPanel({
                   {st === "eligible" ? (
                     <button
                       type="button"
-                      className="text-sky-300 hover:underline"
+                      className="text-zinc-400 hover:underline"
                       onClick={() => {
                         setRemTargetId(id);
                         setModal("queueRem");
@@ -199,7 +199,7 @@ export function McWorkflowOperatorPanel({
                   {st === "queued" ? (
                     <button
                       type="button"
-                      className="text-sky-300 hover:underline"
+                      className="text-zinc-400 hover:underline"
                       onClick={() => {
                         setRemTargetId(id);
                         setModal("deliverRem");
@@ -241,7 +241,7 @@ export function McWorkflowOperatorPanel({
                     <td className="p-2 space-x-2 whitespace-nowrap">
                       <button
                         type="button"
-                        className="text-sky-300 hover:underline"
+                        className="text-zinc-400 hover:underline"
                         onClick={() =>
                           setOverrideOp({ type: "classification", row: r })
                         }
@@ -250,7 +250,7 @@ export function McWorkflowOperatorPanel({
                       </button>
                       <button
                         type="button"
-                        className="text-sky-300 hover:underline"
+                        className="text-zinc-400 hover:underline"
                         onClick={() =>
                           setOverrideOp({ type: "escalation", row: r })
                         }

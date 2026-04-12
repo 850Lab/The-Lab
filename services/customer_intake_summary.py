@@ -1,7 +1,10 @@
 """
 Rebuild intake-facing summaries from persisted reports (same extract → compress as upload pipeline).
 
-Used by the workflow HTTP API for React analyze/review steps — no duplicate parsing logic.
+Used by the workflow HTTP API for React analyze/review steps.
+
+When ``workflow_id`` is set and metadata holds a matching ``intake_claims_snapshot_v1``,
+compressed claims are read from that snapshot (dual-write path) instead of recomputing.
 """
 
 from __future__ import annotations
@@ -36,13 +39,15 @@ def build_customer_intake_summary(
     *,
     report_limit: int = 25,
     only_report_ids: Optional[List[int]] = None,
+    workflow_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     if only_report_ids is not None:
         rows = db.get_reports_with_parsed_for_user_by_ids(user_id, only_report_ids)
     else:
         rows = db.get_recent_reports_with_parsed_for_user(user_id, limit=report_limit)
+
     report_summaries: List[Dict[str, Any]] = []
-    all_raw_claims: List[Any] = []
+    id_list: List[int] = []
 
     for row in rows:
         pd = _parsed_dict(row.get("parsed_data"))
@@ -70,22 +75,46 @@ def build_customer_intake_summary(
                 },
             }
         )
-        try:
-            all_raw_claims.extend(extract_claims(pd, bureau))
-        except Exception as exc:
-            _log.warning("extract_claims failed for report %s: %s", rid, exc)
+        if rid is not None:
+            try:
+                id_list.append(int(rid))
+            except (TypeError, ValueError):
+                pass
 
-    compressed: List[ReviewClaim] = compress_claims(all_raw_claims)
-    claim_dicts = [c.to_dict() for c in compressed]
+    claims_provenance = "recomputed"
+    claim_dicts: List[Dict[str, Any]] = []
+
+    if workflow_id:
+        from services.workflow.claims_snapshot import try_load_snapshot_claim_dicts
+
+        snap = try_load_snapshot_claim_dicts(workflow_id, id_list)
+        if snap:
+            claim_dicts = snap[0]
+            claims_provenance = "snapshot_v1"
+
+    if not claim_dicts:
+        all_raw_claims: List[Any] = []
+        for row in rows:
+            pd = _parsed_dict(row.get("parsed_data"))
+            bureau = (row.get("bureau") or "unknown").lower()
+            rid = row.get("id")
+            try:
+                all_raw_claims.extend(extract_claims(pd, bureau))
+            except Exception as exc:
+                _log.warning("extract_claims failed for report %s: %s", rid, exc)
+
+        compressed: List[ReviewClaim] = compress_claims(all_raw_claims)
+        claim_dicts = [c.to_dict() for c in compressed]
 
     by_type: Dict[str, int] = {}
-    for c in compressed:
-        k = c.review_type.value
-        by_type[k] = by_type.get(k, 0) + 1
+    for d in claim_dicts:
+        rt = (d.get("review_type") or "").strip()
+        if rt:
+            by_type[rt] = by_type.get(rt, 0) + 1
 
     total_accounts = sum(s["counts"]["accounts"] for s in report_summaries)
 
-    return {
+    out: Dict[str, Any] = {
         "reports": report_summaries,
         "reviewClaims": claim_dicts,
         "reviewClaimsCount": len(claim_dicts),
@@ -95,3 +124,6 @@ def build_customer_intake_summary(
             "claimsByReviewType": by_type,
         },
     }
+    if workflow_id:
+        out["claimsProvenance"] = {"source": claims_provenance}
+    return out

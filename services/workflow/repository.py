@@ -53,10 +53,12 @@ def fetch_session(workflow_id: str) -> Optional[Dict[str, Any]]:
     return d
 
 
-def fetch_steps(workflow_id: str) -> List[Dict[str, Any]]:
+def fetch_steps(
+    workflow_id: str, *, session: Optional[Dict[str, Any]] = None
+) -> List[Dict[str, Any]]:
     from services.workflow.workflow_db import get_workflow_db
 
-    sess = fetch_session(workflow_id)
+    sess = session if session is not None else fetch_session(workflow_id)
     wt = str((sess or {}).get("workflow_type") or WORKFLOW_TYPE_DEFAULT)
     order_list = linear_order_for(wt)
     order = {s: i for i, s in enumerate(order_list)}
@@ -175,6 +177,12 @@ def create_workflow_with_steps(
             metadata={"workflowType": workflow_type, "userId": user_id},
         )
         conn.commit()
+    try:
+        from services.guidance.orion_scheduler import schedule_guidance_evaluation
+
+        schedule_guidance_evaluation(wid, {"eventType": "workflow.session_created"})
+    except Exception:
+        pass
     return wid
 
 

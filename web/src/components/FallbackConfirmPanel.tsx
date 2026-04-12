@@ -61,7 +61,7 @@ export function FallbackConfirmPanel({ open, onClose, onContinue }: Props) {
                 <button
                   type="button"
                   onClick={onContinue}
-                  className="rounded-lg bg-lab-accent px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-lab-accent/20 transition-shadow hover:shadow-lab-accent/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-lab-accent/50"
+                  className="rounded-lg bg-lab-accent px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-black/35 transition-shadow hover:shadow-black/45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-lab-accent/50"
                 >
                   Continue
                 </button>

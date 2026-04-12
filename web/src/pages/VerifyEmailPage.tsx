@@ -99,9 +99,7 @@ export function VerifyEmailPage() {
     <div className="relative min-h-full bg-lab-bg">
       <TopBarMinimal />
       <main className="relative z-10 mx-auto max-w-md px-4 pb-16 pt-24 sm:px-6 sm:pt-28">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-lab-accent">
-          Your program · Verify email
-        </p>
+        <p className="step-eyebrow-left">850 Lab · Verify email</p>
         <motion.h1
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
@@ -110,21 +108,25 @@ export function VerifyEmailPage() {
           Confirm your email to continue
         </motion.h1>
         <p className="mt-2 text-sm leading-relaxed text-lab-muted">
-          We need a verified email to continue your program — the same secure inbox we&apos;ll use
+          We need a verified email to continue your guided program — the same inbox we&apos;ll use
           for important updates. Enter the 6-digit code we sent to{" "}
           <span className="text-lab-text">{user?.email || "your email"}</span>.
         </p>
         <div className="mt-4 rounded-xl border border-white/[0.1] bg-lab-surface/50 px-4 py-3">
-          <p className="text-xs font-semibold uppercase tracking-wide text-lab-muted">What&apos;s next</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-lab-muted">
+            What happens next
+          </p>
           <p className="mt-1.5 text-sm leading-relaxed text-lab-muted">{afterVerifyLine}</p>
         </div>
         <p className="mt-4 text-sm text-lab-muted">
           No message yet? Check spam, then tap <span className="text-lab-text">Resend code</span>.
         </p>
-        <p className="mt-2 text-xs text-lab-subtle">
-          Local dev: the workflow API should be running (often{" "}
-          <span className="text-lab-text">127.0.0.1:8000</span>) for codes to send.
-        </p>
+        {import.meta.env.DEV ? (
+          <p className="mt-2 text-xs text-lab-subtle">
+            Local dev: the workflow API should be running (often{" "}
+            <span className="text-lab-text">127.0.0.1:8000</span>) for codes to send.
+          </p>
+        ) : null}
 
         {resendNote ? (
           <p className="mt-4 text-sm text-lab-accent">{resendNote}</p>
@@ -159,7 +161,7 @@ export function VerifyEmailPage() {
           type="button"
           onClick={() => void handleResend()}
           disabled={resendBusy}
-          className="mt-6 w-full text-sm font-medium text-lab-accent hover:text-sky-300 disabled:opacity-60"
+          className="mt-6 w-full text-sm font-medium text-lab-accent hover:text-zinc-100 disabled:opacity-60"
         >
           {resendBusy ? "Sending…" : "Resend code"}
         </button>

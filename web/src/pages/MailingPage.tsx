@@ -5,6 +5,8 @@ import { BureauSendStatusRow } from "@/components/BureauSendStatusRow";
 import { ProgramFlowBridge } from "@/components/ProgramFlowBridge";
 import { MailTruthStatusCard } from "@/components/MailTruthStatusCard";
 import { MailingCTASection } from "@/components/MailingCTASection";
+import { StepPageAmbientBackground } from "@/components/StepPageAmbientBackground";
+import { StepMainColumn } from "@/components/StepMainColumn";
 import { TopBarMinimal } from "@/components/TopBarMinimal";
 import type { MailContextPayload } from "@/lib/mailTypes";
 import type { WorkflowEnvelope } from "@/lib/workflowTypes";
@@ -18,15 +20,89 @@ import {
   isAuthoritativeStepBefore,
 } from "@/lib/workflowStepRoutes";
 import { useCustomerWorkflow } from "@/providers/CustomerWorkflowContext";
+import {
+  mailingTrackPrimaryButtonClass,
+  orionNarrativeCoherent,
+  orionStepHeroCopy,
+  resolveOrionAuthority,
+} from "@/lib/orion/orionAuthority";
+import {
+  easeStep,
+  stepChildVariants as headerVariants,
+  stepPageVariants as pageVariants,
+} from "@/lib/motionStep";
 
-const headerVariants = {
-  hidden: { opacity: 0, y: 12 },
-  show: {
-    opacity: 1,
-    y: 0,
-    transition: { duration: 0.42, ease: [0.22, 1, 0.36, 1] },
-  },
-};
+function MailingProgressStrip({ mailingComplete }: { mailingComplete: boolean }) {
+  const step2Done = mailingComplete;
+  const step3Active = mailingComplete;
+
+  return (
+    <motion.div
+      variants={headerVariants}
+      className="surface-where-fits mx-auto mt-6 max-w-2xl"
+    >
+      <p className="text-center text-[10px] font-bold uppercase tracking-[0.16em] text-lab-subtle">
+        What happens next
+      </p>
+      <ol className="mt-3 flex flex-col gap-2 text-sm sm:mt-4 sm:flex-row sm:justify-center sm:gap-3 sm:text-[13px]">
+        <li className="progress-strip-pill flex flex-1 items-center justify-center rounded-lg border border-emerald-500/30 bg-emerald-500/[0.08] px-3 py-2.5 text-center text-lab-muted">
+          <span className="font-semibold text-emerald-200/95">1.</span>
+          <span className="ml-1.5">Proof completed</span>
+        </li>
+        <li
+          className={
+            step2Done
+              ? "progress-strip-pill flex flex-1 items-center justify-center rounded-lg border border-emerald-500/30 bg-emerald-500/[0.08] px-3 py-2.5 text-center text-lab-muted"
+              : "progress-strip-pill flex flex-1 items-center justify-center rounded-lg border border-zinc-500/35 bg-zinc-500/[0.1] px-3 py-2.5 text-center font-semibold text-lab-text"
+          }
+        >
+          <span className={step2Done ? "font-semibold text-emerald-200/95" : "text-lab-accent"}>
+            2.
+          </span>
+          <span className="ml-1.5">Mailing confirmed</span>
+        </li>
+        <li
+          className={
+            step3Active
+              ? "progress-strip-pill flex flex-1 items-center justify-center rounded-lg border border-zinc-500/35 bg-zinc-500/[0.1] px-3 py-2.5 text-center font-semibold text-lab-text"
+              : "progress-strip-pill flex flex-1 items-center justify-center rounded-lg border border-white/[0.08] bg-black/25 px-3 py-2.5 text-center text-lab-muted"
+          }
+        >
+          <span className={step3Active ? "text-lab-accent" : "text-lab-subtle"}>3.</span>
+          <span className="ml-1.5">Tracking begins next</span>
+        </li>
+      </ol>
+    </motion.div>
+  );
+}
+
+function MailingRoundContinuityModule({ mail }: { mail: MailContextPayload }) {
+  const targets = mail.bureauTargets.length;
+  const progressLine =
+    targets > 0
+      ? `Mailing progress: ${mail.mailedCount} of ${mail.mailGateExpected} bureau send${
+          mail.mailGateExpected === 1 ? "" : "s"
+        } recorded for this round.`
+      : null;
+
+  return (
+    <div className="surface-round-continuity">
+      <p className="text-xs font-medium uppercase tracking-[0.08em] text-lab-subtle">Your current round</p>
+      <p className="mt-2 text-sm leading-relaxed text-lab-muted">
+        Your letters and proof from earlier steps are prepared for this round. This screen is where
+        you confirm certified mail for each bureau — nothing was mailed before you act here. After
+        sends are in motion, tracking is the next step.
+      </p>
+      {targets > 0 ? (
+        <p className="mt-2 text-xs text-lab-subtle">
+          This round includes {targets} mailing target{targets === 1 ? "" : "s"}.
+          {mail.proofBothOnFile ? " Proof is on file." : ""}
+        </p>
+      ) : null}
+      {progressLine ? <p className="mt-2 text-xs text-lab-subtle">{progressLine}</p> : null}
+    </div>
+  );
+}
 
 function applyMailResponse(
   r: { workflow: WorkflowEnvelope; mail: MailContextPayload },
@@ -45,6 +121,8 @@ export function MailingPage() {
     authoritativeStepId,
     envelope,
     applyWorkflowEnvelope,
+    orionViewModel,
+    integrityHints,
   } = useCustomerWorkflow();
 
   const [pageLoading, setPageLoading] = useState(true);
@@ -126,6 +204,32 @@ export function MailingPage() {
     return mail.onMailStep && mail.pendingSendCount > 0;
   }, [mail]);
 
+  const mailingCompleteForStrip = useMemo(() => {
+    if (!mail) return false;
+    return mail.pendingSendCount === 0;
+  }, [mail]);
+
+  const MAIL_HERO_FALLBACK = {
+    title: "Review and send the package for this round",
+    subtitle:
+      "Your letters and proof documents are now prepared. This is the step where you review the mailing details and confirm when you're ready to send.",
+  } as const;
+
+  const orionAuthority = useMemo(
+    () => resolveOrionAuthority(orionViewModel, integrityHints),
+    [orionViewModel, integrityHints],
+  );
+
+  const mailHero = useMemo(
+    () => orionStepHeroCopy(orionAuthority, orionViewModel, MAIL_HERO_FALLBACK),
+    [orionAuthority, orionViewModel],
+  );
+
+  const mailCoherent = useMemo(
+    () => orionNarrativeCoherent(orionAuthority, orionViewModel),
+    [orionAuthority, orionViewModel],
+  );
+
   const handleSendBureau = async (bureau: string) => {
     if (!token || !workflowId || !canAttemptSend) return;
     setSendingBureau(bureau);
@@ -172,56 +276,147 @@ export function MailingPage() {
   const stateOptions = mail?.usStateOptions ?? [];
 
   return (
-    <div className="relative min-h-full bg-lab-bg">
-      <div
-        className="pointer-events-none absolute left-1/2 top-[36%] z-0 h-[min(72vw,480px)] w-[min(72vw,480px)] -translate-x-1/2 -translate-y-1/2 rounded-full bg-lab-accent/[0.09] blur-[110px]"
-        aria-hidden
-      />
-      <div
-        className="pointer-events-none absolute left-1/2 top-[40%] z-0 h-[min(48vw,320px)] w-[min(48vw,320px)] -translate-x-1/2 -translate-y-1/2 rounded-full bg-lab-accent/[0.04] blur-[90px]"
-        aria-hidden
-      />
+    <div
+      className="relative min-h-full bg-lab-bg"
+      data-orion-fallback={orionViewModel.fallbackMode}
+    >
+      <StepPageAmbientBackground />
 
       <TopBarMinimal />
 
-      <main className="relative z-10 mx-auto max-w-md px-4 pb-24 pt-24 sm:px-6 sm:pb-28 sm:pt-28">
+      <StepMainColumn className="relative z-10 mx-auto max-w-xl px-4 pb-24 pt-24 sm:px-6 sm:pb-28 sm:pt-28">
         {pageLoading ? (
-          <p className="text-center text-sm text-lab-muted">Loading mail status…</p>
+          <motion.p
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.2, ease: easeStep }}
+            className="text-center text-sm text-lab-muted"
+          >
+            Loading mail status…
+          </motion.p>
         ) : null}
         {loadError ? (
-          <p className="mt-4 text-center text-sm text-red-300/90">{loadError}</p>
+          <motion.p
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.2, ease: easeStep }}
+            className="mt-4 text-center text-sm text-red-300/90"
+          >
+            {loadError}
+          </motion.p>
         ) : null}
 
         {!pageLoading && mail ? (
-          <motion.div initial="hidden" animate="show" className="pb-4">
+          <motion.div
+            variants={pageVariants}
+            initial="hidden"
+            animate="show"
+            className="pb-4"
+          >
             <motion.p
               variants={headerVariants}
-              className="text-center text-[10px] font-semibold uppercase tracking-[0.16em] text-lab-accent"
+              className="step-eyebrow"
             >
-              Your program · Send
+              STEP 7 • CONFIRM YOUR MAILING
             </motion.p>
             <motion.h1
               variants={headerVariants}
-              className="mt-2 text-center text-2xl font-semibold tracking-tight text-lab-text sm:text-[1.65rem]"
+              className="step-title"
             >
-              Your letters are being sent
+              {mailHero.title}
             </motion.h1>
             <motion.p
               variants={headerVariants}
-              className="mx-auto mt-3 max-w-sm text-center text-sm leading-relaxed text-lab-muted sm:text-[15px]"
+              className="step-support"
             >
-              This is where <strong className="font-medium text-lab-text">official action</strong>{" "}
-              happens: each bureau send below requests{" "}
-              <strong className="font-medium text-lab-text">USPS certified mail</strong> with a paper
-              trail — not email, not a draft. Live sends are meaningful and hard to undo; test sends
-              never leave the processor as real mail (status is shown clearly below).
+              {mailHero.subtitle}
             </motion.p>
-            <motion.div variants={headerVariants} className="mx-auto mt-5 max-w-sm">
+            <motion.div
+              variants={headerVariants}
+              className="surface-emerald-reassure mx-auto mt-6 max-w-lg"
+            >
+              <ul className="space-y-2 text-left text-sm leading-relaxed text-emerald-50/95 sm:text-[15px]">
+                <li className="flex gap-2">
+                  <span className="mt-0.5 shrink-0 text-emerald-300" aria-hidden>
+                    •
+                  </span>
+                  <span>Your proof documents are already on file</span>
+                </li>
+                <li className="flex gap-2">
+                  <span className="mt-0.5 shrink-0 text-emerald-300" aria-hidden>
+                    •
+                  </span>
+                  <span>This is the final confirmation step before mailing</span>
+                </li>
+                <li className="flex gap-2">
+                  <span className="mt-0.5 shrink-0 text-emerald-300" aria-hidden>
+                    •
+                  </span>
+                  <span>Nothing is sent until you confirm on this page</span>
+                </li>
+              </ul>
+            </motion.div>
+
+            <MailingProgressStrip mailingComplete={mailingCompleteForStrip} />
+
+            <motion.div variants={headerVariants} className="mx-auto mt-6 max-w-lg">
+              <MailingRoundContinuityModule mail={mail} />
+            </motion.div>
+
+            <motion.div variants={headerVariants} className="mx-auto mt-5 max-w-lg">
               <ProgramFlowBridge>
-                <span className="font-medium text-lab-text">Proof is on file;</span> you&apos;re
-                cleared to trigger certified delivery. One bureau at a time — then continue to
-                tracking to watch what happens next in the same program.
+                {mailCoherent ? (
+                  <>
+                    <span className="font-medium text-lab-text">Certified mail for this round</span> — confirm
+                    each bureau below when you&apos;re ready; tracking follows in the same program.
+                  </>
+                ) : (
+                  <>
+                    <span className="font-medium text-lab-text">This is the first step where mail can go out:</span>{" "}
+                    each bureau below is a separate confirm — you choose when. After that, tracking picks
+                    up in the same program.
+                  </>
+                )}
               </ProgramFlowBridge>
+            </motion.div>
+
+            {!mailCoherent ? (
+              <motion.p
+                variants={headerVariants}
+                className="mx-auto mt-5 max-w-lg text-center text-xs leading-relaxed text-lab-subtle sm:text-sm"
+              >
+                Review the details below, then confirm when ready. This is the control point before
+                tracking begins — you are confirming mailing for this round, not an automatic send.
+              </motion.p>
+            ) : null}
+
+            <motion.div
+              variants={headerVariants}
+              className="mx-auto mt-8 max-w-lg rounded-xl border border-white/[0.08] bg-lab-surface/50 px-4 py-4 sm:px-5 sm:py-5"
+            >
+              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-lab-subtle">
+                What&apos;s included in this mailing
+              </p>
+              <ul className="mt-3 space-y-2 text-sm leading-relaxed text-lab-muted">
+                <li className="flex gap-2">
+                  <span className="mt-0.5 shrink-0 text-lab-accent/80" aria-hidden>
+                    •
+                  </span>
+                  <span>The dispute letters prepared for your confirmed round</span>
+                </li>
+                <li className="flex gap-2">
+                  <span className="mt-0.5 shrink-0 text-lab-accent/80" aria-hidden>
+                    •
+                  </span>
+                  <span>The proof documents you added in the last step (already on file)</span>
+                </li>
+                <li className="flex gap-2">
+                  <span className="mt-0.5 shrink-0 text-lab-accent/80" aria-hidden>
+                    •
+                  </span>
+                  <span>The mailing package tied to this round, sent as USPS certified mail per bureau</span>
+                </li>
+              </ul>
             </motion.div>
 
             <motion.div variants={headerVariants}>
@@ -231,13 +426,13 @@ export function MailingPage() {
             {mail.onMailStep && !mail.hasMailingsEntitlement && mail.hasLetters && mail.proofBothOnFile ? (
               <motion.div
                 variants={headerVariants}
-                className="mx-auto mt-4 max-w-sm rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-50"
+                className="mx-auto mt-4 max-w-lg rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-50"
               >
-                <p className="font-medium text-amber-100">Mailings at the send moment</p>
+                <p className="font-medium text-amber-100">This package is not ready to mail yet</p>
                 <p className="mt-1.5 text-xs leading-relaxed text-amber-100/88">
-                  You&apos;re ready to certify-send, but your account has no mailing balance left.
-                  Add mailings where you manage your account (same login), or ask your organization
-                  if mailings are included with your program seat — then refresh this page.
+                  You need at least one mailing credit on your account before a send can go out. Add
+                  mailings from your account (same login), or check with your organization — then
+                  refresh this page.
                 </p>
                 <Link
                   to="/"
@@ -250,12 +445,12 @@ export function MailingPage() {
 
             <motion.p
               variants={headerVariants}
-              className="mx-auto mt-4 max-w-sm text-center text-xs text-lab-subtle"
+              className="mx-auto mt-4 max-w-lg text-center text-xs text-lab-subtle"
             >
-              Progress: {mail.mailedCount} of {mail.mailGateExpected} bureau send
-              {mail.mailGateExpected === 1 ? "" : "s"} recorded for this program
+              Round progress: {mail.mailedCount} of {mail.mailGateExpected} bureau send
+              {mail.mailGateExpected === 1 ? "" : "s"} recorded
               {mail.mailGateFailedSendCount > 0
-                ? ` · ${mail.mailGateFailedSendCount} failed attempt(s) logged`
+                ? ` · ${mail.mailGateFailedSendCount} send attempt(s) need attention`
                 : ""}
             </motion.p>
 
@@ -263,7 +458,16 @@ export function MailingPage() {
               variants={headerVariants}
               className="mt-8 space-y-3 rounded-xl border border-white/[0.08] bg-lab-surface px-4 py-5 sm:px-5"
             >
-              <p className="text-[13px] font-semibold text-lab-text">Your return address</p>
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-lab-subtle">
+                  Sending from
+                </p>
+                <p className="text-[13px] font-semibold text-lab-text">Your return address (USPS)</p>
+                <p className="mt-1 text-xs text-lab-muted">
+                  This address appears on your certified mail — double-check it before you confirm each
+                  send.
+                </p>
+              </div>
               <input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
@@ -338,20 +542,22 @@ export function MailingPage() {
             </motion.section>
 
             {sendError ? (
-              <p className="mt-4 text-center text-sm text-red-300/90">{sendError}</p>
+              <p className="mt-4 text-center text-sm text-red-300/90">
+                <span className="block text-lab-muted">This mailing was not completed yet.</span>
+                <span className="mt-1 block">{sendError}</span>
+              </p>
             ) : null}
 
             {lastSendWasTest === true ? (
               <p className="mt-4 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-center text-xs text-amber-200/95">
-                Last action: Lob accepted a <span className="font-semibold">test</span> request. No
-                physical USPS letter was sent. A mailing credit was recorded after the processor
-                accepted the request.
+                Last send: <span className="font-semibold">Test mode</span> — no physical USPS letter.
+                Your mailing credit was still applied when the processor accepted the request.
               </p>
             ) : lastSendWasTest === false ? (
               <p className="mt-4 text-center text-xs text-lab-muted">
-                Last action: <span className="font-medium text-lab-text">Live</span> submission — the
-                mail processor accepted the piece. Use the bureau row for USPS tracking; transit
-                updates are not proof of delivery.
+                Last send: <span className="font-medium text-lab-text">Live mail</span> — the
+                processor accepted your piece. Use the row below for USPS tracking; transit is not
+                the same as bureau results.
               </p>
             ) : null}
 
@@ -373,15 +579,11 @@ export function MailingPage() {
                         type="button"
                         disabled={!canAttemptSend || sendingBureau !== null}
                         onClick={() => void handleSendBureau(t.bureau)}
-                        className="w-full rounded-lg bg-lab-accent py-2.5 text-sm font-semibold text-white shadow-md shadow-lab-accent/20 disabled:pointer-events-none disabled:opacity-45"
+                        className="w-full rounded-lg bg-lab-accent py-2.5 text-sm font-semibold text-white shadow-md shadow-black/35 disabled:pointer-events-none disabled:opacity-45"
                       >
                         {sendingBureau === t.bureau
-                          ? "Submitting certified send…"
-                          : `Send certified mail to ${t.bureauDisplay}${
-                              mail.costEstimate?.totalDisplay
-                                ? ` (${mail.costEstimate.totalDisplay})`
-                                : ""
-                            }`}
+                          ? "Confirming send…"
+                          : `Confirm and send${mail.costEstimate?.totalDisplay ? ` (${mail.costEstimate.totalDisplay})` : ""}`}
                       </button>
                     ) : null
                   }
@@ -393,16 +595,33 @@ export function MailingPage() {
               onTrack={handleTrack}
               disabled={trackBlocked}
               busy={trackBusy}
+              trackButtonClassName={mailingTrackPrimaryButtonClass(mailHero.ctaEmphasis)}
+              headline={
+                trackBlocked
+                  ? "Confirm each bureau send below first"
+                  : mailCoherent
+                    ? "When sends are confirmed, continue to tracking"
+                    : "Ready when mailing is complete"
+              }
+              supportText={
+                trackBlocked
+                  ? "Mailing has not been confirmed yet for every pending bureau. Use each row, then continue to tracking."
+                  : mailCoherent
+                    ? "Tracking opens in the same program once mailing is complete for this round."
+                    : "Mailing is confirmed for this round. The next step is tracking — you’ll see status after sends are in motion."
+              }
+              helperText="Tracking begins after mailing is confirmed."
+              trackLabel="Continue to Tracking"
             />
             {trackBlocked ? (
               <p className="mt-3 text-center text-xs text-lab-subtle">
-                One next action per pending bureau: certified send below. When all are submitted,
-                continue to tracking — same program, no dead end.
+                Complete each &quot;Confirm and send&quot; below when you&apos;re ready — one bureau at
+                a time. Nothing goes out until you tap.
               </p>
             ) : null}
           </motion.div>
         ) : null}
-      </main>
+      </StepMainColumn>
     </div>
   );
 }

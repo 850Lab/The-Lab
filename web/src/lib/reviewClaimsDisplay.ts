@@ -18,14 +18,65 @@ function findingsPriorityRank(reviewType: string): number {
   return i === -1 ? FINDINGS_GROUP_PRIORITY.length + 1 : i;
 }
 
+/** Calmer display titles (same review_type keys; data unchanged). */
 const REVIEW_TYPE_LABELS: Record<string, string> = {
   identity_verification: "Identity verification",
   account_ownership: "Account ownership",
   duplicate_account: "Duplicate accounts",
-  negative_impact: "Negative impact",
+  negative_impact: "Score-impacting negatives",
   accuracy_verification: "Accuracy verification",
   unverifiable_information: "Unverifiable information",
 };
+
+/** Plain-language hint per category (editorial; same grouping as data). */
+const WHAT_THIS_USUALLY_MEANS: Record<string, string> = {
+  negative_impact:
+    "These entries may be pulling your score or profile down until you verify them.",
+  accuracy_verification:
+    "Something about the reporting details may not match cleanly.",
+  duplicate_account: "The same debt may be appearing more than once.",
+  identity_verification: "Personal details may need cleanup before bigger disputes.",
+  account_ownership: "Some accounts may need confirmation that they truly belong to you.",
+  unverifiable_information: "Some details may be hard for a bureau to verify as shown.",
+};
+
+const CATEGORY_RECOMMENDATION: Record<string, string> = {
+  negative_impact: "Recommended: review this early",
+  accuracy_verification: "Recommended: verify only what you recognize",
+  duplicate_account: "Recommended: compare balances and dates across listings",
+  identity_verification: "Recommended: verify only what you recognize",
+  account_ownership: "Recommended: use supporting documents if available",
+  unverifiable_information: "Recommended: note what you can document",
+};
+
+export type FindingsPriorityBucket = "review_first" | "verify_carefully" | "lower_priority";
+
+/** Maps review types to “Start here” columns without changing underlying claims. */
+export function priorityBucketForReviewType(reviewType: string): FindingsPriorityBucket {
+  const rt = reviewType || "unknown";
+  if (rt === "negative_impact" || rt === "accuracy_verification") return "review_first";
+  if (
+    rt === "duplicate_account" ||
+    rt === "identity_verification" ||
+    rt === "account_ownership"
+  ) {
+    return "verify_carefully";
+  }
+  return "lower_priority";
+}
+
+function plainLanguageForReviewType(reviewType: string): string {
+  return (
+    WHAT_THIS_USUALLY_MEANS[reviewType] ??
+    "Items in this group are organized for review — not a final dispute list."
+  );
+}
+
+function recommendationForReviewType(reviewType: string): string {
+  return (
+    CATEGORY_RECOMMENDATION[reviewType] ?? "Recommended: scan and flag anything unfamiliar"
+  );
+}
 
 export function labelForReviewType(reviewType: string): string {
   return REVIEW_TYPE_LABELS[reviewType] ?? reviewType.replace(/_/g, " ");
@@ -65,6 +116,8 @@ export function buildFindingGroupsFromClaims(
       whatWeSee: expr.whatWeSee,
       confidenceFraming: expr.confidenceFraming,
       items,
+      plainLanguageHint: plainLanguageForReviewType(reviewType),
+      recommendationLine: recommendationForReviewType(reviewType),
     });
   }
   rows.sort(
@@ -73,9 +126,10 @@ export function buildFindingGroupsFromClaims(
       a.title.localeCompare(b.title),
   );
   return rows.map((r, i) => {
-    const { reviewType: _rt, ...rest } = r;
+    const { reviewType, ...rest } = r;
     return {
       ...rest,
+      reviewType,
       featured: i === 0 && rest.count > 0,
     };
   });

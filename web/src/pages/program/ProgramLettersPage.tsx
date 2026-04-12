@@ -72,7 +72,7 @@ export function ProgramLettersPage() {
         type="button"
         disabled={busy || !token}
         onClick={() => void run()}
-        className="rounded-md bg-lab-accent px-5 py-2.5 text-sm font-semibold text-slate-950 disabled:opacity-40"
+        className="rounded-md bg-lab-accent px-5 py-2.5 text-sm font-semibold text-zinc-950 disabled:opacity-40"
       >
         {busy ? "Drafting…" : result ? "Draft again" : "Draft my letters"}
       </button>

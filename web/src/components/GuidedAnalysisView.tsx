@@ -52,10 +52,7 @@ export function GuidedAnalysisView({
 
   return (
     <div className="mx-auto max-w-lg">
-      <p className="text-center text-[10px] font-semibold uppercase tracking-[0.18em] text-lab-accent">
-        Your program · Analysis
-      </p>
-      <h2 className="mt-2 text-center text-xl font-semibold tracking-tight text-lab-text sm:text-2xl">
+      <h2 className="text-center text-xl font-semibold tracking-tight text-lab-text sm:text-2xl">
         We&apos;re reading your report
       </h2>
       <ProgramFlowBridge className="mx-auto mt-4 max-w-md">

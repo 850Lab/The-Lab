@@ -12,6 +12,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
+from services.workflow.observability_events import try_emit_observability_for_workflow_event_tx
 from services.workflow.workflow_db import get_workflow_db
 
 _log = logging.getLogger(__name__)
@@ -88,6 +89,14 @@ def record_event_tx(
             _json_val(meta),
         ),
     )
+    try_emit_observability_for_workflow_event_tx(
+        cur,
+        workflow_id=workflow_id,
+        event_type=et,
+        step_id=sid,
+        actor=act,
+        source=src,
+    )
 
 
 def record_event(
@@ -102,6 +111,10 @@ def record_event(
     metadata: Optional[Dict[str, Any]] = None,
 ) -> None:
     """Standalone insert + commit."""
+    et = (event_type or "").strip()[:80] or "unknown"
+    sid = (step_id or "").strip()[:64] or None
+    act = (actor or "system").strip()[:64] or "system"
+    src = (source or "engine").strip()[:64] or "engine"
     try:
         with get_workflow_db() as (conn, cur):
             record_event_tx(
@@ -121,6 +134,17 @@ def record_event(
         _log.warning(
             "workflow event insert failed wf=%s type=%s", workflow_id, event_type, exc_info=True
         )
+        return
+
+    try:
+        from services.guidance.orion_scheduler import schedule_guidance_evaluation
+
+        schedule_guidance_evaluation(
+            workflow_id,
+            {"eventType": et, "stepId": sid, "source": src, "actor": act},
+        )
+    except Exception:
+        _log.debug("ORION schedule after workflow event skipped", exc_info=True)
 
 
 def record_transition(

@@ -261,7 +261,7 @@ export function OrgDeliveryDashboardPage({ mode }: { mode: Mode }) {
         </p>
         <Link
           to="/login"
-          className="mt-5 inline-flex rounded-md bg-lab-accent px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-sky-400"
+          className="mt-5 inline-flex rounded-md bg-lab-accent px-4 py-2 text-sm font-semibold text-zinc-950 hover:brightness-110"
         >
           Sign in
         </Link>
@@ -289,7 +289,7 @@ export function OrgDeliveryDashboardPage({ mode }: { mode: Mode }) {
         <div className="mt-5 flex flex-wrap gap-3">
           <Link
             to="/program"
-            className="inline-flex rounded-md bg-lab-accent px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-sky-400"
+            className="inline-flex rounded-md bg-lab-accent px-4 py-2 text-sm font-semibold text-zinc-950 hover:brightness-110"
           >
             Program hub
           </Link>
@@ -418,7 +418,7 @@ export function OrgDeliveryDashboardPage({ mode }: { mode: Mode }) {
             <button
               type="button"
               onClick={() => void onCreateSession()}
-              className="rounded-md bg-lab-accent px-4 py-2 text-sm font-medium text-slate-950 hover:bg-sky-400"
+              className="rounded-md bg-lab-accent px-4 py-2 text-sm font-medium text-zinc-950 hover:brightness-110"
             >
               Add workshop
             </button>
@@ -483,7 +483,7 @@ export function OrgDeliveryDashboardPage({ mode }: { mode: Mode }) {
       )}
 
       {showWorkshopTools && !loading && selectedSessionId != null && (
-        <div className="rounded-lg border border-sky-500/25 bg-sky-500/5 p-4">
+        <div className="rounded-lg border border-zinc-700/40 bg-zinc-900/40 p-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h2 className="text-sm font-semibold text-lab-text">Live instructor desk</h2>
             {deskLoading && (
@@ -504,7 +504,7 @@ export function OrgDeliveryDashboardPage({ mode }: { mode: Mode }) {
                   {programStageLabel(desk.instructorFocus.recommendedGuideStep)}
                 </span>
               </p>
-              <p className="mt-2 text-sm font-medium text-sky-100/95">
+              <p className="mt-2 text-sm font-medium text-zinc-200/95">
                 {desk.instructorFocus.headline}
               </p>
               <p className="mt-1 text-sm leading-relaxed text-lab-text/90">
@@ -610,7 +610,7 @@ export function OrgDeliveryDashboardPage({ mode }: { mode: Mode }) {
                         <td className="px-3 py-2">
                           <input
                             type="checkbox"
-                            className="h-4 w-4 accent-sky-400"
+                            className="h-4 w-4 accent-zinc-400"
                             disabled={busyId === p.userId || !inFocusSession}
                             checked={Boolean(p.sessionCheckedInAt)}
                             title={

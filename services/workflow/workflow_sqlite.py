@@ -152,6 +152,25 @@ def ensure_schema() -> None:
         );
         CREATE INDEX IF NOT EXISTS idx_workflow_events_wf_created ON workflow_events(workflow_id, created_at ASC);
 
+        CREATE TABLE IF NOT EXISTS observability_events (
+            event_id TEXT PRIMARY KEY,
+            user_id INTEGER NOT NULL REFERENCES users(id),
+            workflow_id TEXT NOT NULL REFERENCES workflow_sessions(workflow_id) ON DELETE CASCADE,
+            step_id TEXT,
+            event_name TEXT NOT NULL,
+            event_category TEXT NOT NULL,
+            status TEXT NOT NULL,
+            timestamp TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP),
+            metadata TEXT NOT NULL DEFAULT '{}',
+            error_code TEXT,
+            duration_ms INTEGER,
+            source TEXT NOT NULL DEFAULT 'system'
+        );
+        CREATE INDEX IF NOT EXISTS idx_obs_events_wf_ts ON observability_events(workflow_id, timestamp DESC);
+        CREATE INDEX IF NOT EXISTS idx_obs_events_user_ts ON observability_events(user_id, timestamp DESC);
+        CREATE INDEX IF NOT EXISTS idx_obs_events_wf_step ON observability_events(workflow_id, step_id);
+        CREATE INDEX IF NOT EXISTS idx_obs_events_wf_cat ON observability_events(workflow_id, event_category);
+
         CREATE TABLE IF NOT EXISTS workflow_jobs (
             id TEXT PRIMARY KEY,
             workflow_id TEXT NOT NULL REFERENCES workflow_sessions(workflow_id) ON DELETE CASCADE,
@@ -168,7 +187,96 @@ def ensure_schema() -> None:
         );
         CREATE INDEX IF NOT EXISTS idx_workflow_jobs_wf ON workflow_jobs(workflow_id, created_at DESC);
         CREATE INDEX IF NOT EXISTS idx_workflow_jobs_pending ON workflow_jobs(status, run_at, created_at);
+
+        CREATE TABLE IF NOT EXISTS workflow_execution_runs (
+            run_id TEXT PRIMARY KEY,
+            workflow_id TEXT NOT NULL REFERENCES workflow_sessions(workflow_id) ON DELETE CASCADE,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            guidance_bundle_json TEXT NOT NULL,
+            progress_state_json TEXT NOT NULL,
+            runtime_schema_version TEXT NOT NULL DEFAULT 'execution_runtime.v1',
+            created_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP),
+            updated_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP)
+        );
+        CREATE INDEX IF NOT EXISTS idx_wf_exec_runs_workflow_updated
+            ON workflow_execution_runs(workflow_id, updated_at DESC);
+
+        CREATE TABLE IF NOT EXISTS guidance_events (
+            id TEXT PRIMARY KEY,
+            user_id INTEGER NOT NULL REFERENCES users(id),
+            workflow_id TEXT NOT NULL REFERENCES workflow_sessions(workflow_id) ON DELETE CASCADE,
+            step_id TEXT,
+            guidance_type TEXT NOT NULL,
+            priority INTEGER NOT NULL DEFAULT 0,
+            message TEXT NOT NULL,
+            trigger_source TEXT NOT NULL,
+            suggested_actions TEXT NOT NULL DEFAULT '[]',
+            created_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP),
+            rule_key TEXT NOT NULL DEFAULT '',
+            display_eligible INTEGER NOT NULL DEFAULT 0,
+            delivery_channel TEXT NOT NULL DEFAULT 'inline',
+            cooldown_seconds INTEGER NOT NULL DEFAULT 0,
+            recommended_action TEXT NOT NULL DEFAULT '{}'
+        );
+        CREATE INDEX IF NOT EXISTS idx_guidance_events_wf_created
+            ON guidance_events(workflow_id, created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_guidance_events_user_created
+            ON guidance_events(user_id, created_at DESC);
         """
     )
     conn.commit()
     cur.close()
+    _sqlite_migrate_guidance_events_v11()
+
+
+def _sqlite_migrate_guidance_events_v11() -> None:
+    """Add O.R.I.O.N. V1.1 columns to existing SQLite ``guidance_events`` (legacy DBs).
+
+    Runs on a **separate** connection to the workflow SQLite file. Py3.14's sqlite3 has
+    produced ``InterfaceError`` / ``another row available`` / ``no more rows available`` when
+    mixing ``pragma_table_info``/ALTER with the long-lived pooled connection's ``Row`` factory;
+    a short-lived migration connection avoids that without changing global connection state.
+    """
+    path = workflow_sqlite_path()
+    if not os.path.isfile(path):
+        return
+    mig = sqlite3.connect(path, check_same_thread=False, isolation_level="DEFERRED")
+    try:
+        cur = mig.cursor()
+        cur.execute(
+            "SELECT name FROM pragma_table_info('guidance_events') ORDER BY cid ASC"
+        )
+        cols = set()
+        for r in cur.fetchall():
+            if not r:
+                continue
+            cn = str(r[0]).strip()
+            if cn:
+                cols.add(cn)
+        alters = [
+            ("rule_key", "TEXT NOT NULL DEFAULT ''"),
+            ("display_eligible", "INTEGER NOT NULL DEFAULT 0"),
+            ("delivery_channel", "TEXT NOT NULL DEFAULT 'inline'"),
+            ("cooldown_seconds", "INTEGER NOT NULL DEFAULT 0"),
+            ("recommended_action", "TEXT NOT NULL DEFAULT '{}'"),
+        ]
+        for name, decl in alters:
+            if name in cols:
+                continue
+            try:
+                cur.execute(
+                    f"ALTER TABLE guidance_events ADD COLUMN {name} {decl}"
+                )
+            except sqlite3.DatabaseError as e:
+                if "duplicate column" not in str(e).lower():
+                    raise
+        try:
+            cur.execute(
+                "CREATE INDEX IF NOT EXISTS idx_guidance_events_rule_created "
+                "ON guidance_events(workflow_id, rule_key, created_at DESC)"
+            )
+        except sqlite3.OperationalError:
+            pass
+        mig.commit()
+    finally:
+        mig.close()

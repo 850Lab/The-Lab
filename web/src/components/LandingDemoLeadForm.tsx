@@ -1,3 +1,4 @@
+import { motion } from "framer-motion";
 import { useCallback, useState } from "react";
 import { Link } from "react-router-dom";
 import {
@@ -15,9 +16,19 @@ import type { PublicDemoRunResult } from "@/lib/publicDemoTypes";
 
 type Props = {
   lastDemoRun: PublicDemoRunResult | null;
+  /** Marketing landing: white surface, black type, silver borders. */
+  variant?: "dark" | "light";
 };
 
-export function LandingDemoLeadForm({ lastDemoRun }: Props) {
+const fieldDark =
+  "mt-1.5 w-full rounded-lg border border-white/[0.1] bg-lab-surface/90 px-3 py-2.5 text-sm text-lab-text outline-none transition-colors focus:border-lab-accent/40";
+const fieldLight =
+  "mt-1.5 w-full rounded-lg border border-neutral-200/90 bg-white px-3 py-2.5 text-sm text-neutral-950 outline-none transition-colors focus:border-neutral-400 focus:ring-2 focus:ring-neutral-300/40";
+
+export function LandingDemoLeadForm({ lastDemoRun, variant = "dark" }: Props) {
+  const light = variant === "light";
+  const field = light ? fieldLight : fieldDark;
+  const labelCls = light ? "text-xs font-semibold text-neutral-500" : "text-xs font-medium text-lab-subtle";
   const [intent, setIntent] = useState<DemoLandingIntentValue | "">("");
   const [organizationName, setOrganizationName] = useState("");
   const [audienceNote, setAudienceNote] = useState("");
@@ -68,16 +79,34 @@ export function LandingDemoLeadForm({ lastDemoRun }: Props) {
 
   if (done) {
     return (
-      <div className="rounded-2xl border border-emerald-500/25 bg-emerald-500/[0.08] px-5 py-8 text-center sm:px-7">
-        <p className="text-lg font-semibold text-lab-text">Thanks — we&apos;ll be in touch</p>
-        <p className="mx-auto mt-2 max-w-md text-sm leading-relaxed text-lab-muted">
+      <div
+        className={
+          light
+            ? "rounded-2xl border border-neutral-200/90 bg-neutral-50 px-5 py-8 text-center shadow-sm sm:px-7"
+            : "rounded-2xl border border-emerald-500/25 bg-emerald-500/[0.08] px-5 py-8 text-center sm:px-7"
+        }
+      >
+        <p className={light ? "text-lg font-bold text-neutral-950" : "text-lg font-semibold text-lab-text"}>
+          Thanks — we&apos;ll be in touch
+        </p>
+        <p
+          className={
+            light
+              ? "mx-auto mt-2 max-w-md text-sm font-medium leading-relaxed text-neutral-600"
+              : "mx-auto mt-2 max-w-md text-sm leading-relaxed text-lab-muted"
+          }
+        >
           We received your details and what you&apos;re exploring. If you wanted to run the full program on
           your own file, you can start whenever you&apos;re ready.
         </p>
         {intent === "try_myself" ? (
           <Link
             to={buildProgramSignupHref()}
-            className="mt-6 inline-flex rounded-xl bg-lab-accent px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-lab-accent/20 hover:bg-sky-500"
+            className={
+              light
+                ? "mt-6 inline-flex rounded-xl bg-neutral-950 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-neutral-900/20 transition-colors hover:bg-neutral-800"
+                : "mt-6 inline-flex rounded-xl bg-lab-accent px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-black/35 hover:brightness-110"
+            }
           >
             Create your account
           </Link>
@@ -89,23 +118,30 @@ export function LandingDemoLeadForm({ lastDemoRun }: Props) {
   return (
     <div
       id="lead-form"
-      className="scroll-mt-28 rounded-2xl border border-white/[0.08] bg-lab-surface/50 px-5 py-8 sm:px-8"
+      className={
+        light
+          ? "scroll-mt-28 rounded-2xl border border-neutral-200/90 bg-white px-5 py-8 shadow-[0_20px_60px_-28px_rgba(15,23,42,0.12)] sm:px-8"
+          : "scroll-mt-28 rounded-2xl border border-white/[0.08] bg-lab-surface/50 px-5 py-8 sm:px-8"
+      }
     >
-      <h2 className="text-lg font-semibold text-lab-text">Tell us who you are</h2>
-      <p className="mt-2 text-sm leading-relaxed text-lab-muted">
-        So we can follow up about a workshop, a class, your own report, or a referral — whichever fits.
+      <h2 className={light ? "text-lg font-bold text-neutral-950" : "text-lg font-semibold text-lab-text"}>
+        Tell us who you are
+      </h2>
+      <p className={light ? "mt-2 text-sm font-medium leading-relaxed text-neutral-600" : "mt-2 text-sm leading-relaxed text-lab-muted"}>
+        Workshop, class, your report, or a referral — pick what fits. We&apos;ll take it from
+        there.
       </p>
 
       <div className="mt-6 space-y-4">
         <div>
-          <label htmlFor="landing-intent" className="text-xs font-medium text-lab-subtle">
+          <label htmlFor="landing-intent" className={labelCls}>
             What brings you here?
           </label>
           <select
             id="landing-intent"
             value={intent}
             onChange={(e) => setIntent(e.target.value as DemoLandingIntentValue | "")}
-            className="mt-1.5 w-full rounded-lg border border-white/[0.1] bg-lab-surface/90 px-3 py-2.5 text-sm text-lab-text outline-none focus:border-lab-accent/40"
+            className={field}
           >
             <option value="">Select one…</option>
             {DEMO_LANDING_INTENTS.map((o) => (
@@ -119,19 +155,19 @@ export function LandingDemoLeadForm({ lastDemoRun }: Props) {
         {intent && showOrgAudienceFields(intent) ? (
           <>
             <div>
-              <label htmlFor="landing-org" className="text-xs font-medium text-lab-subtle">
+              <label htmlFor="landing-org" className={labelCls}>
                 Organization or school (optional)
               </label>
               <input
                 id="landing-org"
                 value={organizationName}
                 onChange={(e) => setOrganizationName(e.target.value)}
-                className="mt-1.5 w-full rounded-lg border border-white/[0.1] bg-lab-surface/90 px-3 py-2.5 text-sm text-lab-text outline-none focus:border-lab-accent/40"
+                className={field}
                 placeholder="e.g. Community center, high school, credit union"
               />
             </div>
             <div>
-              <label htmlFor="landing-audience" className="text-xs font-medium text-lab-subtle">
+              <label htmlFor="landing-audience" className={labelCls}>
                 Audience or group size (optional)
               </label>
               <textarea
@@ -139,7 +175,7 @@ export function LandingDemoLeadForm({ lastDemoRun }: Props) {
                 rows={2}
                 value={audienceNote}
                 onChange={(e) => setAudienceNote(e.target.value)}
-                className="mt-1.5 w-full resize-y rounded-lg border border-white/[0.1] bg-lab-surface/90 px-3 py-2.5 text-sm text-lab-text outline-none focus:border-lab-accent/40"
+                className={`${field} resize-y`}
                 placeholder="Who you serve or expected headcount"
               />
             </div>
@@ -148,14 +184,14 @@ export function LandingDemoLeadForm({ lastDemoRun }: Props) {
 
         {intent && showReferrerField(intent) ? (
           <div>
-            <label htmlFor="landing-referrer" className="text-xs font-medium text-lab-subtle">
+            <label htmlFor="landing-referrer" className={labelCls}>
               Who are you referring? (optional)
             </label>
             <input
               id="landing-referrer"
               value={referrerName}
               onChange={(e) => setReferrerName(e.target.value)}
-              className="mt-1.5 w-full rounded-lg border border-white/[0.1] bg-lab-surface/90 px-3 py-2.5 text-sm text-lab-text outline-none focus:border-lab-accent/40"
+              className={field}
               placeholder="Name or organization"
             />
           </div>
@@ -175,7 +211,7 @@ export function LandingDemoLeadForm({ lastDemoRun }: Props) {
           />
         </div>
         <div>
-          <label htmlFor="landing-email" className="text-xs font-medium text-lab-subtle">
+          <label htmlFor="landing-email" className={labelCls}>
             Email
           </label>
           <input
@@ -184,12 +220,12 @@ export function LandingDemoLeadForm({ lastDemoRun }: Props) {
             autoComplete="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="mt-1.5 w-full rounded-lg border border-white/[0.1] bg-lab-surface/90 px-3 py-2.5 text-sm text-lab-text outline-none focus:border-lab-accent/40"
+            className={field}
             placeholder="you@example.org"
           />
         </div>
         <div>
-          <label htmlFor="landing-phone" className="text-xs font-medium text-lab-subtle">
+          <label htmlFor="landing-phone" className={labelCls}>
             Phone
           </label>
           <input
@@ -198,15 +234,19 @@ export function LandingDemoLeadForm({ lastDemoRun }: Props) {
             autoComplete="tel"
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
-            className="mt-1.5 w-full rounded-lg border border-white/[0.1] bg-lab-surface/90 px-3 py-2.5 text-sm text-lab-text outline-none focus:border-lab-accent/40"
+            className={field}
             placeholder="Best number to reach you"
           />
         </div>
       </div>
 
-      {err ? <p className="mt-4 text-center text-sm text-red-300/90">{err}</p> : null}
+      {err ? (
+        <p className={light ? "mt-4 text-center text-sm text-red-600" : "mt-4 text-center text-sm text-red-300/90"}>
+          {err}
+        </p>
+      ) : null}
 
-      <button
+      <motion.button
         type="button"
         disabled={
           busy ||
@@ -216,11 +256,34 @@ export function LandingDemoLeadForm({ lastDemoRun }: Props) {
           phone.trim().length < 7
         }
         onClick={() => void submit()}
-        className="mt-6 w-full rounded-xl bg-lab-accent py-3.5 text-[15px] font-semibold text-white shadow-lg shadow-lab-accent/20 outline-none transition-opacity focus-visible:ring-2 focus-visible:ring-lab-accent/40 disabled:opacity-45"
+        whileHover={
+          busy ||
+          !intent ||
+          name.trim().length < 2 ||
+          email.trim().length < 5 ||
+          phone.trim().length < 7
+            ? undefined
+            : { scale: 1.03 }
+        }
+        whileTap={
+          busy ||
+          !intent ||
+          name.trim().length < 2 ||
+          email.trim().length < 5 ||
+          phone.trim().length < 7
+            ? undefined
+            : { scale: 0.97 }
+        }
+        transition={{ type: "spring", stiffness: 480, damping: 28 }}
+        className={
+          light
+            ? "mt-6 w-full rounded-xl bg-neutral-950 py-3.5 text-[15px] font-semibold text-white shadow-[0_10px_28px_-10px_rgba(0,0,0,0.45)] outline-none ring-1 ring-white/10 transition-[box-shadow,background-color] duration-200 hover:bg-neutral-900 hover:shadow-[0_14px_36px_-12px_rgba(0,0,0,0.42),0_0_24px_-8px_rgba(255,255,255,0.22)] focus-visible:ring-2 focus-visible:ring-neutral-400/50 disabled:pointer-events-none disabled:opacity-45"
+            : "btn-primary-step mt-6 w-full disabled:pointer-events-none disabled:!opacity-[0.45]"
+        }
       >
         {busy ? "Sending…" : "Send"}
-      </button>
-      <p className="mt-3 text-center text-[11px] text-lab-subtle">
+      </motion.button>
+      <p className={light ? "mt-3 text-center text-[11px] font-medium text-neutral-400" : "mt-3 text-center text-[11px] text-lab-subtle"}>
         We only use this to respond to your request.
       </p>
     </div>

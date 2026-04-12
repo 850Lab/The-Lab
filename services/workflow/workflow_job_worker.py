@@ -10,7 +10,6 @@ preflight-gated like the matching HTTP route. Add a mapping before introducing n
 
 from __future__ import annotations
 
-import hashlib
 import logging
 import os
 import threading
@@ -97,185 +96,10 @@ def _execute_letter_generation(job: Dict[str, Any]) -> None:
     )
 
 
-def _unlink_temp_paths(paths: List[str]) -> None:
-    for p in paths:
-        try:
-            os.unlink(p)
-        except OSError:
-            pass
-
-
 def _execute_report_upload_parse(job: Dict[str, Any]) -> None:
-    from services.me_org_report_service import apply_org_report_upload_side_effects
-    from services.report_pipeline import process_uploaded_reports
-    from services.report_upload_staging import (
-        ReportUploadStagingError,
-        merge_and_normalize_report_parts,
-    )
+    from services.workflow.jobs.report_upload_parse import execute_report_upload_parse_job
 
-    jid = str(job["id"])
-    wf = str(job["workflow_id"])
-    payload = job.get("payload") if isinstance(job.get("payload"), dict) else {}
-    try:
-        uid = int(payload["userId"])
-    except (KeyError, TypeError, ValueError):
-        fail_job(jid, "Invalid job payload: userId required")
-        return
-
-    org_followup = bool(payload.get("orgProgramFollowup"))
-
-    sess = fetch_session(wf)
-    if not sess:
-        fail_job(jid, "Workflow session not found")
-        return
-    if int(sess["user_id"]) != uid:
-        fail_job(jid, "Job userId does not match workflow owner")
-        return
-
-    opts: Dict[str, Any] = {
-        "user_id": uid,
-        "mutation_channel": "workflow_http",
-    }
-    oid = 0
-    eid = 0
-    if org_followup:
-        try:
-            oid = int(payload["organizationId"])
-            eid = int(payload["organizationProgramEnrollmentId"])
-        except (KeyError, TypeError, ValueError):
-            fail_job(jid, "Invalid org program upload payload")
-            return
-        opts["organization_id"] = oid
-        opts["organization_program_enrollment_id"] = eid
-    else:
-        opts["workflow_id"] = wf
-
-    part_paths = payload.get("tempPartPaths")
-    part_names = payload.get("partFilenames")
-    raw: bytes
-    fname: str
-
-    if (
-        isinstance(part_paths, list)
-        and isinstance(part_names, list)
-        and len(part_paths) == len(part_names)
-        and len(part_paths) > 0
-    ):
-        paths_to_clean = [str(p).strip() for p in part_paths]
-        names_only = [str(n).strip() or "part.pdf" for n in part_names]
-        if len(paths_to_clean) != len(names_only):
-            fail_job(jid, "Invalid report upload staging payload")
-            return
-        sizes = payload.get("partByteSizes")
-        hexes = payload.get("partSha256Hex")
-        if (
-            not isinstance(sizes, list)
-            or not isinstance(hexes, list)
-            or len(sizes) != len(paths_to_clean)
-            or len(hexes) != len(paths_to_clean)
-        ):
-            fail_job(jid, "Report upload job missing integrity metadata")
-            return
-        parts_loaded: List[tuple[str, bytes]] = []
-        try:
-            for pth, n, exp_sz, exp_hx in zip(
-                paths_to_clean, names_only, sizes, hexes
-            ):
-                if not pth or not os.path.isfile(pth):
-                    _unlink_temp_paths(paths_to_clean)
-                    fail_job(jid, "Report parse job missing temp file")
-                    return
-                try:
-                    want = int(exp_sz)
-                except (TypeError, ValueError):
-                    _unlink_temp_paths(paths_to_clean)
-                    fail_job(jid, "Invalid staged part size in job payload")
-                    return
-                st = os.path.getsize(pth)
-                if st != want:
-                    _unlink_temp_paths(paths_to_clean)
-                    fail_job(
-                        jid,
-                        f"Staged file size mismatch (expected {want} bytes, found {st}).",
-                    )
-                    return
-                with open(pth, "rb") as f:
-                    raw_part = f.read()
-                if len(raw_part) != want:
-                    _unlink_temp_paths(paths_to_clean)
-                    fail_job(jid, "Staged file read length mismatch.")
-                    return
-                got = hashlib.sha256(raw_part).hexdigest()
-                want_h = str(exp_hx).strip().lower()
-                if got != want_h:
-                    _unlink_temp_paths(paths_to_clean)
-                    fail_job(
-                        jid,
-                        "Staged file failed integrity check (checksum mismatch).",
-                    )
-                    return
-                parts_loaded.append((n, raw_part))
-        finally:
-            _unlink_temp_paths(paths_to_clean)
-
-        try:
-            fname, raw = merge_and_normalize_report_parts(parts_loaded)
-        except ReportUploadStagingError as e:
-            fail_job(jid, e.message_safe)
-            return
-    else:
-        path = (payload.get("tempPdfPath") or "").strip()
-        fname = (payload.get("filename") or "report.pdf").strip() or "report.pdf"
-        if not path or not os.path.isfile(path):
-            fail_job(jid, "Report parse job missing temp file")
-            return
-        try:
-            with open(path, "rb") as f:
-                raw = f.read()
-        except OSError as e:
-            fail_job(jid, f"Could not read uploaded PDF: {e}")
-            return
-        finally:
-            try:
-                os.unlink(path)
-            except OSError:
-                pass
-
-    try:
-        result = process_uploaded_reports([(fname, raw)], opts)
-    except Exception:
-        _log.exception("report_upload_parse job failed workflow_id=%s job_id=%s", wf, jid)
-        fail_job(jid, "Report processing failed. Try again or use a different PDF.")
-        return
-
-    skips = result.get("file_skips") or []
-    processed = int(result.get("reports_processed") or 0)
-    ok = processed > 0 and len(skips) == 0
-
-    if org_followup and ok:
-        apply_org_report_upload_side_effects(
-            uid,
-            oid,
-            eid,
-            result,
-            audit_source="api:me_report",
-        )
-
-    report_ids: List[int] = []
-    for _k, rep in (result.get("uploaded_reports") or {}).items():
-        rid = rep.get("report_id")
-        if rid is not None:
-            report_ids.append(int(rid))
-
-    complete_job(
-        jid,
-        {
-            "ok": ok,
-            "reportsProcessed": processed,
-            "fileSkips": skips,
-            "reportIds": report_ids,
-        },
-    )
+    execute_report_upload_parse_job(job)
 
 
 # Single registry: DB `job_type` must match these keys (see workflow_job_service constants).
@@ -289,7 +113,7 @@ def _dispatch(job: Dict[str, Any]) -> None:
     jid = str(job["id"])
     pre_err = _job_flow_preflight(job)
     if pre_err:
-        fail_job(jid, pre_err)
+        fail_job(jid, pre_err, error_code="FLOW_GATE")
         return
 
     jt = str(job.get("job_type") or "").strip()
@@ -298,7 +122,7 @@ def _dispatch(job: Dict[str, Any]) -> None:
         handler(job)
         return
 
-    fail_job(jid, f"Unsupported job_type: {jt}")
+    fail_job(jid, f"Unsupported job_type: {jt}", error_code="UNSUPPORTED_JOB_TYPE")
 
 
 def _worker_loop() -> None:

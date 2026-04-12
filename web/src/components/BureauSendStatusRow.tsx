@@ -19,19 +19,19 @@ function rowHeadline(
 ): { label: string; tone: "muted" | "amber" | "sky" | "red" | "emerald" } {
   switch (mailRowState) {
     case "pending":
-      return { label: "Awaiting certified send", tone: "muted" };
+      return { label: "Ready to mail", tone: "muted" };
     case "processing":
-      return { label: "Submitting to mail processor…", tone: "sky" };
+      return { label: "Sending…", tone: "sky" };
     case "sending_failed":
-      return { label: "Certified send failed", tone: "red" };
+      return { label: "This mailing was not completed yet", tone: "red" };
     case "sent_test":
-      return { label: "Test — no USPS letter", tone: "amber" };
+      return { label: "Test send (no USPS letter)", tone: "amber" };
     case "sent_live":
-      return { label: "Live — in USPS pipeline", tone: "sky" };
+      return { label: "Mailed — in USPS pipeline", tone: "sky" };
     case "tracking_available":
-      return { label: "In transit — tracking live", tone: "emerald" };
+      return { label: "Sent — tracking available", tone: "emerald" };
     default:
-      return { label: "Unknown", tone: "muted" };
+      return { label: "Status updating…", tone: "muted" };
   }
 }
 
@@ -40,7 +40,7 @@ function toneClasses(tone: ReturnType<typeof rowHeadline>["tone"]): string {
     case "amber":
       return "bg-amber-500/12 text-amber-300/95";
     case "sky":
-      return "bg-sky-500/12 text-sky-200/95";
+      return "bg-zinc-500/15 text-zinc-300/95";
     case "red":
       return "bg-red-500/12 text-red-200/95";
     case "emerald":
@@ -118,6 +118,9 @@ export function BureauSendStatusRow({
             )}
           </span>
           <div className="min-w-0">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-lab-subtle">
+              Sending to
+            </p>
             <p className="truncate text-[15px] font-medium text-lab-text sm:text-base">
               {bureauDisplay}
             </p>
@@ -142,17 +145,19 @@ export function BureauSendStatusRow({
           </div>
         </div>
         <span
-          className={`shrink-0 text-right text-xs font-medium leading-snug sm:text-sm ${
+          className={`shrink-0 max-w-[11rem] text-right text-xs font-medium leading-snug sm:max-w-none sm:text-sm ${
             tone === "muted" ? "text-lab-muted" : "text-lab-text"
           }`}
         >
+          <span className="block text-[10px] font-normal uppercase tracking-wide text-lab-subtle">
+            Package status
+          </span>
           {label}
         </span>
       </div>
       {showProcessorDetail ? (
         <p className="text-xs text-lab-subtle">
-          Official send reference (certified mail vendor):{" "}
-          <span className="font-mono text-lab-muted">{lobId}</span>
+          Reference ID (mail partner): <span className="font-mono text-lab-muted">{lobId}</span>
         </p>
       ) : null}
       {trackingUrl && mailRowState !== "sent_test" ? (

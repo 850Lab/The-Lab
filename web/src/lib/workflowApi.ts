@@ -31,10 +31,25 @@ import {
 import { formatReportUploadErrorMessage } from "@/lib/uploadHttpError";
 import type { EscalationLayerResponse } from "@/lib/escalationLayerTypes";
 import type { WorkflowIntegrityHints } from "@/lib/integrityHintsTypes";
-import type { WorkflowEnvelope } from "@/lib/workflowTypes";
+import type {
+  ExecutionOutcomeResponse,
+  ExecutionOutcomeSubmitBody,
+  ExecutionStartResponse,
+  ExecutionState,
+} from "@/lib/executionRuntimeTypes";
+import type { WorkflowEnvelope, WorkflowSyncPayload } from "@/lib/workflowTypes";
 
 function apiBase(): string {
   return workflowApiBase();
+}
+
+/** Hint when fetch() never connects (browser shows "Failed to fetch"). */
+function workflowFetchNetworkHint(): string {
+  const base = apiBase();
+  if (base.startsWith("/")) {
+    return "Start the workflow API (e.g. uvicorn) or set WORKFLOW_API_PROXY_TARGET in web/.env.local. If the SPA is on Vercel, set VITE_WORKFLOW_API_URL to your live API origin.";
+  }
+  return "Confirm VITE_WORKFLOW_API_URL is correct, the API is up, and CORS allows this site’s origin.";
 }
 
 async function workflowFetchJson<T>(
@@ -50,7 +65,21 @@ async function workflowFetchJson<T>(
   if (init?.body != null && !headers["Content-Type"]) {
     headers["Content-Type"] = "application/json";
   }
-  const res = await fetch(url, { ...init, headers });
+  let res: Response;
+  try {
+    res = await fetch(url, { ...init, headers });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (
+      e instanceof TypeError &&
+      (msg === "Failed to fetch" || /network|fetch|load failed/i.test(msg))
+    ) {
+      throw new Error(
+        `Could not reach the workflow API (${apiBase()}). ${workflowFetchNetworkHint()}`,
+      );
+    }
+    throw e;
+  }
   const text = await res.text();
   if (!res.ok) {
     throw new Error(`Workflow API ${res.status}: ${text.slice(0, 500)}`);
@@ -327,9 +356,18 @@ export async function fetchLettersBundleTxt(
 export async function fetchProofContext(
   token: string,
   workflowId: string,
+  options?: { includeAiExplanation?: boolean; includeAiScript?: boolean },
 ): Promise<ProofContextResponse> {
+  const params = new URLSearchParams();
+  if (options?.includeAiExplanation === true) {
+    params.set("includeAiExplanation", "true");
+  }
+  if (options?.includeAiScript === true) {
+    params.set("includeAiScript", "true");
+  }
+  const q = params.toString() ? `?${params.toString()}` : "";
   return workflowFetchJson<ProofContextResponse>(
-    `/api/workflows/${encodeURIComponent(workflowId)}/proof/context`,
+    `/api/workflows/${encodeURIComponent(workflowId)}/proof/context${q}`,
     token,
   );
 }
@@ -561,6 +599,8 @@ export type ReportUploadResponse = {
   reportsProcessed: number;
   fileSkips: Array<{ filename: string; reason: string }>;
   workflow: WorkflowEnvelope;
+  /** Bundled with ``workflow`` on upload/finalize responses when server attaches progression payload. */
+  workflowSync?: WorkflowSyncPayload;
   /** Server queued a background parse; client should poll ``/jobs/{jobId}`` until terminal. */
   processing?: boolean;
   jobId?: string;
@@ -576,6 +616,8 @@ export type WorkflowJobPublic = {
   payload: Record<string, unknown>;
   result: Record<string, unknown> | null;
   error: string | null;
+  /** Structured code when present (failed jobs / result payload). */
+  errorCode?: string | null;
   createdAt?: string;
   updatedAt?: string;
   runAt?: string | null;
@@ -633,7 +675,13 @@ export async function pollReportUploadParseJob(
           typeof j.job.error === "string" && j.job.error.trim()
             ? j.job.error.trim()
             : "Report processing failed.";
-        throw new Error(msg);
+        const resFail = j.job.result;
+        const codeFromResult =
+          resFail && typeof resFail === "object" && "errorCode" in resFail
+            ? String((resFail as { errorCode?: string }).errorCode ?? "").trim()
+            : "";
+        const code = (j.job.errorCode && String(j.job.errorCode).trim()) || codeFromResult;
+        throw new Error(code ? `${msg} (${code})` : msg);
       }
       const res = j.job.result;
       const ok = Boolean(res && typeof res === "object" && (res as { ok?: boolean }).ok);
@@ -751,4 +799,56 @@ export async function postReportUpload(
     }
   }
   return postReportUploadMultipart(token, workflowId, files, privacyConsent);
+}
+
+// --- Guided execution runtime (services.execution_runtime) ---
+
+export async function startExecutionSession(
+  token: string,
+  workflowId: string,
+): Promise<ExecutionStartResponse> {
+  return workflowFetchJson<ExecutionStartResponse>(
+    `/api/workflows/${encodeURIComponent(workflowId)}/execution/start`,
+    token,
+    { method: "POST", body: "{}" },
+  );
+}
+
+export async function fetchExecutionState(
+  token: string,
+  query: { workflowId: string } | { runId: string },
+): Promise<ExecutionState> {
+  if ("runId" in query) {
+    const j = await workflowFetchJson<{ executionState: ExecutionState }>(
+      `/api/execution/runs/${encodeURIComponent(query.runId)}/state`,
+      token,
+    );
+    return j.executionState;
+  }
+  const j = await workflowFetchJson<{ executionState: ExecutionState }>(
+    `/api/workflows/${encodeURIComponent(query.workflowId)}/execution/state`,
+    token,
+  );
+  return j.executionState;
+}
+
+export async function submitExecutionOutcome(
+  token: string,
+  runId: string,
+  body: ExecutionOutcomeSubmitBody,
+): Promise<ExecutionOutcomeResponse> {
+  return workflowFetchJson<ExecutionOutcomeResponse>(
+    `/api/execution/runs/${encodeURIComponent(runId)}/outcome`,
+    token,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        blockId: body.blockId,
+        outcomeKey: body.outcomeKey,
+        notes: body.notes ?? "",
+        externalFlags: body.externalFlags ?? {},
+        source: body.source ?? "user_reported",
+      }),
+    },
+  );
 }

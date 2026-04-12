@@ -62,7 +62,7 @@ export function McExceptions() {
               <tr key={r.workflowId} className="border-b border-white/5">
                 <td className="p-2 font-mono">
                   <Link
-                    className="text-sky-300 hover:underline"
+                    className="text-zinc-400 hover:underline"
                     to={`/mission-control/workflows/${r.workflowId}`}
                   >
                     {r.workflowId.slice(0, 8)}…
@@ -79,7 +79,7 @@ export function McExceptions() {
                 </td>
                 <td className="p-2">
                   <Link
-                    className="text-sky-300 hover:underline text-xs"
+                    className="text-zinc-400 hover:underline text-xs"
                     to={`/mission-control/workflows/${r.workflowId}#operator-actions`}
                   >
                     Open actions

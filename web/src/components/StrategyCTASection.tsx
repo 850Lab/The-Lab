@@ -5,19 +5,21 @@ type Props = {
   label?: string;
   disabled?: boolean;
   hint?: string;
+  title?: string;
+  footnote?: string;
 };
 
 export function StrategyCTASection({
   onStart,
-  label = "Lock plan & continue",
+  label = "Continue to payment",
   disabled = false,
   hint,
+  title = "Ready when you are",
+  footnote,
 }: Props) {
   return (
     <div className="rounded-xl border border-white/[0.08] bg-lab-elevated px-5 py-7 sm:px-8 sm:py-8">
-      <h2 className="text-center text-lg font-semibold text-lab-text sm:text-xl">
-        Ready when you are
-      </h2>
+      <h2 className="text-center text-lg font-semibold text-lab-text sm:text-xl">{title}</h2>
       {hint ? (
         <p className="mx-auto mt-2 max-w-md text-center text-sm leading-relaxed text-lab-muted">
           {hint}
@@ -28,9 +30,9 @@ export function StrategyCTASection({
           type="button"
           onClick={onStart}
           disabled={disabled}
-          className="w-full rounded-xl bg-lab-accent py-3.5 text-[15px] font-semibold text-white shadow-lg shadow-lab-accent/25 transition-shadow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-lab-accent/45 disabled:pointer-events-none disabled:opacity-50 sm:max-w-sm sm:px-8"
+          className="w-full rounded-xl bg-lab-accent py-3.5 text-[15px] font-semibold text-white shadow-lg shadow-black/40 transition-shadow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-lab-accent/45 disabled:pointer-events-none disabled:opacity-50 sm:max-w-sm sm:px-8"
           whileHover={
-            disabled ? undefined : { scale: 1.02, boxShadow: "0 14px 44px -10px rgba(59,130,246,0.45)" }
+            disabled ? undefined : { scale: 1.02, boxShadow: "0 14px 44px -10px rgba(0,0,0,0.55)" }
           }
           whileTap={disabled ? undefined : { scale: 0.98 }}
           transition={{ type: "spring", stiffness: 400, damping: 26 }}
@@ -38,9 +40,13 @@ export function StrategyCTASection({
           {label}
         </motion.button>
       </div>
-      <p className="mt-4 text-center text-xs text-lab-subtle sm:text-sm">
-        Your choices are saved on our servers when you continue
-      </p>
+      {footnote ? (
+        <p className="mt-4 text-center text-xs text-lab-subtle sm:text-sm">{footnote}</p>
+      ) : (
+        <p className="mt-4 text-center text-xs text-lab-subtle sm:text-sm">
+          Your choices are saved on our servers when you continue
+        </p>
+      )}
     </div>
   );
 }

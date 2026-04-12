@@ -4,6 +4,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 type Tab = "draw" | "type";
 
 export type SignatureCardProps = {
+  /** Section title; defaults to signature entry framing. */
+  title?: string;
+  /** Short explanation under the title. */
+  description?: string;
   mode: Tab;
   onModeChange: (mode: Tab) => void;
   typedValue: string;
@@ -16,6 +20,8 @@ export type SignatureCardProps = {
 };
 
 export function SignatureCard({
+  title = "Add your signature",
+  description = "We’ll place this on your dispute letters",
   mode,
   onModeChange,
   typedValue,
@@ -146,10 +152,10 @@ export function SignatureCard({
       <div className="flex items-start justify-between gap-3">
         <div>
           <h3 className="text-[15px] font-semibold text-lab-text sm:text-base">
-            Add your signature
+            {title}
           </h3>
           <p className="mt-1.5 text-sm leading-relaxed text-lab-muted">
-            We’ll place this on your dispute letters
+            {description}
           </p>
         </div>
         <AnimatePresence mode="wait">

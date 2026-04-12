@@ -177,7 +177,7 @@ export function McWorkflows() {
               >
                 <td className="p-2 font-mono">
                   <Link
-                    className="text-sky-300 hover:underline"
+                    className="text-zinc-400 hover:underline"
                     to={`/mission-control/workflows/${r.workflowId}`}
                   >
                     {r.workflowId.slice(0, 8)}…

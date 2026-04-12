@@ -1,10 +1,10 @@
 import { motion } from "framer-motion";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { PaymentShell } from "@/components/PaymentShell";
-import { ProgramFlowBridge } from "@/components/ProgramFlowBridge";
 import { PreparedItemsSummary, type PreparedCategory } from "@/components/PreparedItemsSummary";
-import { PriceRow } from "@/components/PriceRow";
+import { StepPageAmbientBackground } from "@/components/StepPageAmbientBackground";
+import { StepMainColumn } from "@/components/StepMainColumn";
 import { TopBarMinimal } from "@/components/TopBarMinimal";
 import { ValueRecapList } from "@/components/ValueRecapList";
 import type { PaymentContextPayload } from "@/lib/paymentTypes";
@@ -18,41 +18,60 @@ import {
   NEXT_STEP_AFTER_PAYMENT_LINE,
   PAYMENT_WHAT_HAPPENS_NEXT_LINES,
 } from "@/lib/flowMicrocopy";
+import {
+  orionStepHeroCopy,
+  paymentRecommendedCheckoutButtonClass,
+  resolveOrionAuthority,
+} from "@/lib/orion/orionAuthority";
 import { customerPathFromEnvelope } from "@/lib/workflowStepRoutes";
 import { useCustomerWorkflow } from "@/providers/CustomerWorkflowContext";
+import {
+  stepChildVariants as headerVariants,
+  stepPageVariants as pageVariants,
+} from "@/lib/motionStep";
 
 function formatUsd(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
 }
 
-const pageVariants = {
-  hidden: { opacity: 0 },
-  show: {
-    opacity: 1,
-    transition: { staggerChildren: 0.1, delayChildren: 0.04 },
-  },
-};
-
-const headerVariants = {
-  hidden: { opacity: 0, y: 12 },
-  show: {
-    opacity: 1,
-    y: 0,
-    transition: { duration: 0.42, ease: [0.22, 1, 0.36, 1] },
-  },
-};
-
 function buildCategories(p: PaymentContextPayload): PreparedCategory[] {
   const out: PreparedCategory[] = [
-    { label: "Dispute letters to generate (bureaus)", count: p.neededLetters },
+    { label: "Bureau letter targets (this round)", count: p.neededLetters },
   ];
   if (p.selectedDisputeItemCount != null) {
     out.unshift({
-      label: "Dispute items selected",
+      label: "Items confirmed in Strategy",
       count: p.selectedDisputeItemCount,
     });
   }
   return out;
+}
+
+function PaymentNextStepsStrip() {
+  return (
+    <motion.div
+      variants={headerVariants}
+      className="surface-where-fits mx-auto mt-6 max-w-2xl"
+    >
+      <p className="text-center text-[10px] font-bold uppercase tracking-[0.16em] text-lab-subtle">
+        What happens next
+      </p>
+      <ol className="mt-3 flex flex-col gap-2 text-sm sm:mt-4 sm:flex-row sm:justify-center sm:gap-3 sm:text-[13px]">
+        <li className="progress-strip-pill flex flex-1 items-center justify-center rounded-lg border border-emerald-500/30 bg-emerald-500/[0.08] px-3 py-2.5 text-center text-lab-muted">
+          <span className="font-semibold text-emerald-200/95">1.</span>
+          <span className="ml-1.5">Round confirmed</span>
+        </li>
+        <li className="progress-strip-pill flex flex-1 items-center justify-center rounded-lg border border-zinc-500/35 bg-zinc-500/[0.1] px-3 py-2.5 text-center font-semibold text-lab-text">
+          <span className="text-lab-accent">2.</span>
+          <span className="ml-1.5">Payment completed</span>
+        </li>
+        <li className="progress-strip-pill flex flex-1 items-center justify-center rounded-lg border border-white/[0.08] bg-black/25 px-3 py-2.5 text-center text-lab-muted">
+          <span className="text-lab-subtle">3.</span>
+          <span className="ml-1.5">Letters prepared next</span>
+        </li>
+      </ol>
+    </motion.div>
+  );
 }
 
 export function PaymentPage() {
@@ -64,6 +83,8 @@ export function PaymentPage() {
     authoritativeStepId,
     canonicalCustomerPath,
     applyWorkflowEnvelope,
+    orionViewModel,
+    integrityHints,
   } = useCustomerWorkflow();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -98,6 +119,24 @@ export function PaymentPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  const PAYMENT_HERO_FALLBACK = {
+    title: "Unlock letter preparation for this round",
+    subtitle:
+      "You're paying for the dispute package based on what you confirmed in Strategy — still before anything is mailed. After payment, you'll move through letters, proof, and send at your own pace.",
+  } as const;
+
+  const orionAuthority = useMemo(
+    () => resolveOrionAuthority(orionViewModel, integrityHints),
+    [orionViewModel, integrityHints],
+  );
+
+  const paymentHero = useMemo(
+    () => orionStepHeroCopy(orionAuthority, orionViewModel, PAYMENT_HERO_FALLBACK),
+    [orionAuthority, orionViewModel],
+  );
+
+  const checkoutEmphasisClass = paymentRecommendedCheckoutButtonClass(paymentHero.ctaEmphasis);
 
   const paymentSuccess = searchParams.get("payment") === "success";
   const paymentCancelled = searchParams.get("payment") === "cancelled";
@@ -182,62 +221,62 @@ export function PaymentPage() {
   const canUseCredits = canActOnPaymentStep && !!pay?.hasSufficientLetterEntitlement;
 
   return (
-    <div className="relative min-h-full bg-lab-bg">
-      <div
-        className="pointer-events-none absolute left-1/2 top-[36%] z-0 h-[min(72vw,480px)] w-[min(72vw,480px)] -translate-x-1/2 -translate-y-1/2 rounded-full bg-lab-accent/[0.09] blur-[110px]"
-        aria-hidden
-      />
-      <div
-        className="pointer-events-none absolute left-1/2 top-[40%] z-0 h-[min(48vw,320px)] w-[min(48vw,320px)] -translate-x-1/2 -translate-y-1/2 rounded-full bg-lab-accent/[0.04] blur-[90px]"
-        aria-hidden
-      />
+    <div
+      className="relative min-h-full bg-lab-bg"
+      data-orion-fallback={orionViewModel.fallbackMode}
+    >
+      <StepPageAmbientBackground />
 
       <TopBarMinimal />
 
-      <main className="relative z-10 mx-auto max-w-md px-4 pb-24 pt-24 sm:px-6 sm:pb-28 sm:pt-28">
+      <StepMainColumn className="relative z-10 mx-auto max-w-xl px-4 pb-24 pt-24 sm:px-6 sm:pb-28 sm:pt-28">
         <motion.div variants={pageVariants} initial="hidden" animate="show">
           <motion.p
             variants={headerVariants}
-            className="text-center text-[10px] font-semibold uppercase tracking-[0.16em] text-lab-accent"
+            className="step-eyebrow"
           >
-            Your program · Activate letters
+            STEP 4 • FUND THIS ROUND
           </motion.p>
-          <motion.h1
-            variants={headerVariants}
-            className="mt-2 text-center text-2xl font-semibold tracking-tight text-lab-text sm:text-[1.65rem]"
-          >
-            Pay when the plan is locked
+          <motion.h1 variants={headerVariants} className="step-title">
+            {paymentHero.title}
           </motion.h1>
-          <motion.p
-            variants={headerVariants}
-            className="mx-auto mt-3 max-w-sm text-center text-sm leading-relaxed text-lab-muted sm:text-[15px]"
-          >
-            You only reach this screen after your dispute set is real — so payment lines up with the
-            moment we generate bureau-ready letters. Packs can include mailing balance you spend later,
-            one credit per live certified send — add more mailings in your account only if you run
-            out before you finish sending.
-          </motion.p>
-          <motion.p
-            variants={headerVariants}
-            className="mx-auto mt-3 max-w-sm text-center text-sm leading-relaxed text-lab-muted sm:text-[15px]"
-          >
-            <span className="font-medium text-lab-text">Right after checkout:</span> we move straight
-            into{" "}
-            <strong className="font-medium text-lab-text">generating your dispute letters</strong> —
-            the same engine output you came for, not a generic template.
+          <motion.p variants={headerVariants} className="step-support">
+            {paymentHero.subtitle}
           </motion.p>
 
-          <motion.div variants={headerVariants} className="mx-auto mt-5 max-w-sm">
-            <ProgramFlowBridge>
-              <span className="font-medium text-lab-text">This isn&apos;t a detour;</span> it&apos;s
-              the same program — activate letter production, then the next screen is letters. Already
-              have credits? Continue without paying.
-            </ProgramFlowBridge>
-          </motion.div>
+          {!loading && pay?.onPaymentStep ? (
+            <motion.div
+              variants={headerVariants}
+              className="surface-emerald-reassure mx-auto mt-6 max-w-lg"
+            >
+              <ul className="space-y-2 text-left text-sm leading-relaxed text-emerald-50/95 sm:text-[15px]">
+                <li className="flex gap-2">
+                  <span className="mt-0.5 shrink-0 text-emerald-300" aria-hidden>
+                    •
+                  </span>
+                  <span>This payment applies to the round you just confirmed</span>
+                </li>
+                <li className="flex gap-2">
+                  <span className="mt-0.5 shrink-0 text-emerald-300" aria-hidden>
+                    •
+                  </span>
+                  <span>You&apos;ll continue through letter and document steps next</span>
+                </li>
+                <li className="flex gap-2">
+                  <span className="mt-0.5 shrink-0 text-emerald-300" aria-hidden>
+                    •
+                  </span>
+                  <span>Nothing is mailed at this step</span>
+                </li>
+              </ul>
+            </motion.div>
+          ) : null}
+
+          {!loading && pay?.onPaymentStep ? <PaymentNextStepsStrip /> : null}
 
           {loading ? (
             <motion.p variants={headerVariants} className="mt-10 text-center text-sm text-lab-muted">
-              Loading your purchase options…
+              Loading your payment options…
             </motion.p>
           ) : null}
 
@@ -248,8 +287,12 @@ export function PaymentPage() {
           ) : null}
 
           {paymentCancelled ? (
-            <motion.div variants={headerVariants} className="mt-8 rounded-lg border border-white/[0.1] bg-lab-surface/80 p-4 text-center text-sm text-lab-muted">
-              <p>Checkout was cancelled — your plan is still saved. Pick a pack when you’re ready.</p>
+            <motion.div
+              variants={headerVariants}
+              className="mt-8 rounded-lg border border-white/[0.1] bg-lab-surface/80 p-4 text-center text-sm text-lab-muted"
+            >
+              <p className="font-medium text-lab-text">Checkout was not completed yet</p>
+              <p className="mt-2">Your round is still saved and ready. You can return here when you want to continue.</p>
               <button
                 type="button"
                 onClick={clearQuery}
@@ -267,20 +310,20 @@ export function PaymentPage() {
             >
               {reconcileBusy ? (
                 <div className="space-y-2">
-                  <p className="text-sm font-semibold text-lab-text">Payment received</p>
+                  <p className="text-sm font-semibold text-lab-text">Your payment is being confirmed…</p>
                   <p className="text-sm text-lab-muted">
-                    Applying your purchase to this program (usually a few seconds).
+                    Connecting your checkout to this program — usually just a few seconds.
                   </p>
                   <p className="text-xs text-lab-subtle">{NEXT_STEP_AFTER_PAYMENT_LINE}</p>
                 </div>
               ) : paymentStepPending ? (
                 <div className="space-y-3 text-left text-amber-100/95">
                   <p className="text-center text-sm font-semibold text-amber-50">
-                    Purchase confirmed — one more tap
+                    Almost there — one more step
                   </p>
                   <p className="text-center text-sm text-amber-100/90">
-                    Your credits are on your account; this program is still finishing the payment
-                    step. Retry below — safe to run more than once.
+                    Your payment went through; this screen is still catching up. Tap below to finish
+                    — safe to try again if needed.
                   </p>
                   <p className="text-center text-xs text-amber-200/80">{NEXT_STEP_AFTER_PAYMENT_LINE}</p>
                   <button
@@ -304,14 +347,14 @@ export function PaymentPage() {
                     type="button"
                     disabled={!token || !workflowId || reconcileBusy}
                     onClick={() => void finalizeReconcile(sessionId)}
-                    className="text-sm font-semibold text-lab-accent hover:text-sky-300 disabled:opacity-50"
+                    className="text-sm font-semibold text-lab-accent hover:text-zinc-100 disabled:opacity-50"
                   >
                     Retry confirmation
                   </button>
                 </div>
               ) : (
                 <div className="space-y-2">
-                  <p className="text-sm text-lab-muted">Confirming your purchase…</p>
+                  <p className="text-sm text-lab-muted">Your payment is being confirmed…</p>
                   <p className="text-xs text-lab-subtle">{NEXT_STEP_AFTER_PAYMENT_LINE}</p>
                 </div>
               )}
@@ -328,21 +371,21 @@ export function PaymentPage() {
                   <p>Payment is already complete for this program.</p>
                   <Link
                     to={canonicalCustomerPath}
-                    className="inline-block font-semibold text-lab-accent hover:text-sky-300"
+                    className="inline-block font-semibold text-lab-accent hover:text-zinc-100"
                   >
-                    Go to your current step →
+                    Continue in your program →
                   </Link>
                 </>
               ) : (
                 <p>
-                  Payment isn’t the active step right now. Use{" "}
+                  This screen isn’t the active step right now. Your round stays saved — use{" "}
                   <Link
                     to={canonicalCustomerPath}
-                    className="font-semibold text-lab-accent hover:text-sky-300"
+                    className="font-semibold text-lab-accent hover:text-zinc-100"
                   >
                     your current step
                   </Link>{" "}
-                  to continue.
+                  to pick up where you left off.
                 </p>
               )}
             </motion.div>
@@ -351,22 +394,34 @@ export function PaymentPage() {
           {!loading && pay && pay.onPaymentStep ? (
             <>
               <motion.div variants={headerVariants} className="mt-8 rounded-xl border border-white/[0.08] bg-lab-surface px-5 py-6 shadow-xl shadow-black/25 sm:px-7 sm:py-8">
-                <ValueRecapList lines={[...PAYMENT_WHAT_HAPPENS_NEXT_LINES]} />
+                <PreparedItemsSummary
+                  categories={buildCategories(pay)}
+                  title="Your current round"
+                  description="This payment covers the package built from the selections you just confirmed."
+                />
 
                 <div className="my-7 border-t border-white/[0.06] sm:my-8" />
 
-                <PreparedItemsSummary categories={buildCategories(pay)} />
+                <p className="text-xs font-medium uppercase tracking-[0.12em] text-lab-subtle">
+                  Included in this step
+                </p>
+                <div className="mt-3">
+                  <ValueRecapList
+                    title="What this payment includes"
+                    lines={[...PAYMENT_WHAT_HAPPENS_NEXT_LINES]}
+                  />
+                </div>
 
-                <div className="mt-4 text-center text-xs text-lab-subtle">
-                  Letter credits already on your account:{" "}
+                <div className="mt-5 text-center text-xs text-lab-subtle">
+                  Letter credits on your account:{" "}
                   <span className="font-medium text-lab-text">{pay.entitlements.letters}</span>
                 </div>
 
-                <div className="mt-6 space-y-3">
+                <div className="mt-8 space-y-3">
                   <p className="text-xs font-medium uppercase tracking-[0.12em] text-lab-subtle">
-                    Fits this round
+                    Recommended for this round
                   </p>
-                  <div className="rounded-lg border border-lab-accent/25 bg-lab-bg/20 px-4 py-3">
+                  <div className="rounded-lg border border-zinc-700/45 bg-lab-bg/20 px-4 py-3">
                     <div className="flex items-baseline justify-between gap-2">
                       <span className="text-sm font-semibold text-lab-text">
                         {pay.recommendedPack.label}
@@ -377,25 +432,45 @@ export function PaymentPage() {
                     </div>
                     <p className="mt-1 text-xs text-lab-muted">
                       {pay.recommendedPack.ai_rounds} AI rounds · {pay.recommendedPack.letters} letters ·{" "}
-                      {pay.recommendedPack.mailings} mailings (for certified send when you use them)
+                      {pay.recommendedPack.mailings} mailing balance (for certified send when you choose to)
                     </p>
-                    <button
-                      type="button"
-                      disabled={!stripeGo || checkoutLoadingId !== null}
-                      onClick={() => void startCheckout(pay.recommendedPack.id)}
-                      className="mt-3 w-full rounded-lg bg-lab-accent py-2.5 text-sm font-semibold text-white shadow-md shadow-lab-accent/20 disabled:pointer-events-none disabled:opacity-50"
-                    >
-                      {checkoutLoadingId === pay.recommendedPack.id
-                        ? "Opening secure checkout…"
-                        : "Unlock letters — pay with Stripe"}
-                    </button>
+
+                    <div className="mt-5 border-t border-white/[0.06] pt-4">
+                      <p className="text-center text-sm font-semibold text-lab-text">
+                        Ready to move this round forward?
+                      </p>
+                      <p className="mt-2 text-center text-sm leading-relaxed text-lab-muted">
+                        After checkout, you&apos;ll continue to the next preparation step before anything
+                        is sent.
+                      </p>
+                      <button
+                        type="button"
+                        disabled={!stripeGo || checkoutLoadingId !== null}
+                        onClick={() => void startCheckout(pay.recommendedPack.id)}
+                        className={checkoutEmphasisClass}
+                      >
+                        {checkoutLoadingId === pay.recommendedPack.id
+                          ? "Opening secure checkout…"
+                          : "Continue to secure checkout"}
+                      </button>
+                      <p className="mt-2 text-center text-xs text-lab-subtle">
+                        You&apos;ll stay in control of the next steps after payment.
+                      </p>
+                    </div>
                   </div>
+                </div>
+
+                <div className="mt-5">
+                  <PaymentShell
+                    stripeReady={!!pay.stripeCheckoutAvailable}
+                    returnOriginConfigured={!!pay.checkoutReturnOriginConfigured}
+                  />
                 </div>
 
                 {pay.otherPacks.length > 0 ? (
                   <div className="mt-6 space-y-2">
                     <p className="text-xs font-medium uppercase tracking-[0.12em] text-lab-subtle">
-                      Other packs (same program)
+                      Other options (same program)
                     </p>
                     <ul className="space-y-2">
                       {pay.otherPacks.map((pk) => (
@@ -459,20 +534,6 @@ export function PaymentPage() {
                   </div>
                 ) : null}
 
-                <div className="mt-6">
-                  <PriceRow
-                    label="This round (recommended pack)"
-                    amountDisplay={formatUsd(pay.recommendedPack.price_cents)}
-                  />
-                </div>
-
-                <div className="mt-6">
-                  <PaymentShell
-                    stripeReady={!!pay.stripeCheckoutAvailable}
-                    returnOriginConfigured={!!pay.checkoutReturnOriginConfigured}
-                  />
-                </div>
-
                 <div className="mt-6 border-t border-white/[0.06] pt-6">
                   <button
                     type="button"
@@ -480,21 +541,20 @@ export function PaymentPage() {
                     onClick={() => void continueWithCredits()}
                     className="w-full rounded-xl border border-white/15 py-3.5 text-[15px] font-semibold text-lab-text transition-colors hover:bg-white/[0.05] disabled:pointer-events-none disabled:opacity-50"
                   >
-                    {creditsLoading
-                      ? "Continuing…"
-                      : "Skip checkout — use my letter credits"}
+                    {creditsLoading ? "Continuing…" : "Use credits and continue"}
                   </button>
                   <p className="mt-2 text-center text-xs text-lab-subtle">
                     This round needs {pay.neededLetters} letter credit
-                    {pay.neededLetters === 1 ? "" : "s"}; you have {pay.entitlements.letters}. No
-                    extra charge when you already bought the moment.
+                    {pay.neededLetters === 1 ? "" : "s"}. You have {pay.entitlements.letters} on your
+                    account. When you already have enough credits, there&apos;s no extra charge — we
+                    just move you forward.
                   </p>
                 </div>
               </motion.div>
             </>
           ) : null}
         </motion.div>
-      </main>
+      </StepMainColumn>
     </div>
   );
 }

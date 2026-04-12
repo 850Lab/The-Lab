@@ -113,7 +113,7 @@ export function McDemoLeads() {
         <h2 className="text-base font-semibold text-lab-text">Demo leads</h2>
         <p className="mt-1 max-w-xl text-sm text-lab-muted">
           Contacts from the try-first home (lead form after the live sample). Legacy{" "}
-          <Link to={{ pathname: "/", hash: "live-demo" }} className="text-sky-300 hover:underline">
+          <Link to={{ pathname: "/", hash: "live-demo" }} className="text-zinc-400 hover:underline">
             /demo
           </Link>{" "}
           redirects to the same page. Newest first. Convert a lead to create an organization and link
@@ -215,14 +215,14 @@ export function McDemoLeads() {
                   <td className="p-2">
                     <a
                       href={`mailto:${r.email}`}
-                      className="break-all text-sky-300 hover:underline"
+                      className="break-all text-zinc-400 hover:underline"
                     >
                       {r.email}
                     </a>
                   </td>
                   <td className="p-2">
                     {r.phone ? (
-                      <a href={`tel:${r.phone.replace(/\s/g, "")}`} className="text-sky-300 hover:underline">
+                      <a href={`tel:${r.phone.replace(/\s/g, "")}`} className="text-zinc-400 hover:underline">
                         {r.phone}
                       </a>
                     ) : (
@@ -244,7 +244,7 @@ export function McDemoLeads() {
                     {r.workflow_id ? (
                       <Link
                         to={`/mission-control/workflows/${r.workflow_id}`}
-                        className="text-sky-300 hover:underline"
+                        className="text-zinc-400 hover:underline"
                         title={r.workflow_id}
                       >
                         {r.workflow_id.slice(0, 8)}…

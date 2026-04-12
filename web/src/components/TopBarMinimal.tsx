@@ -36,8 +36,8 @@ export function TopBarMinimal({
         <div className="flex min-w-0 items-center gap-3 text-sm sm:gap-4">
           {!hideLiveDemoLink ? (
             <Link
-              to={{ pathname: "/", hash: "live-demo" }}
-              className="shrink-0 text-xs font-medium text-lab-accent hover:text-sky-300 sm:text-sm"
+              to={{ pathname: "/", hash: "watch-it-work" }}
+              className="shrink-0 text-xs font-medium text-lab-accent hover:text-zinc-100 sm:text-sm"
             >
               Live demo
             </Link>
@@ -59,7 +59,7 @@ export function TopBarMinimal({
               <button
                 type="button"
                 onClick={() => void signOut()}
-                className="shrink-0 font-medium text-lab-accent hover:text-sky-300"
+                className="shrink-0 font-medium text-lab-accent hover:text-zinc-100"
               >
                 Sign out
               </button>
@@ -67,14 +67,14 @@ export function TopBarMinimal({
           ) : WAITLIST_MODE ? (
             <Link
               to="/waitlist"
-              className="font-medium text-lab-accent hover:text-sky-300"
+              className="font-medium text-lab-accent hover:text-zinc-100"
             >
               Waitlist
             </Link>
           ) : (
             <Link
               to="/login"
-              className="font-medium text-lab-accent hover:text-sky-300"
+              className="font-medium text-lab-accent hover:text-zinc-100"
             >
               Sign in
             </Link>

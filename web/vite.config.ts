@@ -57,6 +57,8 @@ export default defineConfig(({ mode }) => {
       host: "0.0.0.0",
       port: 5173,
       strictPort: false,
+      /** Dev-only: hide full-screen error overlay (CSS/build issues still print in the terminal). */
+      hmr: { overlay: false },
       proxy: {
         "/workflow-api": workflowApiProxy,
       },

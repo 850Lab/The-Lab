@@ -173,7 +173,7 @@ export function ProgramOrgSetupPage() {
         </p>
         <Link
           to="/login"
-          className="mt-5 inline-flex rounded-md bg-lab-accent px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-sky-400"
+          className="mt-5 inline-flex rounded-md bg-lab-accent px-4 py-2 text-sm font-semibold text-zinc-950 hover:brightness-110"
         >
           Sign in
         </Link>
@@ -196,7 +196,7 @@ export function ProgramOrgSetupPage() {
         </p>
         <Link
           to="/program"
-          className="mt-5 inline-flex rounded-md bg-lab-accent px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-sky-400"
+          className="mt-5 inline-flex rounded-md bg-lab-accent px-4 py-2 text-sm font-semibold text-zinc-950 hover:brightness-110"
         >
           Go to program hub
         </Link>
@@ -306,7 +306,7 @@ export function ProgramOrgSetupPage() {
                 type="button"
                 disabled={checkoutBusy || reconcileBusy}
                 onClick={() => void onActivateProgram()}
-                className="rounded-md bg-lab-accent px-4 py-2.5 text-sm font-semibold text-slate-950 hover:bg-sky-400 disabled:opacity-50"
+                className="rounded-md bg-lab-accent px-4 py-2.5 text-sm font-semibold text-zinc-950 hover:brightness-110 disabled:opacity-50"
               >
                 {checkoutBusy ? "Redirecting…" : "Pay & activate program"}
               </button>
@@ -372,7 +372,7 @@ export function ProgramOrgSetupPage() {
           type="button"
           disabled={saving}
           onClick={() => void onSave()}
-          className="w-full rounded-md bg-lab-accent py-2.5 text-sm font-semibold text-slate-950 hover:bg-sky-400 disabled:opacity-50"
+          className="w-full rounded-md bg-lab-accent py-2.5 text-sm font-semibold text-zinc-950 hover:brightness-110 disabled:opacity-50"
         >
           {saving ? "Saving…" : "Save and continue"}
         </button>

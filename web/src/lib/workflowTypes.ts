@@ -66,6 +66,27 @@ export type CanonicalProgressionPayload = {
   progression?: ProgressionPayload;
 };
 
+/** Job + parse readiness — bundled on resume / intake (single sync surface). */
+export type WorkflowSyncPayload = {
+  activeReportParseJobs: Array<Record<string, unknown>>;
+  lastReportParseJob: Record<string, unknown> | null;
+  parseReadiness: {
+    uploadStepStatus: string | null;
+    parseStepStatus: string | null;
+    asyncPhase: "idle" | "pending" | "running" | "steady";
+  };
+};
+
+/** O.R.I.O.N. fragments on customer resume/progression envelopes (backend-owned intent). */
+export type WorkflowOrionPayload = {
+  guidance?: unknown;
+  bestAction?: unknown;
+  actionCandidates?: unknown;
+  bestActionExplanation?: unknown;
+  deliveryPrioritization?: unknown;
+  uxSurfaceContract?: unknown;
+};
+
 export type WorkflowEnvelope = {
   actionResult: string;
   workflowState: WorkflowStatePayload;
@@ -78,4 +99,6 @@ export type WorkflowEnvelope = {
   progression?: ProgressionPayload;
   /** Same spine as consumer/org when backend attaches it. */
   canonicalProgression?: CanonicalProgressionPayload;
-};
+  /** Observability: active jobs + parse phase (resume / intake). */
+  workflowSync?: WorkflowSyncPayload;
+} & WorkflowOrionPayload;

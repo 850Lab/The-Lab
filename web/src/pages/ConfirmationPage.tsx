@@ -1,10 +1,16 @@
 import { LayoutGroup, motion } from "framer-motion";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { ContinueCTA } from "@/components/ContinueCTA";
 import { ProgramFlowBridge } from "@/components/ProgramFlowBridge";
+import {
+  ReviewPhaseProgressStrip,
+  ReviewReassuranceBlock,
+} from "@/components/ReviewStepContinuity";
 import { DisputeGroupCard } from "@/components/DisputeGroupCard";
 import { SummaryCard } from "@/components/SummaryCard";
+import { StepPageAmbientBackground } from "@/components/StepPageAmbientBackground";
+import { StepMainColumn } from "@/components/StepMainColumn";
 import { TopBarMinimal } from "@/components/TopBarMinimal";
 import { useIntakeSummary } from "@/hooks/useIntakeSummary";
 import { postAcknowledgeReview } from "@/lib/workflowApi";
@@ -14,45 +20,27 @@ import {
   type DisputeGroupModel,
 } from "@/lib/reviewClaimsDisplay";
 import { useCustomerWorkflow } from "@/providers/CustomerWorkflowContext";
+import {
+  orionStepHeroCopy,
+  resolveOrionAuthority,
+} from "@/lib/orion/orionAuthority";
+import {
+  stepCardChildVariants as groupCardVariants,
+  stepNestedStaggerVariants as groupListVariants,
+  stepChildVariants as headerVariants,
+  stepPageVariants as pageVariants,
+} from "@/lib/motionStep";
 
 type RemovedSnapshot = {
   groupId: string;
   item: DisputeGroupModel["items"][number];
 };
 
-const pageVariants = {
-  hidden: { opacity: 0 },
-  show: {
-    opacity: 1,
-    transition: { staggerChildren: 0.1, delayChildren: 0.06 },
-  },
-};
-
-const headerVariants = {
-  hidden: { opacity: 0, y: 12 },
-  show: {
-    opacity: 1,
-    y: 0,
-    transition: { duration: 0.42, ease: [0.22, 1, 0.36, 1] },
-  },
-};
-
-const groupListVariants = {
-  hidden: { opacity: 0 },
-  show: {
-    opacity: 1,
-    transition: { staggerChildren: 0.14, delayChildren: 0.04 },
-  },
-};
-
-const groupCardVariants = {
-  hidden: { opacity: 0, y: 22 },
-  show: {
-    opacity: 1,
-    y: 0,
-    transition: { duration: 0.48, ease: [0.22, 1, 0.36, 1] },
-  },
-};
+const CONFIRMATION_HERO_FALLBACK = {
+  title: "Finalize what belongs in this round",
+  subtitle:
+    "This step confirms the items from your findings before building your strategy. The list below is organized for you — remove anything that doesn't belong in this round.",
+} as const;
 
 export function ConfirmationPage() {
   const navigate = useNavigate();
@@ -62,6 +50,8 @@ export function ConfirmationPage() {
     authoritativeStepId,
     canonicalCustomerPath,
     applyWorkflowEnvelope,
+    orionViewModel,
+    integrityHints,
   } = useCustomerWorkflow();
   const { bundle, loading, error } = useIntakeSummary();
   const [groups, setGroups] = useState<DisputeGroupModel[]>([]);
@@ -132,30 +122,40 @@ export function ConfirmationPage() {
   const intake = bundle?.intake;
   const reportRows = intake?.reports ?? [];
 
+  const orionAuthority = useMemo(
+    () => resolveOrionAuthority(orionViewModel, integrityHints),
+    [orionViewModel, integrityHints],
+  );
+
+  const confirmationHero = useMemo(
+    () => orionStepHeroCopy(orionAuthority, orionViewModel, CONFIRMATION_HERO_FALLBACK),
+    [orionAuthority, orionViewModel],
+  );
+
   return (
-    <div className="relative min-h-full bg-lab-bg">
-      <div
-        className="pointer-events-none absolute left-1/2 top-[30%] z-0 h-[min(55vw,380px)] w-[min(55vw,380px)] -translate-x-1/2 -translate-y-1/2 rounded-full bg-lab-accent/[0.05] blur-[100px]"
-        aria-hidden
-      />
+    <div
+      className="relative min-h-full bg-lab-bg"
+      data-orion-fallback={orionViewModel.fallbackMode}
+    >
+      <StepPageAmbientBackground />
 
       <TopBarMinimal />
 
-      <main className="relative z-10 mx-auto max-w-xl px-4 pb-24 pt-24 sm:px-6 sm:pb-28 sm:pt-28">
+      <StepMainColumn className="relative z-10 mx-auto max-w-xl px-4 pb-24 pt-24 sm:px-6 sm:pb-28 sm:pt-28">
         <LayoutGroup>
           <motion.div variants={pageVariants} initial="hidden" animate="show">
             <motion.p
               variants={headerVariants}
-              className="text-center text-[10px] font-semibold uppercase tracking-[0.16em] text-lab-accent"
+              className="step-eyebrow"
             >
-              Your program · Review
+              STEP 2 • CONFIRM YOUR REVIEW
             </motion.p>
 
             <motion.h1
               variants={headerVariants}
-              className="mt-2 text-center text-2xl font-semibold tracking-tight text-lab-text sm:text-3xl"
+              className="step-title"
             >
-              We&apos;ve lined this up for you
+              {confirmationHero.title}
             </motion.h1>
 
             {authoritativeStepId === "review_claims" ? (
@@ -171,30 +171,34 @@ export function ConfirmationPage() {
                 </Link>
                 <Link
                   to="/analyze"
-                  className="inline-flex items-center justify-center rounded-xl px-4 py-2.5 text-center text-sm font-medium text-lab-accent hover:text-sky-300"
+                  className="link-step inline-flex items-center justify-center rounded-xl px-4 py-2.5 text-center text-sm"
                 >
-                  Back to findings
+                  Back to your review list
                 </Link>
               </motion.div>
             ) : null}
 
             <motion.p
               variants={headerVariants}
-              className={`mx-auto max-w-md text-center text-sm leading-relaxed text-lab-muted sm:text-[15px] ${
-                authoritativeStepId === "review_claims" ? "mt-4" : "mt-3"
+              className={`step-support max-w-md ${
+                authoritativeStepId === "review_claims" ? "!mt-4" : ""
               }`}
             >
-              This is the same list from your findings — grouped and ready. Remove anything that
-              doesn&apos;t belong; you&apos;re refining what the system prepared, not inventing the list
-              from scratch. Next we&apos;ll open your dispute strategy.
+              {confirmationHero.subtitle}
             </motion.p>
+
+            <motion.div variants={headerVariants} className="mx-auto max-w-2xl">
+              <ReviewPhaseProgressStrip phase="prepare" />
+            </motion.div>
+            <motion.div variants={headerVariants}>
+              <ReviewReassuranceBlock />
+            </motion.div>
 
             <motion.div variants={headerVariants} className="mx-auto mt-5 max-w-md">
               <ProgramFlowBridge>
-                <span className="font-medium text-lab-text">Now that we&apos;ve walked through your findings,</span>{" "}
-                we&apos;ve prepared this working list for you.{" "}
-                <span className="font-medium text-lab-text">Next, we&apos;ll determine</span> dispute
-                strategy — one continue control when you&apos;re done reviewing below.
+                <span className="font-medium text-lab-text">Review before strategy:</span> what stays on
+                this list is what we&apos;ll use to build your dispute round. When you&apos;re ready, continue
+                to strategy — no pressure to rush.
               </ProgramFlowBridge>
             </motion.div>
 
@@ -221,9 +225,9 @@ export function ConfirmationPage() {
                 </p>
                 <Link
                   to={canonicalCustomerPath}
-                  className="inline-block font-semibold text-lab-accent hover:text-sky-300"
+                  className="inline-block font-semibold text-lab-accent hover:text-zinc-100"
                 >
-                  Go to your current step →
+                  Continue in your program →
                 </Link>
               </motion.div>
             ) : null}
@@ -316,7 +320,7 @@ export function ConfirmationPage() {
             ) : null}
           </motion.div>
         </LayoutGroup>
-      </main>
+      </StepMainColumn>
     </div>
   );
 }

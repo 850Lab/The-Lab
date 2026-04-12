@@ -1,4 +1,5 @@
 import { Navigate, Outlet, useLocation } from "react-router-dom";
+import { OrionCustomerStrip } from "@/components/OrionCustomerStrip";
 import { WorkflowIntegrityBanner } from "@/components/WorkflowIntegrityBanner";
 import {
   CUSTOMER_WORKFLOW_GUARD_PATHS,
@@ -126,6 +127,7 @@ export function CustomerWorkflowShell() {
   return (
     <>
       <WorkflowIntegrityBanner />
+      <OrionCustomerStrip />
       <Outlet />
     </>
   );

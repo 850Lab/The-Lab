@@ -66,7 +66,7 @@ export function ProgramFindingsPage() {
         <div className="mt-4 flex flex-wrap gap-3">
           <Link
             to="/program/upload"
-            className="inline-flex rounded-md bg-lab-accent px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-sky-400"
+            className="inline-flex rounded-md bg-lab-accent px-4 py-2 text-sm font-semibold text-zinc-950 hover:brightness-110"
           >
             Share your report
           </Link>
@@ -93,7 +93,7 @@ export function ProgramFindingsPage() {
         </p>
         <Link
           to="/program/upload"
-          className="mt-4 inline-flex rounded-md bg-lab-accent px-4 py-2 text-sm font-semibold text-slate-950"
+          className="mt-4 inline-flex rounded-md bg-lab-accent px-4 py-2 text-sm font-semibold text-zinc-950"
         >
           Share your report
         </Link>
@@ -151,7 +151,7 @@ export function ProgramFindingsPage() {
 
       <Link
         to="/program/select"
-        className="inline-flex rounded-md bg-lab-accent px-5 py-2.5 text-sm font-semibold text-slate-950 hover:bg-sky-400"
+        className="inline-flex rounded-md bg-lab-accent px-5 py-2.5 text-sm font-semibold text-zinc-950 hover:brightness-110"
       >
         Choose what to focus on
       </Link>

@@ -65,7 +65,7 @@ export function ProgramShell() {
           <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
             <Link
               to="/login"
-              className="inline-flex justify-center rounded-md bg-lab-accent px-5 py-2.5 text-sm font-semibold text-slate-950 hover:bg-sky-400"
+              className="inline-flex justify-center rounded-md bg-lab-accent px-5 py-2.5 text-sm font-semibold text-zinc-950 hover:brightness-110"
             >
               Sign in
             </Link>

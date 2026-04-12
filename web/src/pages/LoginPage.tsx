@@ -71,23 +71,19 @@ export function LoginPage() {
     <div className="relative min-h-full bg-lab-bg">
       <TopBarMinimal />
       <main className="relative z-10 mx-auto max-w-md px-4 pb-16 pt-24 sm:px-6 sm:pt-28">
-        {programEyebrow ? (
-          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-lab-accent">
-            Your program · Sign in
-          </p>
-        ) : null}
+        <p className="step-eyebrow-left">850 Lab · Sign in</p>
         <motion.h1
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
-          className={`text-2xl font-semibold text-lab-text ${programEyebrow ? "mt-2" : ""}`}
+          className="mt-2 text-2xl font-semibold text-lab-text"
         >
           Sign in
         </motion.h1>
         <p className="mt-2 text-sm leading-relaxed text-lab-muted">
           {programEyebrow ? (
             <>
-              Same email and password as your 850 Lab account — you’re signing back into your
-              program, not a separate login screen.
+              Same email and password as your 850 Lab account — you&apos;re signing back into the
+              same guided flow, not a separate login screen.
             </>
           ) : (
             <>Use the same email and password as your 850 Lab account.</>
@@ -134,7 +130,7 @@ export function LoginPage() {
             <div className="mt-2 text-right">
               <Link
                 to={`/forgot-password${location.search}`}
-                className="text-sm font-medium text-lab-accent hover:text-sky-300"
+                className="text-sm font-medium text-lab-accent hover:text-zinc-100"
               >
                 Forgot password?
               </Link>
@@ -153,7 +149,7 @@ export function LoginPage() {
           No account?{" "}
           <Link
             to={`/signup${location.search}`}
-            className="font-medium text-lab-accent hover:text-sky-300"
+            className="font-medium text-lab-accent hover:text-zinc-100"
           >
             Create one
           </Link>

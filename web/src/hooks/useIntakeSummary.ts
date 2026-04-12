@@ -35,7 +35,10 @@ export function useIntakeSummary() {
       try {
         const b = await fetchIntakeSummary(token, workflowId);
         setBundle(b);
-        applyWorkflowEnvelope(b.workflow);
+        applyWorkflowEnvelope({
+          ...b.workflow,
+          ...(b.workflowSync ? { workflowSync: b.workflowSync } : {}),
+        });
         setError(null);
       } catch (e) {
         if (!opts?.silent) {

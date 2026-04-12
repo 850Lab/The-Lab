@@ -162,7 +162,7 @@ export function ForgotPasswordPage() {
               {" · "}
               <button
                 type="button"
-                className="font-medium text-lab-accent hover:text-sky-300"
+                className="font-medium text-lab-accent hover:text-zinc-100"
                 onClick={() => {
                   setStep("email");
                   setSentNote(null);
@@ -246,7 +246,7 @@ export function ForgotPasswordPage() {
           <p className="mt-6 text-center text-sm text-lab-muted">
             <Link
               to={signedOutReturnHref(search)}
-              className="font-medium text-lab-accent hover:text-sky-300"
+              className="font-medium text-lab-accent hover:text-zinc-100"
             >
               {WAITLIST_MODE ? "Return to waitlist" : "Back to sign in"}
             </Link>

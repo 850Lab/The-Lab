@@ -45,15 +45,30 @@ function letterForBureau(letters: PublicDemoLetter[], key: BureauKey): PublicDem
 export type PublicDemoBureauLetterStripProps = {
   letters: PublicDemoLetter[];
   onOpen: (letter: PublicDemoLetter) => void;
+  /** Landing day theme: neutral labels above colored bureau tiles. */
+  variant?: "dark" | "light";
 };
 
-export function PublicDemoBureauLetterStrip({ letters, onOpen }: PublicDemoBureauLetterStripProps) {
+export function PublicDemoBureauLetterStrip({
+  letters,
+  onOpen,
+  variant = "dark",
+}: PublicDemoBureauLetterStripProps) {
+  const light = variant === "light";
   return (
     <div data-testid="demo-bureau-letter-strip" className="mt-4">
-      <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-lab-subtle">
+      <p
+        className={
+          light
+            ? "text-[10px] font-semibold uppercase tracking-[0.12em] text-neutral-500"
+            : "text-[10px] font-semibold uppercase tracking-[0.12em] text-lab-subtle"
+        }
+      >
         Bureau letters
       </p>
-      <p className="mt-1 text-xs text-lab-muted">Tap a bureau for full letter text.</p>
+      <p className={light ? "mt-1 text-xs text-neutral-600" : "mt-1 text-xs text-lab-muted"}>
+        Tap a bureau for full letter text.
+      </p>
       <div className="mt-3 grid grid-cols-3 gap-2">
         {BUREAU_ORDER.map((key) => {
           const meta = TILE[key];

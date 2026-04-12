@@ -5,14 +5,25 @@ export type PreparedCategory = {
 
 type Props = {
   categories: PreparedCategory[];
+  /** Defaults to the standard payment summary title. */
+  title?: string;
+  /** Optional short line under the title (e.g. continuity from Strategy). */
+  description?: string | null;
 };
 
-export function PreparedItemsSummary({ categories }: Props) {
+export function PreparedItemsSummary({
+  categories,
+  title = "What you’re paying for (this round)",
+  description,
+}: Props) {
   return (
     <div className="rounded-lg border border-white/[0.06] bg-lab-bg/40 px-4 py-3.5">
       <p className="text-xs font-medium uppercase tracking-[0.08em] text-lab-subtle">
-        What you’re paying for (this round)
+        {title}
       </p>
+      {description ? (
+        <p className="mt-2 text-sm leading-relaxed text-lab-muted">{description}</p>
+      ) : null}
       <dl className="mt-3 space-y-2">
         {categories.map((row) => (
           <div

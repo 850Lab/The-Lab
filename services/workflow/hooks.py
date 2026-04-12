@@ -110,6 +110,11 @@ def notify_upload_and_parse_success(
         eng.service_complete_step(
             wid, "upload", summary, audit_source="report_pipeline", audit_user_id=user_id
         )
+        _log.info(
+            "workflow_hook hook=upload_and_parse_success step_completed=upload wf=%s user=%s",
+            wid,
+            user_id,
+        )
         if not assert_internal_service_complete_allowed(wid, "parse_analyze"):
             _log.info(
                 "hook gate: upload done but parse head mismatch wf=%s user=%s",
@@ -123,6 +128,11 @@ def notify_upload_and_parse_success(
             {"reportId": report_id, "bureau": bureau} if report_id else {"bureau": bureau},
             audit_source="report_pipeline",
             audit_user_id=user_id,
+        )
+        _log.info(
+            "workflow_hook hook=upload_and_parse_success step_completed=parse_analyze wf=%s user=%s",
+            wid,
+            user_id,
         )
 
     _safe_call(_go, "upload_and_parse_success")
@@ -185,6 +195,11 @@ def notify_parse_failed(
             audit_source="report_pipeline",
             audit_user_id=user_id,
         )
+        _log.info(
+            "workflow_hook hook=parse_failed step_failed=upload wf=%s user=%s",
+            wid,
+            user_id,
+        )
 
     _safe_call(_go, "parse_failed")
 
@@ -227,6 +242,12 @@ def notify_review_claims_completed(
             summary or {"confirmed": True},
             audit_source=audit_source,
             audit_user_id=user_id,
+        )
+        _log.info(
+            "workflow_hook hook=review_claims_completed step_completed=review_claims wf=%s user=%s source=%s",
+            wid,
+            user_id,
+            audit_source,
         )
 
     _safe_call(_go, "review_claims")

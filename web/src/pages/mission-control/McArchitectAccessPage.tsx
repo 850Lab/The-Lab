@@ -135,7 +135,7 @@ export function McArchitectAccessPage() {
                     type="button"
                     disabled={busyId != null}
                     onClick={() => void onApply(s.id)}
-                    className="rounded-md bg-lab-accent px-3 py-1.5 text-xs font-semibold text-slate-950 hover:bg-sky-400 disabled:opacity-40"
+                    className="rounded-md bg-lab-accent px-3 py-1.5 text-xs font-semibold text-zinc-950 hover:brightness-110 disabled:opacity-40"
                   >
                     {busyId === s.id ? "Applying…" : "Apply & open"}
                   </button>

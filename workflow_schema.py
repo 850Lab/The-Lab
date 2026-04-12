@@ -93,6 +93,93 @@ def ensure_workflow_events_table(conn) -> None:
     cur.close()
 
 
+def ensure_observability_events_table(conn) -> None:
+    """Structured observability log (Phase 5); separate from workflow_events."""
+    cur = conn.cursor()
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS observability_events (
+            event_id UUID PRIMARY KEY,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            workflow_id UUID NOT NULL REFERENCES workflow_sessions(workflow_id) ON DELETE CASCADE,
+            step_id VARCHAR(64),
+            event_name VARCHAR(120) NOT NULL,
+            event_category VARCHAR(32) NOT NULL,
+            status VARCHAR(16) NOT NULL,
+            timestamp TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            metadata JSONB NOT NULL DEFAULT '{}',
+            error_code VARCHAR(64),
+            duration_ms INTEGER,
+            source VARCHAR(64) NOT NULL DEFAULT 'system'
+        )
+        """
+    )
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_obs_events_wf_ts ON observability_events(workflow_id, timestamp DESC)"
+    )
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_obs_events_user_ts ON observability_events(user_id, timestamp DESC)"
+    )
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_obs_events_wf_step ON observability_events(workflow_id, step_id)"
+    )
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_obs_events_wf_cat ON observability_events(workflow_id, event_category)"
+    )
+    cur.close()
+
+
+def ensure_guidance_events_table(conn) -> None:
+    """
+    O.R.I.O.N. (Phase 9 + V1.1 delivery): append-only guidance + delivery metadata.
+    """
+    cur = conn.cursor()
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS guidance_events (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            workflow_id UUID NOT NULL REFERENCES workflow_sessions(workflow_id) ON DELETE CASCADE,
+            step_id VARCHAR(64),
+            guidance_type VARCHAR(32) NOT NULL,
+            priority INTEGER NOT NULL DEFAULT 0,
+            message TEXT NOT NULL,
+            trigger_source VARCHAR(120) NOT NULL,
+            suggested_actions JSONB NOT NULL DEFAULT '[]',
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_guidance_events_wf_created "
+        "ON guidance_events(workflow_id, created_at DESC)"
+    )
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_guidance_events_user_created "
+        "ON guidance_events(user_id, created_at DESC)"
+    )
+    # V1.1 columns (idempotent on existing deployments)
+    for stmt in (
+        "ALTER TABLE guidance_events ADD COLUMN IF NOT EXISTS rule_key VARCHAR(120) NOT NULL DEFAULT ''",
+        "ALTER TABLE guidance_events ADD COLUMN IF NOT EXISTS display_eligible BOOLEAN NOT NULL DEFAULT FALSE",
+        "ALTER TABLE guidance_events ADD COLUMN IF NOT EXISTS delivery_channel VARCHAR(24) NOT NULL DEFAULT 'inline'",
+        "ALTER TABLE guidance_events ADD COLUMN IF NOT EXISTS cooldown_seconds INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE guidance_events ADD COLUMN IF NOT EXISTS recommended_action JSONB NOT NULL DEFAULT '{}'::jsonb",
+    ):
+        try:
+            cur.execute(stmt)
+        except Exception:
+            pass
+    try:
+        cur.execute(
+            "CREATE INDEX IF NOT EXISTS idx_guidance_events_rule_created "
+            "ON guidance_events(workflow_id, rule_key, created_at DESC)"
+        )
+    except Exception:
+        pass
+    cur.close()
+
+
 def ensure_workflow_jobs_table(conn) -> None:
     """Background job queue: heavy work outside HTTP request/response (in-process worker)."""
     cur = conn.cursor()
@@ -119,6 +206,30 @@ def ensure_workflow_jobs_table(conn) -> None:
     )
     cur.execute(
         "CREATE INDEX IF NOT EXISTS idx_workflow_jobs_pending ON workflow_jobs(status, run_at, created_at)"
+    )
+    cur.close()
+
+
+def ensure_workflow_execution_runs_table(conn) -> None:
+    """Guided execution runtime: one row per run (bundle + progress JSON)."""
+    cur = conn.cursor()
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS workflow_execution_runs (
+            run_id UUID PRIMARY KEY,
+            workflow_id UUID NOT NULL REFERENCES workflow_sessions(workflow_id) ON DELETE CASCADE,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            guidance_bundle_json JSONB NOT NULL,
+            progress_state_json JSONB NOT NULL,
+            runtime_schema_version VARCHAR(64) NOT NULL DEFAULT 'execution_runtime.v1',
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_wf_exec_runs_workflow_updated "
+        "ON workflow_execution_runs(workflow_id, updated_at DESC)"
     )
     cur.close()
 

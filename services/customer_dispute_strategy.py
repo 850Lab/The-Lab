@@ -17,10 +17,13 @@ import database as db
 from claims import extract_claims
 from dispute_strategy import build_deterministic_strategy
 from review_claims import ReviewClaim, ReviewType, compress_claims
+from services.law_bank.resolve import resolve_law_units
+from services.law_bank.schema import LAW_RESOLUTION_CONTEXT_SCHEMA_VERSION
 from services.workflow.dispute_round_execution import (
     normalize_bureau_item_outcome,
     round_execution_public_view,
 )
+from services.workflow.observability_events import emit_observability_event
 from services.workflow.escalation_engine import escalation_public_view
 from services.workflow.engine import compute_authoritative_step
 from services.workflow.repository import fetch_session, fetch_steps
@@ -197,6 +200,102 @@ def dispute_selection_context_from_meta(meta: Dict[str, Any]) -> Tuple[int, Set[
     )
 
 
+def _subject_matter_tags_present_for_law(eligible: List[ReviewClaim]) -> List[str]:
+    """Structured tags only — no note text or free-form mining."""
+    tags: Set[str] = set()
+    for rc in eligible:
+        rt = rc.review_type
+        if rt in (
+            ReviewType.ACCURACY_VERIFICATION,
+            ReviewType.DUPLICATE_ACCOUNT,
+            ReviewType.UNVERIFIABLE_INFORMATION,
+            ReviewType.NEGATIVE_IMPACT,
+        ):
+            tags.add("accuracy")
+            tags.add("investigation")
+        if rt == ReviewType.NEGATIVE_IMPACT:
+            tags.add("collection_conduct")
+        if rt == ReviewType.ACCOUNT_OWNERSHIP:
+            tags.add("ownership")
+            if "inquiry_" in (rc.review_claim_id or ""):
+                tags.add("inquiry")
+    return sorted(tags)
+
+
+def _has_bureau_target(eligible: List[ReviewClaim]) -> bool:
+    if not eligible:
+        return False
+    return any(bool((rc.entities.get("bureau") or "").strip()) for rc in eligible)
+
+
+def _has_furnisher_target(eligible: List[ReviewClaim], actions: List[Dict[str, Any]]) -> bool:
+    if any(a.get("type") == "furnisher_dispute" for a in actions):
+        return True
+    for rc in eligible:
+        if rc.review_type in (
+            ReviewType.ACCURACY_VERIFICATION,
+            ReviewType.DUPLICATE_ACCOUNT,
+            ReviewType.NEGATIVE_IMPACT,
+            ReviewType.UNVERIFIABLE_INFORMATION,
+        ):
+            return True
+    return False
+
+
+def _identity_context_from_claims(claims: List[ReviewClaim]) -> bool:
+    return any(rc.review_type == ReviewType.IDENTITY_VERIFICATION for rc in claims)
+
+
+def _has_collection_account_signals(eligible: List[ReviewClaim]) -> bool:
+    return any(rc.review_type == ReviewType.NEGATIVE_IMPACT for rc in eligible)
+
+
+def _has_inquiry_signals(eligible: List[ReviewClaim]) -> bool:
+    for rc in eligible:
+        if rc.review_type == ReviewType.ACCOUNT_OWNERSHIP and "inquiry_" in (
+            rc.review_claim_id or ""
+        ):
+            return True
+    return False
+
+
+def build_law_resolution_context(
+    *,
+    claims: List[ReviewClaim],
+    eligible: List[ReviewClaim],
+    dispute_round: int,
+    authoritative_step_id: Optional[str],
+    escalation_view: Dict[str, Any],
+) -> Dict[str, Any]:
+    actions = [
+        a for a in (escalation_view.get("actions") or []) if isinstance(a, dict)
+    ]
+    has_esc = bool(actions)
+    tags = _subject_matter_tags_present_for_law(eligible)
+    identity_ctx = _identity_context_from_claims(claims)
+    op_cfpb = any(a.get("type") == "cfpb_complaint" for a in actions)
+    return {
+        "schemaVersion": LAW_RESOLUTION_CONTEXT_SCHEMA_VERSION,
+        "disputeRound": int(dispute_round),
+        "authoritativeStepId": str(authoritative_step_id or ""),
+        "hasBureauTarget": _has_bureau_target(eligible),
+        "hasFurnisherTarget": _has_furnisher_target(eligible, actions),
+        "identityContext": identity_ctx,
+        "escalationEligible": has_esc,
+        "hasCollectionAccountSignals": _has_collection_account_signals(eligible),
+        "hasInquirySignals": _has_inquiry_signals(eligible),
+        "subjectMatterTagsPresent": tags,
+        "outcomePatternFlags": {
+            "op_dispute_round_active": dispute_round >= 1,
+            "op_escalation_signal_present": has_esc,
+            "op_eligible_pool_non_empty": len(eligible) > 0,
+            "op_collections_signal": _has_collection_account_signals(eligible),
+            "op_cfpb_action_available": op_cfpb,
+            "op_identity_context": identity_ctx,
+        },
+    }
+
+
 def build_dispute_strategy_payload(
     user_id: int,
     workflow_id: str,
@@ -208,6 +307,16 @@ def build_dispute_strategy_payload(
     """
     head, phase = workflow_head_step_id(workflow_id)
     if phase == "done" or head != "select_disputes":
+        emit_observability_event(
+            user_id=user_id,
+            workflow_id=workflow_id,
+            step_id=str(head or "")[:64] or None,
+            event_name="strategy_generated",
+            event_category="processing",
+            status="info",
+            metadata={"selectionAllowed": False},
+            source="strategy",
+        )
         return {
             "selectionAllowed": False,
             "selectionBlockedReason": (
@@ -216,6 +325,7 @@ def build_dispute_strategy_payload(
                 else "This workflow is already complete."
             ),
             "disputeStrategy": None,
+            "lawContextRefs": [],
         }
 
     claims = load_compressed_review_claims_for_user(user_id)
@@ -269,6 +379,15 @@ def build_dispute_strategy_payload(
 
     esc = escalation_public_view(meta)
     has_esc = bool(esc.get("actions"))
+
+    law_ctx = build_law_resolution_context(
+        claims=claims,
+        eligible=eligible,
+        dispute_round=rnd,
+        authoritative_step_id=head,
+        escalation_view=esc,
+    )
+    law_refs = resolve_law_units(law_ctx)
     path_guidance = (
         "escalation_and_next_round"
         if has_esc and len(eligible) > 0
@@ -280,9 +399,41 @@ def build_dispute_strategy_payload(
 
     program_escalation = build_program_escalation_ux_payload(user_id, meta)
 
+    emit_observability_event(
+        user_id=user_id,
+        workflow_id=workflow_id,
+        step_id=str(head or "")[:64] or None,
+        event_name="strategy_generated",
+        event_category="processing",
+        status="success",
+        metadata={
+            "selectionAllowed": True,
+            "eligibleCount": len(eligible),
+            "roundNumber": rnd,
+        },
+        source="strategy",
+    )
+    if has_esc:
+        tr_raw = esc.get("triggers") or []
+        triggers = [str(x) for x in tr_raw if x is not None][:16]
+        emit_observability_event(
+            user_id=user_id,
+            workflow_id=workflow_id,
+            step_id=str(head or "")[:64] or None,
+            event_name="escalation_triggered",
+            event_category="decision",
+            status="info",
+            metadata={
+                "actionCount": len(esc.get("actions") or []),
+                "triggers": triggers,
+            },
+            source="strategy",
+        )
+
     return {
         "selectionAllowed": True,
         "selectionBlockedReason": None,
+        "lawContextRefs": law_refs,
         "escalationGuide": {
             "pathGuidance": path_guidance,
             "escalation": esc,

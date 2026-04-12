@@ -12,8 +12,10 @@ WORKDIR /app/web
 # Optional build-time vars for split API/static hosting (same-origin Docker deploy can omit).
 ARG VITE_WORKFLOW_API_URL=
 ARG VITE_PUBLIC_DEMO_SECRET=
+ARG VITE_WAITLIST_MODE=
 ENV VITE_WORKFLOW_API_URL=$VITE_WORKFLOW_API_URL
 ENV VITE_PUBLIC_DEMO_SECRET=$VITE_PUBLIC_DEMO_SECRET
+ENV VITE_WAITLIST_MODE=$VITE_WAITLIST_MODE
 
 COPY web/package.json web/package-lock.json ./
 RUN npm ci

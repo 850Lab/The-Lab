@@ -58,7 +58,7 @@ export function ProgramProgressPage() {
         <div className="mt-4 flex flex-wrap gap-3">
           <Link
             to="/program"
-            className="inline-flex rounded-md bg-lab-accent px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-sky-400"
+            className="inline-flex rounded-md bg-lab-accent px-4 py-2 text-sm font-semibold text-zinc-950 hover:brightness-110"
           >
             Program hub
           </Link>
@@ -117,7 +117,7 @@ export function ProgramProgressPage() {
         </div>
       )}
 
-      <div className="rounded-lg border border-lab-accent/20 bg-lab-accent/[0.06] p-5">
+      <div className="rounded-lg border border-zinc-700/45 bg-white/[0.03] p-5">
         <h2 className="text-sm font-semibold text-lab-text">What you&apos;re in right now</h2>
         <p className="mt-1 text-xs text-lab-muted">
           This is the live chapter of your program — tailored to you, shared with your cohort.
@@ -170,7 +170,7 @@ export function ProgramProgressPage() {
       {!paused && (
         <Link
           to={next}
-          className="inline-flex rounded-md bg-lab-accent px-5 py-2.5 text-sm font-semibold text-slate-950 hover:bg-sky-400"
+          className="inline-flex rounded-md bg-lab-accent px-5 py-2.5 text-sm font-semibold text-zinc-950 hover:brightness-110"
         >
           Go to what&apos;s next
         </Link>

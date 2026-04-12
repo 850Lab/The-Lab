@@ -1,39 +1,38 @@
 import { motion } from "framer-motion";
 import { useCallback, useState } from "react";
 import { Link } from "react-router-dom";
-import {
-  PublicDemoInteractiveSection,
-  type DemoSurfaceTheme,
-} from "@/components/PublicDemoInteractiveSection";
+import { PublicDemoInteractiveSection } from "@/components/PublicDemoInteractiveSection";
 import { TopBarMinimal } from "@/components/TopBarMinimal";
 import { WaitlistLeadForm } from "@/components/WaitlistLeadForm";
+import { LandingAmbientLayer } from "@/components/landing/LandingAmbientLayer";
+import { LandingAuthorityStrip } from "@/components/landing/LandingAuthorityStrip";
+import { LandingEarlyAccessModal } from "@/components/landing/LandingEarlyAccessModal";
+import { LandingFourPillars } from "@/components/landing/LandingFourPillars";
+import { LandingGuidedDemoFlow } from "@/components/landing/LandingGuidedDemoFlow";
+import { LandingPremiumHero } from "@/components/landing/LandingPremiumHero";
 import type { PublicDemoRunResult } from "@/lib/publicDemoTypes";
 import { useAuth } from "@/providers/AuthContext";
 import { useCustomerWorkflow } from "@/providers/CustomerWorkflowContext";
-
-const heroContainer = {
-  hidden: { opacity: 0 },
-  show: {
-    opacity: 1,
-    transition: { staggerChildren: 0.09, delayChildren: 0.04 },
-  },
-};
-
-const heroItem = {
-  hidden: { opacity: 0, y: 16 },
-  show: {
-    opacity: 1,
-    y: 0,
-    transition: { duration: 0.5, ease: [0.22, 1, 0.36, 1] },
-  },
-};
-
-const waitlistDemoSurface: DemoSurfaceTheme = "day";
 
 export function LandingWaitlist() {
   const { token, emailVerified } = useAuth();
   const { workflowId, loading: wfLoading } = useCustomerWorkflow();
   const [lastDemoRun, setLastDemoRun] = useState<PublicDemoRunResult | null>(null);
+  const [accessOpen, setAccessOpen] = useState(false);
+
+  const scrollWatch = useCallback(() => {
+    document.getElementById("watch-it-work")?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+  }, []);
+
+  const scrollLive = useCallback(() => {
+    document.getElementById("live-demo")?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+  }, []);
 
   const handleRunSuccess = useCallback((result: PublicDemoRunResult) => {
     setLastDemoRun(result);
@@ -50,17 +49,9 @@ export function LandingWaitlist() {
   );
 
   return (
-    <div className="relative min-h-full bg-white" data-testid="waitlist-page">
-      <div
-        className="pointer-events-none absolute left-1/2 top-[18%] z-0 h-[min(90vw,520px)] w-[min(90vw,520px)] -translate-x-1/2 -translate-y-1/2 rounded-full bg-gradient-to-br from-neutral-200/35 via-neutral-100/25 to-transparent blur-[100px]"
-        aria-hidden
-      />
-      <div
-        className="pointer-events-none absolute right-[8%] top-[42%] z-0 h-[min(40vw,280px)] w-[min(40vw,280px)] rounded-full bg-gradient-to-tr from-neutral-300/20 to-transparent blur-[80px]"
-        aria-hidden
-      />
-
-      <TopBarMinimal variant="light" />
+    <div className="relative min-h-full bg-lab-bg text-lab-text" data-testid="waitlist-page">
+      <LandingAmbientLayer />
+      <TopBarMinimal hideLiveDemoLink />
 
       <div className="h-14 shrink-0" aria-hidden />
 
@@ -68,74 +59,39 @@ export function LandingWaitlist() {
         <motion.div
           initial={{ opacity: 0, y: -6 }}
           animate={{ opacity: 1, y: 0 }}
-          className="border-b border-neutral-200/80 bg-neutral-50/90 px-4 py-2.5 text-center backdrop-blur-sm"
+          className="relative z-10 border-b border-white/15 bg-white/[0.08] px-4 py-2.5 text-center backdrop-blur-md"
         >
           <Link
             to="/get-report"
-            className="text-sm font-semibold text-neutral-900 underline decoration-neutral-300/90 underline-offset-4 transition-colors hover:decoration-neutral-500"
+            className="text-sm font-semibold text-lab-accent underline decoration-white/15 underline-offset-4 transition-colors hover:decoration-zinc-400/50"
           >
-            Continue — get your report, then upload
+            Pick up where you left off — grab your report, then upload
           </Link>
         </motion.div>
       ) : null}
 
-      <main className="relative z-10 mx-auto max-w-5xl px-4 pb-24 pt-6 sm:px-6 sm:pt-8">
-        <motion.div
-          className="mx-auto max-w-2xl"
-          variants={heroContainer}
-          initial="hidden"
-          animate="show"
-        >
-          <div className="relative overflow-hidden rounded-2xl border border-neutral-200/90 bg-white px-6 py-9 text-center shadow-[0_24px_80px_-32px_rgba(15,23,42,0.14)] sm:px-10 sm:py-11">
-            <div
-              className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-neutral-400/50 to-transparent"
-              aria-hidden
-            />
-            <motion.span
-              variants={heroItem}
-              data-testid="home-hero-eyebrow"
-              className="inline-flex items-center rounded-full border border-neutral-200/90 bg-neutral-50 px-3.5 py-1 text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-500"
-            >
-              Private early access
-            </motion.span>
-            <motion.h1
-              variants={heroItem}
-              data-testid="home-hero-headline"
-              className="mt-5 text-balance text-3xl font-bold leading-[1.12] tracking-tight text-neutral-950 sm:text-[2.35rem] sm:leading-[1.08]"
-            >
-              Be first when 850 Lab opens
-            </motion.h1>
-            <motion.p
-              variants={heroItem}
-              className="mx-auto mt-4 max-w-lg text-pretty text-base font-medium leading-relaxed text-neutral-600 sm:text-lg"
-            >
-              The same bureau-grade engine members will use — invitation only while we finish the
-              full guided experience. Join the waitlist for priority access.
-            </motion.p>
-            <motion.p
-              variants={heroItem}
-              className="mx-auto mt-6 max-w-md text-pretty text-sm font-medium leading-relaxed text-neutral-500"
-            >
-              Selective onboarding. Calm, precise, built for people who take credit seriously — not
-              a mass-market signup wall.
-            </motion.p>
-          </div>
-        </motion.div>
+      <main className="relative z-10 mx-auto max-w-5xl px-4 pb-28 pt-8 sm:px-6 sm:pt-12">
+        <LandingPremiumHero
+          waitlistHint
+          onTryDemo={scrollWatch}
+          onRunReport={() => setAccessOpen(true)}
+        />
+        <LandingFourPillars />
+        <LandingGuidedDemoFlow onScrollToLiveDemo={scrollLive} />
+        <LandingAuthorityStrip />
 
-        {/* Visible demo section title: embeddedOnHome uses sr-only headings inside the component. */}
-        <div className="mx-auto mt-12 max-w-3xl text-center sm:mt-14">
+        <div className="mx-auto mt-4 max-w-5xl text-center sm:mt-8">
           <p
             data-testid="waitlist-demo-eyebrow"
-            className="text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-500"
+            className="text-[10px] font-bold uppercase tracking-[0.28em] text-neutral-400"
           >
-            Live preview
+            Interactive demo
           </p>
-          <h2 className="mt-3 text-balance text-2xl font-bold tracking-tight text-neutral-950 sm:text-3xl">
-            Same engine — sample PDFs only
-          </h2>
-          <p className="mx-auto mt-3 max-w-xl text-pretty text-sm font-medium leading-relaxed text-neutral-600 sm:text-[15px]">
-            Run a real fixture through the live parser, priorities, letters, and 72-hour plan. Nothing
-            from your machine uploads here.
+          <h3 className="mt-2 font-heading text-xl font-semibold tracking-tight text-white sm:text-2xl">
+            Real sample files · not your credit file
+          </h3>
+          <p className="mx-auto mt-2 max-w-lg text-sm font-medium text-neutral-200">
+            We use shared PDFs here so you can see how it works before you&apos;re in.
           </p>
         </div>
 
@@ -143,7 +99,7 @@ export function LandingWaitlist() {
           <PublicDemoInteractiveSection
             onRunSuccess={handleRunSuccess}
             embeddedOnHome
-            surfaceTheme={waitlistDemoSurface}
+            surfaceTheme="night"
           />
         </div>
 
@@ -152,25 +108,29 @@ export function LandingWaitlist() {
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
-            className="mt-12 rounded-2xl border border-neutral-200/90 bg-neutral-50/50 px-6 py-8 text-center shadow-sm shadow-neutral-900/5 sm:px-10"
+            className="mt-12 rounded-2xl border-2 border-white/20 bg-white/[0.08] px-6 py-8 text-center shadow-xl shadow-black/25 backdrop-blur-sm sm:px-10"
             data-testid="demo-post-run-cta"
           >
-            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-neutral-500">
-              Next
-            </p>
-            <h2 className="mt-2 text-xl font-bold text-neutral-950 sm:text-2xl">
-              Request priority access
+            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-400">Next</p>
+            <h2 className="mt-2 font-heading text-xl font-semibold text-white sm:text-2xl">
+              Want yours to look like that?
             </h2>
-            <p className="mx-auto mt-3 max-w-md text-sm font-medium leading-relaxed text-neutral-600">
-              The full program opens by invitation — join the waitlist below when you&apos;re ready.
+            <p className="mx-auto mt-3 max-w-md text-sm font-medium leading-relaxed text-neutral-200">
+              Get in line — we&apos;ll open the door when your turn comes.
             </p>
           </motion.div>
         ) : null}
 
-        <div className={lastDemoRun ? "mt-8 sm:mt-10" : "mt-12 sm:mt-16"}>
-          <WaitlistLeadForm />
+        <div className={lastDemoRun ? "mt-8 sm:mt-10" : "mt-16 sm:mt-20"}>
+          <WaitlistLeadForm variant="dark" />
         </div>
       </main>
+
+      <LandingEarlyAccessModal
+        open={accessOpen}
+        onClose={() => setAccessOpen(false)}
+        mode="waitlist"
+      />
     </div>
   );
 }

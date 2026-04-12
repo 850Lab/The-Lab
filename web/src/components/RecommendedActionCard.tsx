@@ -19,15 +19,15 @@ export function RecommendedActionCard({ option }: Props) {
           transition: { duration: 0.44, ease: [0.22, 1, 0.36, 1] },
         },
       }}
-      className="rounded-xl border border-lab-accent/25 bg-lab-elevated px-5 py-6 shadow-lg shadow-black/25 sm:px-6 sm:py-7"
+      className="rounded-xl border border-zinc-800/70 bg-lab-elevated px-5 py-6 shadow-lg shadow-black/25 sm:px-6 sm:py-7"
     >
       <div className="flex flex-wrap items-center gap-2">
         <h2 className="text-[15px] font-semibold text-lab-text sm:text-base">
-          {isDefault ? "Recommended next step" : "Your next step"}
+          Suggested next step
         </h2>
         {isDefault ? (
           <span className="rounded-full bg-lab-accent/15 px-2.5 py-0.5 text-xs font-medium text-lab-accent">
-            Suggested
+            Starting point
           </span>
         ) : (
           <span className="rounded-full bg-white/[0.08] px-2.5 py-0.5 text-xs font-medium text-lab-muted">
@@ -35,6 +35,11 @@ export function RecommendedActionCard({ option }: Props) {
           </span>
         )}
       </div>
+
+      <p className="mt-3 text-sm leading-relaxed text-lab-muted">
+        Based on what this round shows so far, this may be the clearest next move if you&apos;re
+        ready — you can still pick another path below.
+      </p>
 
       <motion.div
         key={option.id}

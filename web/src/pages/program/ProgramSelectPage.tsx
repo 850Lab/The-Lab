@@ -104,7 +104,7 @@ export function ProgramSelectPage() {
         <div className="mt-4 flex flex-wrap gap-3">
           <Link
             to="/program/upload"
-            className="inline-flex rounded-md bg-lab-accent px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-sky-400"
+            className="inline-flex rounded-md bg-lab-accent px-4 py-2 text-sm font-semibold text-zinc-950 hover:brightness-110"
           >
             Share your report
           </Link>
@@ -192,7 +192,7 @@ export function ProgramSelectPage() {
           type="button"
           disabled={saving || reportId == null}
           onClick={() => void onSave()}
-          className="rounded-md bg-lab-accent px-5 py-2.5 text-sm font-semibold text-slate-950 disabled:opacity-40"
+          className="rounded-md bg-lab-accent px-5 py-2.5 text-sm font-semibold text-zinc-950 disabled:opacity-40"
         >
           {saving ? "Saving…" : "Save my focus"}
         </button>

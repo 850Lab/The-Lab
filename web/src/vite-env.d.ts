@@ -13,6 +13,8 @@ interface ImportMetaEnv {
   readonly VITE_ANNUAL_CREDIT_REPORT_URL?: string;
   /** Set to "0" to force legacy multipart report upload (skip presigned direct-to-storage). */
   readonly VITE_USE_DIRECT_REPORT_UPLOAD?: string;
+  /** Set to "true" to enable waitlist-only public shell (narrow paths, `/waitlist` as auth entry). */
+  readonly VITE_WAITLIST_MODE?: string;
 }
 
 interface ImportMeta {

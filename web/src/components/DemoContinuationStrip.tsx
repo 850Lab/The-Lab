@@ -33,10 +33,10 @@ export function DemoContinuationStrip({ stage }: Props) {
 
   return (
     <div
-      className="mt-6 rounded-xl border border-lab-accent/25 bg-gradient-to-b from-lab-accent/[0.08] to-lab-surface/40 px-4 py-3.5"
+      className="mt-6 rounded-xl border border-zinc-700/45 bg-gradient-to-b from-white/[0.04] to-lab-surface/40 px-4 py-3.5"
       role="status"
     >
-      <p className="text-xs font-semibold uppercase tracking-wide text-lab-accent">{headline}</p>
+      <p className="text-xs font-semibold uppercase tracking-wide text-zinc-400">{headline}</p>
       <p className="mt-2 text-sm leading-relaxed text-lab-muted">{body}</p>
     </div>
   );
