@@ -20,6 +20,9 @@ from starlette.requests import Request
 _DIST = Path(__file__).resolve().parent.parent / "web" / "dist"
 _ASSETS = _DIST / "assets"
 
+# Avoid stale HTML shell after deploy (hashed /assets/* still cache well).
+_SPA_INDEX_HEADERS = {"Cache-Control": "no-cache, must-revalidate"}
+
 
 class StripWorkflowApiPrefixMiddleware(BaseHTTPMiddleware):
     """Map ``/workflow-api/api/...`` → ``/api/...`` (same as Vite dev proxy)."""
@@ -90,7 +93,7 @@ def mount_customer_web_dist_if_present(app: FastAPI, logger: logging.Logger) -> 
 
     @app.get("/", include_in_schema=False)
     async def _customer_spa_root() -> FileResponse:
-        return FileResponse(_DIST / "index.html")
+        return FileResponse(_DIST / "index.html", headers=_SPA_INDEX_HEADERS)
 
     @app.get("/{full_path:path}", include_in_schema=False)
     async def _customer_spa_fallback(full_path: str) -> FileResponse:
@@ -101,4 +104,4 @@ def mount_customer_web_dist_if_present(app: FastAPI, logger: logging.Logger) -> 
             or full_path.startswith("assets/")
         ):
             raise HTTPException(status_code=404, detail="Not Found")
-        return FileResponse(_DIST / "index.html")
+        return FileResponse(_DIST / "index.html", headers=_SPA_INDEX_HEADERS)
