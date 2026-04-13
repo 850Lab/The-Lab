@@ -38,18 +38,10 @@ import type {
   ExecutionState,
 } from "@/lib/executionRuntimeTypes";
 import type { WorkflowEnvelope, WorkflowSyncPayload } from "@/lib/workflowTypes";
+import { normalizeBrowserFetchFailure } from "@/lib/workflowNetworkErrors";
 
 function apiBase(): string {
   return workflowApiBase();
-}
-
-/** Hint when fetch() never connects (browser shows "Failed to fetch"). */
-function workflowFetchNetworkHint(): string {
-  const base = apiBase();
-  if (base.startsWith("/")) {
-    return "Start the workflow API (e.g. uvicorn) or set WORKFLOW_API_PROXY_TARGET in web/.env.local. If the SPA is on Vercel, set VITE_WORKFLOW_API_URL to your live API origin.";
-  }
-  return "Confirm VITE_WORKFLOW_API_URL is correct, the API is up, and CORS allows this site’s origin.";
 }
 
 async function workflowFetchJson<T>(
@@ -69,16 +61,7 @@ async function workflowFetchJson<T>(
   try {
     res = await fetch(url, { ...init, headers });
   } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    if (
-      e instanceof TypeError &&
-      (msg === "Failed to fetch" || /network|fetch|load failed/i.test(msg))
-    ) {
-      throw new Error(
-        `Could not reach the workflow API (${apiBase()}). ${workflowFetchNetworkHint()}`,
-      );
-    }
-    throw e;
+    throw normalizeBrowserFetchFailure(e);
   }
   const text = await res.text();
   if (!res.ok) {
@@ -743,11 +726,16 @@ export async function postReportUploadMultipart(
   }
   fd.append("privacy_consent", privacyConsent ? "true" : "false");
   const url = `${apiBase()}/api/workflows/${encodeURIComponent(workflowId)}/reports/upload`;
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}` },
-    body: fd,
-  });
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: fd,
+    });
+  } catch (e) {
+    throw normalizeBrowserFetchFailure(e);
+  }
   const text = await res.text();
   if (!res.ok) {
     throw new Error(

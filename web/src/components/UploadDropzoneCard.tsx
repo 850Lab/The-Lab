@@ -265,16 +265,16 @@ export function UploadDropzoneCard({ disabled, onUploadPdfs }: Props) {
                   }}
                   transition={{ type: "spring", stiffness: 380, damping: 24 }}
                 >
-                  {disabled ? "Almost there — confirm above" : "Drop your report here"}
+                  {disabled ? "Almost there — confirm above" : "Drop your report(s) here"}
                 </motion.span>
                 <span className="mt-2 block max-w-md text-pretty text-sm font-medium leading-relaxed text-lab-muted">
                   {disabled
                     ? "Check the box, then drop your file or tap — we take it from there."
-                    : "Easiest step — release it or tap to browse. We organize everything from here."}
+                    : "One PDF per bureau is ideal — select or drag several at once (up to 12), or add more later from Findings."}
                 </span>
 
                 <span className="mt-4 inline-flex items-center rounded-full border border-white/[0.1] bg-white/[0.04] px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-lab-subtle sm:text-xs">
-                  PDF · single bureau
+                  PDF · multi-select OK
                 </span>
 
                 <div className="mt-4 flex flex-wrap items-center justify-center gap-2">

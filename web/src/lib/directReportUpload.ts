@@ -6,9 +6,24 @@ import { workflowApiBase } from "@/lib/apiBase";
 import type { ReportUploadResponse as OrgReportUploadResponse } from "@/lib/orgProgramTypes";
 import { formatReportUploadErrorMessage } from "@/lib/uploadHttpError";
 import type { WorkflowEnvelope } from "@/lib/workflowTypes";
+import { normalizeBrowserFetchFailure } from "@/lib/workflowNetworkErrors";
 
 function apiBase(): string {
   return workflowApiBase();
+}
+
+function normalizeStoragePutFailure(e: unknown): Error {
+  const msg = e instanceof Error ? e.message : String(e);
+  if (
+    e instanceof TypeError &&
+    (msg === "Failed to fetch" || /network|fetch|load failed/i.test(msg))
+  ) {
+    return new Error(
+      "Could not upload your PDF to secure storage. Check your connection and try again.",
+    );
+  }
+  if (e instanceof Error) return e;
+  return new Error(String(e));
 }
 
 function parseDetailMessage(text: string): string {
@@ -94,10 +109,15 @@ export async function postRetailReportUploadDirect(
 ): Promise<RetailReportUploadDirectResult> {
   const wid = encodeURIComponent(workflowId);
   const sessionUrl = `${apiBase()}/api/workflows/${wid}/report-upload/session`;
-  const sessionRes = await fetch(sessionUrl, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  let sessionRes: Response;
+  try {
+    sessionRes = await fetch(sessionUrl, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  } catch (e) {
+    throw normalizeBrowserFetchFailure(e);
+  }
   const sessionText = await sessionRes.text();
   if (!sessionRes.ok) {
     throwStorageUnavailableIfApplicable(
@@ -123,11 +143,16 @@ export async function postRetailReportUploadDirect(
   const buf = await file.arrayBuffer();
   const byteSize = buf.byteLength;
 
-  const putRes = await fetch(session.uploadUrl, {
-    method: "PUT",
-    headers: { "Content-Type": contentType },
-    body: buf,
-  });
+  let putRes: Response;
+  try {
+    putRes = await fetch(session.uploadUrl, {
+      method: "PUT",
+      headers: { "Content-Type": contentType },
+      body: buf,
+    });
+  } catch (e) {
+    throw normalizeStoragePutFailure(e);
+  }
   if (!putRes.ok) {
     const t = await putRes.text().catch(() => "");
     throw new Error(
@@ -138,18 +163,23 @@ export async function postRetailReportUploadDirect(
   const sha256Hex = await sha256HexOfArrayBuffer(buf);
 
   const finUrl = `${apiBase()}/api/workflows/${wid}/report-upload/finalize`;
-  const finRes = await fetch(finUrl, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      uploadId: session.uploadId,
-      byteSize,
-      sha256Hex,
-    }),
-  });
+  let finRes: Response;
+  try {
+    finRes = await fetch(finUrl, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        uploadId: session.uploadId,
+        byteSize,
+        sha256Hex,
+      }),
+    });
+  } catch (e) {
+    throw normalizeBrowserFetchFailure(e);
+  }
   const finText = await finRes.text();
   if (!finRes.ok) {
     throwStorageUnavailableIfApplicable(
@@ -192,10 +222,15 @@ export async function postOrgReportUploadDirect(
   file: File,
 ): Promise<OrgReportUploadResponse> {
   const sessionUrl = `${apiBase()}/api/me/report-upload/session`;
-  const sessionRes = await fetch(sessionUrl, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  let sessionRes: Response;
+  try {
+    sessionRes = await fetch(sessionUrl, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  } catch (e) {
+    throw normalizeBrowserFetchFailure(e);
+  }
   const sessionText = await sessionRes.text();
   if (!sessionRes.ok) {
     throwStorageUnavailableIfApplicable(
@@ -218,11 +253,16 @@ export async function postOrgReportUploadDirect(
   const buf = await file.arrayBuffer();
   const byteSize = buf.byteLength;
 
-  const putRes = await fetch(session.uploadUrl, {
-    method: "PUT",
-    headers: { "Content-Type": contentType },
-    body: buf,
-  });
+  let putRes: Response;
+  try {
+    putRes = await fetch(session.uploadUrl, {
+      method: "PUT",
+      headers: { "Content-Type": contentType },
+      body: buf,
+    });
+  } catch (e) {
+    throw normalizeStoragePutFailure(e);
+  }
   if (!putRes.ok) {
     const t = await putRes.text().catch(() => "");
     throw new Error(
@@ -233,18 +273,23 @@ export async function postOrgReportUploadDirect(
   const sha256Hex = await sha256HexOfArrayBuffer(buf);
 
   const finUrl = `${apiBase()}/api/me/report-upload/finalize`;
-  const finRes = await fetch(finUrl, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      uploadId: session.uploadId,
-      byteSize,
-      sha256Hex,
-    }),
-  });
+  let finRes: Response;
+  try {
+    finRes = await fetch(finUrl, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        uploadId: session.uploadId,
+        byteSize,
+        sha256Hex,
+      }),
+    });
+  } catch (e) {
+    throw normalizeBrowserFetchFailure(e);
+  }
   const finText = await finRes.text();
   if (!finRes.ok) {
     throwStorageUnavailableIfApplicable(

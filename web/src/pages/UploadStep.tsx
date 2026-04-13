@@ -262,8 +262,9 @@ export function UploadStep() {
                   Let&apos;s take a look at your report
                 </h1>
                 <p className="step-support mx-auto mt-3 max-w-lg text-pretty">
-                  Easy start — private, encrypted upload. Nothing is mailed to the bureaus from this step,
-                  no dispute commitment yet; you approve every next move.
+                  Easy start — private, encrypted upload. You can upload several bureau PDFs in one go
+                  (file picker: Ctrl/Cmd+click) or one at a time. Nothing is mailed from this step; you
+                  approve every next move.
                 </p>
               </motion.div>
             ) : (
