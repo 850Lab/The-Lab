@@ -1,3 +1,4 @@
+import { useLayoutEffect } from "react";
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { OrionCustomerStrip } from "@/components/OrionCustomerStrip";
 import { WorkflowIntegrityBanner } from "@/components/WorkflowIntegrityBanner";
@@ -32,6 +33,11 @@ export function CustomerWorkflowShell() {
   const path = loc.pathname;
   const auth = useAuth();
   const ctx = useCustomerWorkflow();
+
+  /** React Router does not reset scroll on SPA navigations; long pages (e.g. get-report) left users mid-scroll on the next step. */
+  useLayoutEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, [path]);
 
   if (auth.authBootstrapping) {
     return (
@@ -116,10 +122,17 @@ export function CustomerWorkflowShell() {
   const allowIntakeHub =
     onReviewStep && intakeHubPaths.has(path);
 
+  /** Integrity hints: user may proceed to tracking while authoritative step is still `mail`. */
+  const allowTrackingWhileMailBlocked =
+    ctx.integrityHints?.mailBlocked === true &&
+    path === "/tracking" &&
+    ctx.canonicalCustomerPath === "/send";
+
   if (
     CUSTOMER_WORKFLOW_GUARD_PATHS.has(path) &&
     path !== ctx.canonicalCustomerPath &&
-    !allowIntakeHub
+    !allowIntakeHub &&
+    !allowTrackingWhileMailBlocked
   ) {
     return <Navigate to={ctx.canonicalCustomerPath} replace />;
   }

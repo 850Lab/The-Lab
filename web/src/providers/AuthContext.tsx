@@ -137,31 +137,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [token, clearSession]);
 
   const refreshUser = useCallback(async () => {
-    const t = readSessionBearerToken();
+    /**
+     * Prefer persisted token; fall back to in-memory `token` so we never clear a live session
+     * when storage read fails (private mode / quota) after sign-up/sign-in.
+     */
+    const t = readSessionBearerToken() || token;
     if (!t) {
       clearSession();
       return;
     }
     const u = await authApi.authMe(t);
+    setCustomerSessionToken(t);
     setToken(t);
     setUser(u);
-  }, [clearSession]);
+  }, [clearSession, token]);
 
   const verifyEmail = useCallback(
     async (code: string) => {
-      const t = readSessionBearerToken();
+      let t = readSessionBearerToken();
+      if (!t) t = token;
       if (!t) throw new Error("Not signed in");
       await authApi.authVerifyEmail(t, code);
       await refreshUser();
     },
-    [refreshUser],
+    [refreshUser, token],
   );
 
   const resendVerification = useCallback(async () => {
-    const t = readSessionBearerToken();
+    let t = readSessionBearerToken();
+    if (!t) t = token;
     if (!t) throw new Error("Not signed in");
     await authApi.authResendVerification(t);
-  }, []);
+  }, [token]);
 
   const emailVerified = Boolean(user?.emailVerified);
 
