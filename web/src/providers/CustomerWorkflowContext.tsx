@@ -9,6 +9,7 @@ import {
 } from "react";
 import type { WorkflowIntegrityHints } from "@/lib/integrityHintsTypes";
 import type { ProgramState } from "@/lib/programStateTypes";
+import { buildFallbackProgramState } from "@/lib/programStateFallback";
 import * as api from "@/lib/workflowApi";
 import { buildOrionViewModel, type OrionViewModel } from "@/lib/orion/orionViewModel";
 import type { WorkflowEnvelope } from "@/lib/workflowTypes";
@@ -68,14 +69,17 @@ export function CustomerWorkflowProvider({ children }: { children: ReactNode }) 
       const wid = await api.fetchActiveWorkflowId(t);
       setWorkflowId(wid);
       if (wid) {
-        const [env, hints, pstate] = await Promise.all([
+        const [env, hints] = await Promise.all([
           api.fetchWorkflowResume(t, wid),
           api.fetchWorkflowIntegrityHints(t, wid),
-          api.fetchProgramState(t, wid),
         ]);
         setEnvelope(env);
         setIntegrityHints(hints);
-        setProgramState(pstate);
+        try {
+          setProgramState(await api.fetchProgramState(t, wid));
+        } catch {
+          setProgramState(buildFallbackProgramState(env, wid, hints));
+        }
       } else {
         setEnvelope(null);
         setProgramState(null);
@@ -130,29 +134,34 @@ export function CustomerWorkflowProvider({ children }: { children: ReactNode }) 
     setWorkflowId(wid);
     setEnvelope(env);
     setError(null);
+    let hints: WorkflowIntegrityHints | null = null;
     try {
-      const [hints, pstate] = await Promise.all([
-        api.fetchWorkflowIntegrityHints(t, wid),
-        api.fetchProgramState(t, wid),
-      ]);
+      hints = await api.fetchWorkflowIntegrityHints(t, wid);
       setIntegrityHints(hints);
-      setProgramState(pstate);
     } catch {
       setIntegrityHints(null);
+    }
+    try {
+      setProgramState(await api.fetchProgramState(t, wid));
+    } catch {
+      setProgramState(buildFallbackProgramState(env, wid, hints));
     }
   }, [authToken, emailVerified]);
 
   const refresh = useCallback(async () => {
     const t = authToken;
     if (!t || !workflowId) return;
-    const [env, hints, pstate] = await Promise.all([
+    const [env, hints] = await Promise.all([
       api.fetchWorkflowResume(t, workflowId),
       api.fetchWorkflowIntegrityHints(t, workflowId),
-      api.fetchProgramState(t, workflowId),
     ]);
     setEnvelope(env);
     setIntegrityHints(hints);
-    setProgramState(pstate);
+    try {
+      setProgramState(await api.fetchProgramState(t, workflowId));
+    } catch {
+      setProgramState(buildFallbackProgramState(env, workflowId, hints));
+    }
   }, [authToken, workflowId]);
 
   const startStep = useCallback(

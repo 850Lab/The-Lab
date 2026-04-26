@@ -1095,7 +1095,21 @@ def get_program_state(
         enforce_customer_action(workflow_id, ACTION_HOME_SUMMARY_VIEW)
     except FlowEnforcementError as e:
         _raise_flow_violation(e)
-    return build_program_state(int(session["user_id"]), str(workflow_id).strip())
+    try:
+        return build_program_state(int(session["user_id"]), str(workflow_id).strip())
+    except Exception:
+        _logger.exception(
+            "get_program_state failed workflow_id=%s",
+            str(workflow_id).strip()[:64],
+        )
+        return {
+            "ok": False,
+            "version": "program_state_v1",
+            "error": {
+                "code": "PROGRAM_STATE_BUILD_ERROR",
+                "messageSafe": "Program state could not be computed. Refresh the page; the app can fall back to workflow data.",
+            },
+        }
 
 
 @app.get("/api/workflows/{workflow_id}/intake/summary")
