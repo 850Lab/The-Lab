@@ -6,6 +6,7 @@ import { PreparedItemsSummary, type PreparedCategory } from "@/components/Prepar
 import { StepPageAmbientBackground } from "@/components/StepPageAmbientBackground";
 import { StepMainColumn } from "@/components/StepMainColumn";
 import { TopBarMinimal } from "@/components/TopBarMinimal";
+import { PresentationDetails } from "@/components/presentation/PresentationStepFrame";
 import { ValueRecapList } from "@/components/ValueRecapList";
 import type { PaymentContextPayload } from "@/lib/paymentTypes";
 import {
@@ -124,8 +125,10 @@ export function PaymentPage() {
   const PAYMENT_HERO_FALLBACK = {
     title: "We’ll prepare, send, and track for you when you’re ready",
     subtitle:
-      "This step covers the guided package for your round—mailing, tracking, and structured follow-through—not a separate fee to “get” the letters. You can still download them in the app. Nothing is physically mailed at checkout; you stay in control of the next step.",
+      "This unlocks the guided path for your round—prep, optional mail, and tracking. Nothing ships at checkout.",
   } as const;
+  const PAYMENT_HERO_LONG =
+    "This step covers the guided package for your round—mailing, tracking, and structured follow-through—not a separate fee to “get” the letters. You can still download them in the app. You stay in control of each send.";
 
   const orionAuthority = useMemo(
     () => resolveOrionAuthority(orionViewModel, integrityHints),
@@ -242,34 +245,33 @@ export function PaymentPage() {
           </motion.p>
 
           {!loading && pay?.onPaymentStep ? (
-            <motion.div
-              variants={headerVariants}
-              className="surface-emerald-reassure mx-auto mt-6 max-w-lg"
-            >
-              <ul className="space-y-2 text-left text-sm leading-relaxed text-emerald-50/95 sm:text-[15px]">
+            <PresentationDetails label="What this step covers" className="mx-auto mt-4 max-w-lg">
+              <p className="text-sm leading-relaxed text-lab-muted">{PAYMENT_HERO_LONG}</p>
+              <ul className="mt-3 space-y-2 text-left text-sm leading-relaxed text-emerald-100/90 sm:text-[15px]">
                 <li className="flex gap-2">
                   <span className="mt-0.5 shrink-0 text-emerald-300" aria-hidden>
                     •
                   </span>
-                  <span>Your download and review in the app stay available — you&apos;re not “buying a PDF” as the product</span>
+                  <span>Downloads in the app stay available — you&apos;re not “buying a PDF” as the product.</span>
                 </li>
                 <li className="flex gap-2">
                   <span className="mt-0.5 shrink-0 text-emerald-300" aria-hidden>
                     •
                   </span>
-                  <span>Payment is for the guided path: package prep, optional send, and ongoing tracking as you use it</span>
+                  <span>Payment is for the guided path: package prep, optional send, and tracking as you use it.</span>
                 </li>
                 <li className="flex gap-2">
                   <span className="mt-0.5 shrink-0 text-emerald-300" aria-hidden>
                     •
                   </span>
-                  <span>Nothing is put in the mail at this step — you confirm each send later</span>
+                  <span>Nothing is put in the mail at this step — you confirm each send later.</span>
                 </li>
               </ul>
-            </motion.div>
+              <div className="mt-4">
+                <PaymentNextStepsStrip />
+              </div>
+            </PresentationDetails>
           ) : null}
-
-          {!loading && pay?.onPaymentStep ? <PaymentNextStepsStrip /> : null}
 
           {loading ? (
             <motion.p variants={headerVariants} className="mt-10 text-center text-sm text-lab-muted">
@@ -399,22 +401,7 @@ export function PaymentPage() {
 
                 <div className="my-7 border-t border-white/[0.06] sm:my-8" />
 
-                <p className="text-xs font-medium uppercase tracking-[0.12em] text-lab-subtle">
-                  Included in this step
-                </p>
-                <div className="mt-3">
-                  <ValueRecapList
-                    title="What this payment includes"
-                    lines={[...PAYMENT_WHAT_HAPPENS_NEXT_LINES]}
-                  />
-                </div>
-
-                <div className="mt-5 text-center text-xs text-lab-subtle">
-                  Letter credits on your account:{" "}
-                  <span className="font-medium text-lab-text">{pay.entitlements.letters}</span>
-                </div>
-
-                <div className="mt-8 space-y-3">
+                <div className="space-y-3">
                   <p className="text-xs font-medium uppercase tracking-[0.12em] text-lab-subtle">
                     Recommended for this round
                   </p>
@@ -436,10 +423,8 @@ export function PaymentPage() {
                       <p className="text-center text-sm font-semibold text-lab-text">
                         Continue and skip the manual busywork
                       </p>
-                      <p className="mt-2 text-center text-sm leading-relaxed text-lab-muted">
-                        After checkout you move to letter and proof steps — you avoid packaging, guessing
-                        addresses, and doing follow-up without a paper trail, while keeping download if you
-                        want it.
+                      <p className="mt-2 text-center text-sm text-lab-muted">
+                        After checkout: letters and proof—download stays available if you want it.
                       </p>
                       <button
                         type="button"
@@ -457,6 +442,26 @@ export function PaymentPage() {
                     </div>
                   </div>
                 </div>
+
+                <PresentationDetails label="Full package detail" className="mt-5">
+                  <p className="text-xs font-medium uppercase tracking-[0.12em] text-lab-subtle">
+                    Included in this step
+                  </p>
+                  <div className="mt-2">
+                    <ValueRecapList
+                      title="What this payment includes"
+                      lines={[...PAYMENT_WHAT_HAPPENS_NEXT_LINES]}
+                    />
+                  </div>
+                  <p className="mt-3 text-center text-xs text-lab-subtle">
+                    Letter credits on your account:{" "}
+                    <span className="font-medium text-lab-text">{pay.entitlements.letters}</span>
+                  </p>
+                  <p className="mt-3 text-sm leading-relaxed text-lab-muted">
+                    After checkout you move to letter and proof—less packaging guesswork, with a clear
+                    paper trail, while keeping download if you want it.
+                  </p>
+                </PresentationDetails>
 
                 <div className="mt-5">
                   <PaymentShell

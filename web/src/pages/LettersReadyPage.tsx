@@ -10,6 +10,7 @@ import { LettersActionSection } from "@/components/LettersActionSection";
 import { StepPageAmbientBackground } from "@/components/StepPageAmbientBackground";
 import { StepMainColumn } from "@/components/StepMainColumn";
 import { TopBarMinimal } from "@/components/TopBarMinimal";
+import { PresentationDetails } from "@/components/presentation/PresentationStepFrame";
 import type { CreditCommandPlanResponse, LetterRow, LettersUiFlags } from "@/lib/letterTypes";
 import {
   fetchCreditCommandPlan,
@@ -446,48 +447,47 @@ export function LettersReadyPage() {
               variants={headerVariants}
               className="step-title"
             >
-              {lettersHero.title}
+              {stripPhase === "ready" && letters.length > 0
+                ? "Your letters are ready"
+                : lettersHero.title}
             </motion.h2>
             <motion.p
               variants={headerVariants}
               className="step-support"
             >
-              {lettersHero.subtitle}
+              {stripPhase === "ready" && letters.length > 0
+                ? "Download a pack or continue—proof is next; mailing comes later in your program."
+                : lettersHero.subtitle}
             </motion.p>
-            <motion.div
-              variants={headerVariants}
-              className="surface-emerald-reassure mx-auto mt-6 max-w-lg"
-            >
-              <ul className="space-y-2 text-left text-sm leading-relaxed text-emerald-50/95 sm:text-[15px]">
-                <li className="flex gap-2">
-                  <span className="mt-0.5 shrink-0 text-emerald-300" aria-hidden>
-                    •
-                  </span>
-                  <span>These letters were prepared from your confirmed round</span>
-                </li>
-                <li className="flex gap-2">
-                  <span className="mt-0.5 shrink-0 text-emerald-300" aria-hidden>
-                    •
-                  </span>
-                  <span>You are still in the preparation phase</span>
-                </li>
-                <li className="flex gap-2">
-                  <span className="mt-0.5 shrink-0 text-emerald-300" aria-hidden>
-                    •
-                  </span>
-                  <span>Nothing is mailed from this page</span>
-                </li>
-              </ul>
-            </motion.div>
-            <LettersProgressStrip phase={stripPhase} />
-            <motion.div variants={headerVariants} className="mx-auto mt-6 max-w-lg">
-              <RoundContinuityModule
-                selectedCount={lettersUi?.selectedReviewClaimCount ?? 0}
-                letterGroups={letters.length}
-                bureauCount={bureauCount}
-                phase={stripPhase}
-              />
-            </motion.div>
+            <PresentationDetails label="What this step covers" className="mx-auto mt-5 max-w-lg">
+              <div className="surface-emerald-reassure -mx-1 border-0 bg-emerald-500/10 px-3 py-3 sm:px-4">
+                <ul className="space-y-2 text-left text-sm leading-relaxed text-emerald-50/95 sm:text-[15px]">
+                  <li className="flex gap-2">
+                    <span className="mt-0.5 shrink-0 text-emerald-300" aria-hidden>
+                      •
+                    </span>
+                    <span>From your confirmed round in Strategy</span>
+                  </li>
+                  <li className="flex gap-2">
+                    <span className="mt-0.5 shrink-0 text-emerald-300" aria-hidden>
+                      •
+                    </span>
+                    <span>Still preparation — not mailed from here</span>
+                  </li>
+                </ul>
+              </div>
+              <div className="mt-4">
+                <LettersProgressStrip phase={stripPhase} />
+              </div>
+              <div className="mt-4">
+                <RoundContinuityModule
+                  selectedCount={lettersUi?.selectedReviewClaimCount ?? 0}
+                  letterGroups={letters.length}
+                  bureauCount={bureauCount}
+                  phase={stripPhase}
+                />
+              </div>
+            </PresentationDetails>
           </motion.div>
         ) : null}
 
@@ -552,10 +552,7 @@ export function LettersReadyPage() {
               animate="show"
               className="pb-4"
             >
-              <motion.div
-                variants={headerVariants}
-                className="mx-auto mt-6 max-w-lg rounded-xl border border-zinc-800/60 bg-lab-surface/80 px-4 py-4 text-left sm:px-5 sm:py-5"
-              >
+              <PresentationDetails label="Why these letters" className="mx-auto mt-6 max-w-lg">
                 <p className="text-xs font-semibold uppercase tracking-wide text-lab-accent">
                   {lettersPurpose.headline}
                 </p>
@@ -567,7 +564,7 @@ export function LettersReadyPage() {
                     {para}
                   </p>
                 ))}
-              </motion.div>
+              </PresentationDetails>
 
               {!lettersCoherent ? (
                 <motion.div variants={headerVariants} className="mx-auto mt-5 max-w-lg">
@@ -585,23 +582,14 @@ export function LettersReadyPage() {
                 </motion.div>
               ) : null}
 
-              <motion.div variants={headerVariants} className="mx-auto mt-5 max-w-lg">
-                <ProgramFlowBridge>
-                  {lettersCoherent ? (
-                    <>
-                      <span className="font-medium text-lab-text">Drafts from your round are below.</span>{" "}
-                      You can download and send these yourself, or continue in the program and use guided
-                      mailing and tracking when you reach those steps — your choice, no pressure.
-                    </>
-                  ) : (
-                    <>
-                      <span className="font-medium text-lab-text">Your confirmed round is now on the page as drafts.</span>{" "}
-                      Preview each letter, download a copy if helpful, then continue — proof and mailing
-                      come next, only when you&apos;re ready.
-                    </>
-                  )}
-                </ProgramFlowBridge>
-              </motion.div>
+              <motion.p
+                variants={headerVariants}
+                className="mx-auto mt-5 max-w-md text-center text-sm text-lab-muted"
+              >
+                {lettersCoherent
+                  ? "Preview or download below—mailing and tracking are later steps when you’re ready."
+                  : "Preview each letter, then continue. Proof and mailing follow in your program."}
+              </motion.p>
 
               <motion.div
                 variants={listVariants}

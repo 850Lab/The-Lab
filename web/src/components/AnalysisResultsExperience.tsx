@@ -6,6 +6,7 @@ import type { FindingGroupCardProps } from "@/components/FindingGroupCard";
 import { resolveAnalysisNarrative } from "@/lib/analysisFindingsNarrative";
 import type { ReviewClaimJson } from "@/lib/intakeTypes";
 import { stepNestedStaggerVariants as groupsContainer } from "@/lib/motionStep";
+import { useAnimatedCount } from "@/hooks/useAnimatedCount";
 
 type Props = {
   claims: ReviewClaimJson[];
@@ -33,37 +34,68 @@ export function AnalysisResultsExperience({
   const [findingsOpen, setFindingsOpen] = useState(false);
   const narrative = useMemo(() => resolveAnalysisNarrative(claims), [claims]);
   const total = claims.length;
+  const countDisplay = useAnimatedCount(total, 720, total > 0);
+  const highImpactDisplay = useAnimatedCount(
+    narrative.showHighImpact ? narrative.matchingCount : 0,
+    600,
+    narrative.showHighImpact && total > 0,
+  );
 
   return (
-    <div className="rounded-2xl border border-neutral-200/90 bg-white px-5 py-9 shadow-[0_1px_0_0_rgba(255,255,255,0.9)_inset,0_24px_60px_-36px_rgba(15,23,42,0.12)] sm:px-8 sm:py-11">
+    <div className="rounded-2xl border border-neutral-200/90 bg-white px-5 py-8 shadow-[0_1px_0_0_rgba(255,255,255,0.9)_inset,0_24px_60px_-36px_rgba(15,23,42,0.12)] sm:px-8 sm:py-9">
       <p className="text-center text-[10px] font-semibold uppercase tracking-[0.22em] text-neutral-500">
         Step 2 of 3
       </p>
 
       <motion.h1
-        className="mx-auto mt-3 max-w-xl text-balance text-center font-heading text-[1.65rem] font-semibold leading-[1.12] tracking-[-0.03em] text-neutral-950 sm:text-[2rem]"
+        className="mx-auto mt-3 max-w-xl text-balance text-center font-heading text-[1.5rem] font-semibold leading-[1.12] tracking-[-0.03em] text-neutral-950 sm:text-[1.85rem]"
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
+        transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
       >
         {narrative.headline}
       </motion.h1>
 
-      <motion.p
-        className="mx-auto mt-3 max-w-md text-center text-sm font-medium text-neutral-600"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.06, duration: 0.4 }}
-      >
-        {total} {total === 1 ? "item" : "items"} identified affecting your credit
-      </motion.p>
+      <div className="mx-auto mt-5 flex max-w-md flex-wrap items-end justify-center gap-6 sm:gap-10">
+        <div className="text-center">
+          <p
+            className="font-heading text-4xl font-bold tabular-nums text-neutral-950 sm:text-5xl"
+            aria-live="polite"
+          >
+            {countDisplay}
+          </p>
+          <p className="mt-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-500">
+            On your report
+          </p>
+        </div>
+        {narrative.showHighImpact ? (
+          <div className="text-center">
+            <p
+              className="font-heading text-4xl font-bold tabular-nums text-emerald-800 sm:text-5xl"
+              aria-live="polite"
+            >
+              {highImpactDisplay}
+            </p>
+            <p className="mt-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-500">
+              High-impact focus
+            </p>
+          </div>
+        ) : null}
+      </div>
 
-      <p className="mx-auto mt-2 max-w-lg text-center text-xs leading-relaxed text-neutral-500">
-        Private review only — nothing is mailed to the bureaus from this step.
+      <p className="mx-auto mt-3 max-w-md text-center text-xs text-neutral-500">
+        Private review — nothing is mailed from this step.{" "}
+        <Link
+          to="/report"
+          className="font-medium text-neutral-800 underline decoration-neutral-300 underline-offset-2 hover:text-neutral-950"
+        >
+          Full breakdown in your report
+        </Link>
+        .
       </p>
 
       <motion.article
-        className="relative mx-auto mt-8 max-w-lg overflow-hidden rounded-xl border border-neutral-300/80 bg-gradient-to-b from-neutral-50 to-white px-5 py-6 shadow-[0_0_0_1px_rgba(255,255,255,0.8)_inset,0_18px_40px_-28px_rgba(15,23,42,0.15)] sm:px-6 sm:py-7"
+        className="relative mx-auto mt-7 max-w-lg overflow-hidden rounded-xl border border-neutral-300/80 bg-gradient-to-b from-neutral-50 to-white px-5 py-5 shadow-[0_0_0_1px_rgba(255,255,255,0.8)_inset,0_18px_40px_-28px_rgba(15,23,42,0.15)] sm:px-6 sm:py-6"
         variants={primaryReveal}
         initial="hidden"
         animate="show"
@@ -79,8 +111,15 @@ export function AnalysisResultsExperience({
             </span>
           ) : null}
         </div>
-        <p className="mt-3 text-sm leading-relaxed text-neutral-700">{narrative.primaryLines[0]}</p>
-        <p className="mt-2 text-sm leading-relaxed text-neutral-600">{narrative.primaryLines[1]}</p>
+        <p className="mt-2 text-sm font-medium leading-snug text-neutral-800">{narrative.primaryLines[0]}</p>
+        <details className="details-calm group mt-3">
+          <summary className="cursor-pointer list-none text-left text-xs font-medium text-neutral-500 marker:content-none [&::-webkit-details-marker]:hidden">
+            <span className="underline decoration-neutral-200 underline-offset-2 group-open:text-neutral-800">
+              More detail
+            </span>
+          </summary>
+          <p className="mt-2 text-sm leading-relaxed text-neutral-600">{narrative.primaryLines[1]}</p>
+        </details>
       </motion.article>
 
       {findingGroups.length > 0 ? (

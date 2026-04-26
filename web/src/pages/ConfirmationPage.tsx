@@ -3,7 +3,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { ContinueCTA } from "@/components/ContinueCTA";
 import { NarrativeSummaryCard } from "@/components/NarrativeSummaryCard";
-import { ProgramFlowBridge } from "@/components/ProgramFlowBridge";
 import {
   ReviewPhaseProgressStrip,
   ReviewReassuranceBlock,
@@ -13,6 +12,7 @@ import { SummaryCard } from "@/components/SummaryCard";
 import { StepPageAmbientBackground } from "@/components/StepPageAmbientBackground";
 import { StepMainColumn } from "@/components/StepMainColumn";
 import { TopBarMinimal } from "@/components/TopBarMinimal";
+import { PresentationDetails } from "@/components/presentation/PresentationStepFrame";
 import { useIntakeSummary } from "@/hooks/useIntakeSummary";
 import { buildNarrativeInputForConfirmation } from "@/lib/narrativeBuilder";
 import { stepMainColumnTopClass } from "@/lib/stepPageLayout";
@@ -206,25 +206,23 @@ export function ConfirmationPage() {
             </motion.p>
 
             {bundle && authoritativeStepId === "review_claims" && !loading && !error ? (
-              <motion.div variants={headerVariants} className="mx-auto mt-5 max-w-2xl">
+              <PresentationDetails label="Program context" className="mx-auto mt-4 max-w-2xl">
                 <NarrativeSummaryCard input={confirmationNarrativeInput} />
-              </motion.div>
+                <div className="mt-5">
+                  <ReviewPhaseProgressStrip phase="prepare" />
+                </div>
+                <div className="mt-3">
+                  <ReviewReassuranceBlock />
+                </div>
+              </PresentationDetails>
             ) : null}
 
-            <motion.div variants={headerVariants} className="mx-auto max-w-2xl">
-              <ReviewPhaseProgressStrip phase="prepare" />
-            </motion.div>
-            <motion.div variants={headerVariants}>
-              <ReviewReassuranceBlock />
-            </motion.div>
-
-            <motion.div variants={headerVariants} className="mx-auto mt-5 max-w-md">
-              <ProgramFlowBridge>
-                <span className="font-medium text-lab-text">Review before strategy:</span> what stays on
-                this list is what we&apos;ll use to build your dispute round. When you&apos;re ready, continue
-                to strategy — no pressure to rush.
-              </ProgramFlowBridge>
-            </motion.div>
+            <motion.p
+              variants={headerVariants}
+              className="mx-auto mt-4 max-w-md text-center text-sm text-lab-muted"
+            >
+              What you keep here drives your next round. Continue when the list looks right.
+            </motion.p>
 
             {loading && !bundle ? (
               <motion.p variants={headerVariants} className="mt-10 text-center text-sm text-lab-muted">

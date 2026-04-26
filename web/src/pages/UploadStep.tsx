@@ -6,6 +6,7 @@ import { StepPageAmbientBackground } from "@/components/StepPageAmbientBackgroun
 import { StepMainColumn } from "@/components/StepMainColumn";
 import { TopBarMinimal } from "@/components/TopBarMinimal";
 import { UploadDropzoneCard } from "@/components/UploadDropzoneCard";
+import { PresentationDetails } from "@/components/presentation/PresentationStepFrame";
 import {
   isWorkflowReportUploadAbortError,
   pollReportUploadParseJob,
@@ -263,19 +264,21 @@ export function UploadStep() {
                   Get your report into 850 Lab
                 </h2>
                 <p className="step-support mx-auto mt-3 max-w-lg text-pretty">
-                  Choose how you want to start — both paths stay in the same program.
+                  Upload a bureau PDF, or get help pulling your file—same program either way.
                 </p>
-                <ul className="mx-auto mt-4 flex max-w-lg flex-wrap items-center justify-center gap-x-3 gap-y-1.5 text-[11px] font-medium text-lab-subtle sm:text-xs">
-                  {TRUST_SIGNALS_BEFORE_UPLOAD.map((t) => (
-                    <li
-                      key={t}
-                      className="inline-flex items-center gap-1.5 rounded-full border border-white/[0.08] bg-white/[0.02] px-2.5 py-1"
-                    >
-                      <span className="h-1 w-1 rounded-full bg-emerald-400/80" aria-hidden />
-                      {t}
-                    </li>
-                  ))}
-                </ul>
+                <PresentationDetails label="Privacy & data handling" className="mx-auto mt-4 max-w-lg text-left">
+                  <ul className="flex flex-wrap gap-x-3 gap-y-2 text-[11px] font-medium text-lab-subtle sm:text-xs">
+                    {TRUST_SIGNALS_BEFORE_UPLOAD.map((t) => (
+                      <li
+                        key={t}
+                        className="inline-flex items-center gap-1.5 rounded-full border border-white/[0.08] bg-white/[0.02] px-2.5 py-1"
+                      >
+                        <span className="h-1 w-1 rounded-full bg-emerald-400/80" aria-hidden />
+                        {t}
+                      </li>
+                    ))}
+                  </ul>
+                </PresentationDetails>
               </motion.div>
             ) : (
               <motion.div variants={block} className="text-center">

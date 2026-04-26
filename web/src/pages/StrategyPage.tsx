@@ -1,4 +1,4 @@
-import { motion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { NarrativeSummaryCard } from "@/components/NarrativeSummaryCard";
@@ -28,13 +28,18 @@ import {
 } from "@/lib/orion/orionAuthority";
 import { selectionImpactForReviewType } from "@/lib/intelligenceExpression";
 import {
+  easeStep,
   stepChildVariants as headerVariants,
   stepPageVariants as pageVariants,
 } from "@/lib/motionStep";
 import { buildNarrativeInputForStrategyPage } from "@/lib/narrativeBuilder";
 import { stepMainColumnTopClass } from "@/lib/stepPageLayout";
+import { PresentationDetails } from "@/components/presentation/PresentationStepFrame";
 
 const DRAFT_DEBOUNCE_MS = 650;
+
+/** sessionStorage: user chose to see the full dispute list (Phase 6.5). */
+const STRATEGY_LIST_SESSION_KEY = "850lab_strategy_v1_list";
 
 const STRATEGY_HERO_FALLBACK = {
   title: "Choose what to include in this round",
@@ -122,6 +127,11 @@ export function StrategyPage() {
   const draftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const draftGenerationRef = useRef(0);
   const [draftStatus, setDraftStatus] = useState<"idle" | "saving" | "saved">("idle");
+  const [selectionPhase, setSelectionPhase] = useState<"intro" | "list">(() => {
+    if (typeof window === "undefined") return "list";
+    return window.sessionStorage.getItem(STRATEGY_LIST_SESSION_KEY) === "1" ? "list" : "intro";
+  });
+  const [openStrategyGroup, setOpenStrategyGroup] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!token || !workflowId) {
@@ -215,6 +225,17 @@ export function StrategyPage() {
 
   const strategy = bundle?.disputeStrategy;
 
+  useEffect(() => {
+    if (!strategy?.groups?.length) {
+      setOpenStrategyGroup(null);
+      return;
+    }
+    setOpenStrategyGroup((prev) => {
+      if (prev != null && strategy.groups.some((x) => x.reviewType === prev)) return prev;
+      return strategy.groups[0]!.reviewType;
+    });
+  }, [strategy]);
+
   const systemRecommendedIds = useMemo(
     () => new Set(strategy?.suggestedReviewClaimIds ?? []),
     [strategy?.suggestedReviewClaimIds],
@@ -272,6 +293,19 @@ export function StrategyPage() {
     [orionAuthority, orionViewModel],
   );
 
+  const showSelectionIntro =
+    !loading &&
+    !!bundle?.selectionAllowed &&
+    !!strategy &&
+    strategy.eligibleCount > 0 &&
+    selectionPhase === "intro";
+  const showSelectionList =
+    !loading &&
+    !!bundle?.selectionAllowed &&
+    !!strategy &&
+    strategy.eligibleCount > 0 &&
+    selectionPhase === "list";
+
   return (
     <div
       className="relative min-h-full bg-lab-bg"
@@ -285,89 +319,128 @@ export function StrategyPage() {
         className={`relative z-10 mx-auto max-w-xl px-4 pb-24 sm:max-w-2xl sm:px-6 sm:pb-28 ${stepMainColumnTopClass(!!workflowId)}`}
       >
         <motion.div variants={pageVariants} initial="hidden" animate="show">
-          <motion.h2
-            variants={headerVariants}
-            className="step-title"
-          >
-            {strategyHero.title}
-          </motion.h2>
-
-          {!loading && strategy && strategy.roundNumber > 1 ? (
-            <motion.p
-              variants={headerVariants}
-              className="mx-auto mt-2 max-w-md text-center text-xs font-semibold uppercase tracking-[0.14em] text-lab-subtle"
-            >
-              Dispute round {strategy.roundNumber} · same program
-            </motion.p>
-          ) : null}
-
-          <motion.p
-            variants={headerVariants}
-            className="step-support"
-          >
-            {strategyHero.subtitle}
-          </motion.p>
-
-          {!loading && bundle?.selectionAllowed && strategy && strategy.eligibleCount > 0 ? (
-            <>
+          <AnimatePresence mode="wait">
+            {showSelectionIntro && startHere ? (
               <motion.div
-                variants={headerVariants}
-                className="surface-emerald-reassure mx-auto mt-6 max-w-lg"
+                key="strategy-intro"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: 0.32, ease: easeStep }}
+                className="mx-auto max-w-lg"
               >
-                <ul className="space-y-2 text-left text-sm leading-relaxed text-emerald-50/95 sm:text-[15px]">
-                  <li className="flex gap-2">
-                    <span className="mt-0.5 shrink-0 text-emerald-300" aria-hidden>
-                      •
-                    </span>
-                    <span>You can focus on the highest-priority items first</span>
-                  </li>
-                  <li className="flex gap-2">
-                    <span className="mt-0.5 shrink-0 text-emerald-300" aria-hidden>
-                      •
-                    </span>
-                    <span>You are reviewing recommendations, not starting from scratch</span>
-                  </li>
-                  <li className="flex gap-2">
-                    <span className="mt-0.5 shrink-0 text-emerald-300" aria-hidden>
-                      •
-                    </span>
-                    <span>Your letters will be built from what you confirm here</span>
-                  </li>
-                </ul>
-              </motion.div>
-
-              <motion.div
-                variants={headerVariants}
-                className="surface-where-fits mx-auto mt-6 max-w-2xl"
-              >
-                <p className="text-center text-[10px] font-bold uppercase tracking-[0.16em] text-lab-subtle">
-                  How to use this page
+                {strategy && strategy.roundNumber > 1 ? (
+                  <p className="mx-auto mb-2 max-w-md text-center text-xs font-semibold uppercase tracking-[0.14em] text-lab-subtle">
+                    Dispute round {strategy.roundNumber} · same program
+                  </p>
+                ) : null}
+                <h2 className="step-title">We found your strongest opportunities</h2>
+                <p className="step-support">
+                  {startHere.recommendedCount} recommended
+                  {startHere.optionalCount > 0
+                    ? `, ${startHere.optionalCount} optional`
+                    : ""}
                 </p>
-                <ol className="mt-3 flex flex-col gap-2 text-sm sm:mt-4 sm:flex-row sm:justify-center sm:gap-3 sm:text-[13px]">
-                  <li className="flex flex-1 items-center justify-center rounded-lg border border-zinc-500/35 bg-zinc-500/[0.1] px-3 py-2.5 text-center font-semibold text-lab-text">
-                    <span className="text-lab-accent">1.</span>
-                    <span className="ml-1.5">Review recommended items</span>
-                  </li>
-                  <li className="flex flex-1 items-center justify-center rounded-lg border border-white/[0.08] bg-black/25 px-3 py-2.5 text-center text-lab-muted">
-                    <span className="text-lab-subtle">2.</span>
-                    <span className="ml-1.5">Keep what belongs in this round</span>
-                  </li>
-                  <li className="flex flex-1 items-center justify-center rounded-lg border border-white/[0.08] bg-black/25 px-3 py-2.5 text-center text-lab-muted">
-                    <span className="text-lab-subtle">3.</span>
-                    <span className="ml-1.5">Continue to payment when ready</span>
-                  </li>
-                </ol>
+                <div className="mt-8 flex justify-center gap-10 rounded-2xl border border-white/[0.1] bg-lab-surface/80 px-6 py-10 shadow-[0_20px_50px_-32px_rgba(0,0,0,0.55)] sm:gap-14 sm:px-8">
+                  <div className="text-center">
+                    <p
+                      className="font-heading text-4xl font-bold tabular-nums text-lab-text sm:text-5xl"
+                      aria-live="polite"
+                    >
+                      {startHere.recommendedCount}
+                    </p>
+                    <p className="mt-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-lab-subtle">
+                      Recommended
+                    </p>
+                  </div>
+                  <div className="w-px shrink-0 bg-white/[0.1]" aria-hidden />
+                  <div className="text-center">
+                    <p
+                      className="font-heading text-4xl font-bold tabular-nums text-lab-muted sm:text-5xl"
+                      aria-live="polite"
+                    >
+                      {startHere.optionalCount}
+                    </p>
+                    <p className="mt-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-lab-subtle">
+                      Optional
+                    </p>
+                  </div>
+                </div>
+                <div className="mt-10">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      try {
+                        window.sessionStorage.setItem(STRATEGY_LIST_SESSION_KEY, "1");
+                      } catch {
+                        /* ignore */
+                      }
+                      setSelectionPhase("list");
+                    }}
+                    className="btn-primary-step w-full"
+                  >
+                    Review recommended disputes
+                  </button>
+                </div>
+                <PresentationDetails label="View details" className="mt-4">
+                  <p className="text-lab-text">
+                    You&apos;re choosing what goes into this round—not inventing a strategy from
+                    scratch. The list step locks your package, then payment and letter generation
+                    use these selections.
+                  </p>
+                  <ul className="mt-3 list-disc space-y-1.5 pl-4 text-sm">
+                    <li>Start with the highest-priority items.</li>
+                    <li>Your letters are built from what you confirm here.</li>
+                    <li>Same path: select → pay or credits → letters.</li>
+                  </ul>
+                </PresentationDetails>
               </motion.div>
+            ) : (
+              <motion.div
+                key="strategy-hero"
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -4 }}
+                transition={{ duration: 0.28, ease: easeStep }}
+              >
+                <motion.h2
+                  variants={headerVariants}
+                  className="step-title"
+                >
+                  {strategyHero.title}
+                </motion.h2>
 
-              <motion.div variants={headerVariants} className="mx-auto mt-6 max-w-2xl">
-                <ProgramFlowBridge>
-                  <span className="font-medium text-lab-text">Same continuous path:</span> this step
-                  locks what goes into your dispute package — then payment (or credits), then letters.
-                  You&apos;re confirming a guided plan, not inventing strategy alone.
-                </ProgramFlowBridge>
+                {!loading && strategy && strategy.roundNumber > 1 ? (
+                  <motion.p
+                    variants={headerVariants}
+                    className="mx-auto mt-2 max-w-md text-center text-xs font-semibold uppercase tracking-[0.14em] text-lab-subtle"
+                  >
+                    Dispute round {strategy.roundNumber} · same program
+                  </motion.p>
+                ) : null}
+
+                <motion.p
+                  variants={headerVariants}
+                  className="step-support"
+                >
+                  {strategyHero.subtitle}
+                </motion.p>
+
+                {showSelectionList ? (
+                  <PresentationDetails label="Why this step matters" className="mt-5">
+                    <ul className="list-disc space-y-1.5 pl-4 text-sm">
+                      <li>Focus on the highest-priority items first; add optional items only if they fit.</li>
+                      <li>This step locks what goes into your dispute package—then payment, then letters.</li>
+                    </ul>
+                    <p className="mt-2 text-sm text-lab-subtle">
+                      1) Review list · 2) Keep what belongs in this round · 3) Continue to payment
+                      when ready.
+                    </p>
+                  </PresentationDetails>
+                ) : null}
               </motion.div>
-            </>
-          ) : null}
+            )}
+          </AnimatePresence>
 
           {loading ? (
             <motion.p variants={headerVariants} className="mt-10 text-center text-sm text-lab-muted">
@@ -417,62 +490,39 @@ export function StrategyPage() {
             </motion.div>
           ) : null}
 
-          {!loading && bundle?.selectionAllowed && strategy && strategy.eligibleCount > 0 ? (
+          {showSelectionList ? (
             <>
               <div className="mt-5 space-y-4 sm:mt-6 sm:space-y-5">
-                {strategyNarrativeInput ? (
-                  <motion.div variants={headerVariants}>
-                    <NarrativeSummaryCard input={strategyNarrativeInput} variant="compact" />
-                  </motion.div>
-                ) : null}
-
-                {startHere ? (
-                  <motion.div
-                    variants={headerVariants}
-                    className="rounded-xl border border-zinc-700/40 bg-gradient-to-b from-white/[0.03] to-lab-surface/50 px-4 py-3.5 sm:px-5 sm:py-4"
-                  >
-                    <p className="text-xs font-semibold uppercase tracking-[0.14em] text-lab-subtle">
-                      Start here
-                    </p>
-                    <div className="mt-2.5 space-y-2.5 text-sm leading-relaxed text-lab-muted sm:space-y-3 sm:text-[15px]">
+                <PresentationDetails label="Opportunity summary">
+                  {strategyNarrativeInput ? (
+                    <div className="mb-4">
+                      <NarrativeSummaryCard input={strategyNarrativeInput} variant="compact" />
+                    </div>
+                  ) : null}
+                  {startHere ? (
+                    <div className="space-y-2.5 text-sm leading-relaxed text-lab-muted sm:text-[15px]">
                       <p>
                         <span className="font-semibold text-lab-text">Best first-round items: </span>
-                        {startHere.recommendedCount} item
-                        {startHere.recommendedCount === 1 ? "" : "s"} already lined up for you
-                        {startHere.themesShort ? (
-                          <>
-                            {" "}
-                            — themes include {startHere.themesShort}.
-                          </>
-                        ) : (
-                          "."
-                        )}{" "}
-                        Not every box has to stay checked — focused rounds are often stronger.
+                        {startHere.recommendedCount} lined up
+                        {startHere.themesShort ? ` — ${startHere.themesShort}` : ""}.
                       </p>
                       <p>
-                        <span className="font-semibold text-lab-text">Items that may need more caution: </span>
-                        {startHere.cautionAmongRecommended > 0 ? (
-                          <>
-                            {startHere.cautionAmongRecommended} of your recommended picks sit in
-                            higher-impact categories — worth a careful read before you continue.
-                          </>
-                        ) : (
-                          <>Fewer high-tension categories in this starting set — still read each line.</>
-                        )}
+                        <span className="font-semibold text-lab-text">Caution: </span>
+                        {startHere.cautionAmongRecommended > 0
+                          ? `${startHere.cautionAmongRecommended} recommended pick(s) in higher-impact categories.`
+                          : "Still read each line before you continue."}
                       </p>
                       <p>
-                        <span className="font-semibold text-lab-text">Fine to leave for later: </span>
-                        {startHere.optionalCount} optional add-on
-                        {startHere.optionalCount === 1 ? "" : "s"} you can skip for now — add only if
-                        they fit this round.
+                        <span className="font-semibold text-lab-text">Optional: </span>
+                        {startHere.optionalCount} add-on{startHere.optionalCount === 1 ? "" : "s"} you
+                        can skip for now.
                       </p>
                     </div>
-                  </motion.div>
-                ) : null}
-
-                <motion.div variants={headerVariants}>
-                  <StrategyNarrativeCard strategy={strategy} themesText={themesText} />
-                </motion.div>
+                  ) : null}
+                  <div className="mt-4 border-t border-white/[0.06] pt-4">
+                    <StrategyNarrativeCard strategy={strategy} themesText={themesText} />
+                  </div>
+                </PresentationDetails>
               </div>
 
               {bundle.escalationGuide?.programEscalation &&
@@ -519,19 +569,35 @@ export function StrategyPage() {
                 )}
               </motion.div>
 
-              <motion.div variants={headerVariants} className="mt-10 space-y-8 sm:space-y-10">
+              <motion.div variants={headerVariants} className="mt-8 space-y-4 sm:mt-9 sm:space-y-5">
                 {strategy.groups.map((g) => (
-                  <section
+                  <details
                     key={g.reviewType}
-                    className="rounded-xl border border-white/[0.08] bg-lab-surface px-4 py-4 sm:px-5 sm:py-5"
+                    open={openStrategyGroup === g.reviewType}
+                    onToggle={(e) => {
+                      if (e.currentTarget.open) {
+                        setOpenStrategyGroup(g.reviewType);
+                      } else {
+                        setOpenStrategyGroup((x) => (x === g.reviewType ? null : x));
+                      }
+                    }}
+                    className="group rounded-xl border border-white/[0.08] bg-lab-surface px-4 py-3 sm:px-5 sm:py-4"
                   >
-                    <div className="flex items-baseline justify-between gap-2 border-b border-white/[0.06] pb-3">
+                    <summary className="flex cursor-pointer list-none items-baseline justify-between gap-2 marker:content-none [&::-webkit-details-marker]:hidden">
                       <h2 className="text-base font-semibold text-lab-text">
                         {labelForReviewType(g.reviewType)}
                       </h2>
-                      <span className="text-sm tabular-nums text-lab-accent">{g.items.length}</span>
-                    </div>
-                    <ul className="mt-3 space-y-3">
+                      <span className="flex items-center gap-2 text-sm tabular-nums text-lab-accent">
+                        {g.items.length}
+                        <span
+                          className="text-lab-subtle transition-transform group-open:rotate-180"
+                          aria-hidden
+                        >
+                          ▾
+                        </span>
+                      </span>
+                    </summary>
+                    <ul className="mt-3 space-y-3 border-t border-white/[0.06] pt-3">
                       {g.items.map((it) => {
                         const systemRec = systemRecommendedIds.has(it.review_claim_id);
                         const rec = it.recommendation;
@@ -646,7 +712,7 @@ export function StrategyPage() {
                         );
                       })}
                     </ul>
-                  </section>
+                  </details>
                 ))}
               </motion.div>
 
