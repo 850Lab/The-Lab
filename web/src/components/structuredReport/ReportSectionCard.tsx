@@ -4,14 +4,18 @@ type Props = {
   title: string;
   description?: string;
   children: ReactNode;
+  id?: string;
 };
 
 /**
  * Calm, single-purpose section for the customer structured report (not MC).
  */
-export function ReportSectionCard({ title, description, children }: Props) {
+export function ReportSectionCard({ title, description, children, id }: Props) {
   return (
-    <section className="rounded-2xl border border-white/[0.08] bg-lab-surface/35 p-4 sm:p-5">
+    <section
+      id={id}
+      className="scroll-mt-24 rounded-2xl border border-white/[0.08] bg-lab-surface/35 p-4 sm:p-5"
+    >
       <h2 className="text-base font-semibold tracking-tight text-lab-text">{title}</h2>
       {description ? (
         <p className="mt-1 text-sm leading-relaxed text-lab-subtle">{description}</p>

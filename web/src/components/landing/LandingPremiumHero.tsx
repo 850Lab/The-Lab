@@ -1,4 +1,5 @@
 import { motion } from "framer-motion";
+import { Link } from "react-router-dom";
 
 const container = {
   hidden: { opacity: 0 },
@@ -18,14 +19,21 @@ const item = {
 };
 
 type Props = {
-  /** Primary CTA — scroll to guided demo */
-  onTryDemo: () => void;
-  /** Secondary CTA — early access / report flow (modal) */
-  onRunReport: () => void;
+  /** Sign up / begin program (primary) */
+  startReportTo: string;
+  /** Scroll to interactive demo */
+  onSeeDemo: () => void;
+  /** Early access / get report help (modal) */
+  onEarlyAccess: () => void;
   waitlistHint?: boolean;
 };
 
-export function LandingPremiumHero({ onTryDemo, onRunReport, waitlistHint }: Props) {
+export function LandingPremiumHero({
+  startReportTo,
+  onSeeDemo,
+  onEarlyAccess,
+  waitlistHint,
+}: Props) {
   return (
     <motion.div
       className="relative mx-auto max-w-3xl px-4 text-center sm:px-6"
@@ -70,27 +78,35 @@ export function LandingPremiumHero({ onTryDemo, onRunReport, waitlistHint }: Pro
 
       <motion.div
         variants={item}
-        className="mt-8 flex flex-col items-stretch justify-center gap-3 sm:mt-10 sm:flex-row sm:items-center"
+        className="mt-8 flex flex-col items-stretch justify-center gap-3 sm:mt-10 sm:flex-row sm:items-center sm:justify-center"
       >
+        <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
+          <Link
+            to={startReportTo}
+            className="flex w-full min-h-[3rem] items-center justify-center rounded-[10px] bg-white px-8 py-3.5 text-center text-[15px] font-semibold text-lab-bg shadow-[0_1px_0_0_rgba(255,255,255,0.35)_inset,0_12px_40px_-12px_rgba(255,255,255,0.35)] ring-2 ring-white/30 transition-shadow hover:shadow-[0_16px_48px_-12px_rgba(255,255,255,0.4)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-2 focus-visible:ring-offset-lab-bg sm:w-auto sm:min-w-[200px]"
+          >
+            Start my report
+          </Link>
+        </motion.div>
         <motion.button
           type="button"
-          onClick={onTryDemo}
-          whileHover={{ scale: 1.02 }}
-          whileTap={{ scale: 0.98 }}
-          className="rounded-[10px] bg-white px-8 py-3.5 text-[15px] font-semibold text-lab-bg shadow-[0_1px_0_0_rgba(255,255,255,0.35)_inset,0_12px_40px_-12px_rgba(255,255,255,0.35)] ring-2 ring-white/30 transition-shadow hover:shadow-[0_16px_48px_-12px_rgba(255,255,255,0.4)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-2 focus-visible:ring-offset-lab-bg"
-        >
-          Try the Demo
-        </motion.button>
-        <motion.button
-          type="button"
-          onClick={onRunReport}
+          onClick={onSeeDemo}
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.98 }}
           className="rounded-[10px] border-2 border-white/35 bg-white/[0.08] px-8 py-3.5 text-[15px] font-semibold text-white backdrop-blur-sm transition-colors hover:border-white/50 hover:bg-white/[0.14] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400/80 focus-visible:ring-offset-2 focus-visible:ring-offset-lab-bg"
         >
-          Run Your Report
+          See demo
         </motion.button>
       </motion.div>
+      <motion.p variants={item} className="mt-4 text-center text-xs text-neutral-400">
+        <button
+          type="button"
+          onClick={onEarlyAccess}
+          className="font-medium text-neutral-300 underline decoration-white/20 underline-offset-2 transition-colors hover:text-white"
+        >
+          Get help pulling my report
+        </button>
+      </motion.p>
     </motion.div>
   );
 }

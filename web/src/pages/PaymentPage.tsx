@@ -245,6 +245,28 @@ export function PaymentPage() {
           </motion.p>
 
           {!loading && pay?.onPaymentStep ? (
+            <motion.div
+              variants={headerVariants}
+              className="mx-auto mt-5 grid max-w-lg gap-3 sm:grid-cols-2"
+            >
+              <div className="rounded-xl border border-white/[0.1] bg-black/20 px-4 py-3.5 text-left">
+                <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-lab-subtle">DIY</p>
+                <p className="mt-1.5 text-sm leading-snug text-lab-muted">
+                  Download letters from the app, mail yourself, log outcomes in Responses.
+                </p>
+              </div>
+              <div className="rounded-xl border border-lab-accent/25 bg-lab-accent/[0.07] px-4 py-3.5 text-left">
+                <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-lab-accent/90">
+                  Guided
+                </p>
+                <p className="mt-1.5 text-sm leading-snug text-lab-text/95">
+                  We package, can send certified, and track—this step funds that path when you choose it.
+                </p>
+              </div>
+            </motion.div>
+          ) : null}
+
+          {!loading && pay?.onPaymentStep ? (
             <PresentationDetails label="What this step covers" className="mx-auto mt-4 max-w-lg">
               <p className="text-sm leading-relaxed text-lab-muted">{PAYMENT_HERO_LONG}</p>
               <ul className="mt-3 space-y-2 text-left text-sm leading-relaxed text-emerald-100/90 sm:text-[15px]">

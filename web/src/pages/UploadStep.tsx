@@ -188,6 +188,13 @@ export function UploadStep() {
   );
 
   const isAddAnother = authoritativeStepId === "review_claims";
+  const [uploadPath, setUploadPath] = useState<"choose" | "have" | "need">("choose");
+
+  useEffect(() => {
+    setUploadPath("choose");
+  }, [workflowId]);
+
+  const showPathUi = !isAddAnother && !guestExplore && workspaceReady;
 
   return (
     <div
@@ -258,15 +265,113 @@ export function UploadStep() {
           ) : null}
 
           <div className="flex w-full flex-col space-y-6 sm:space-y-8">
-            {!isAddAnother ? (
-              <motion.div variants={block} className="text-center">
-                <h2 className="step-title mt-0 text-pretty leading-tight sm:leading-snug">
-                  Get your report into 850 Lab
-                </h2>
-                <p className="step-support mx-auto mt-3 max-w-lg text-pretty">
-                  Upload a bureau PDF, or get help pulling your file—same program either way.
+            {!isAddAnother && showPathUi && uploadPath === "choose" ? (
+              <>
+                <motion.div variants={block} className="text-center">
+                  <h2 className="step-title mt-0 text-pretty leading-tight sm:leading-snug">
+                    Let&apos;s start with your credit report
+                  </h2>
+                  <p className="step-support mx-auto mt-2 max-w-lg text-pretty">
+                    Choose a path—both use the same guided program.
+                  </p>
+                </motion.div>
+                <motion.div
+                  variants={block}
+                  className="grid w-full max-w-2xl grid-cols-1 gap-4 sm:mx-auto sm:grid-cols-2 sm:gap-4"
+                >
+                  <button
+                    type="button"
+                    onClick={() => setUploadPath("have")}
+                    className="group flex min-h-[11rem] flex-col rounded-2xl border-2 border-lab-accent/35 bg-lab-surface/60 p-5 text-left shadow-[0_20px_70px_-32px_rgba(0,0,0,0.55)] transition-all hover:border-lab-accent/55 hover:bg-lab-surface/80"
+                  >
+                    <span className="text-[10px] font-bold uppercase tracking-[0.16em] text-lab-subtle group-hover:text-lab-text">
+                      I have my report
+                    </span>
+                    <span className="mt-2 font-heading text-lg font-semibold text-lab-text sm:text-xl">
+                      I have a bureau PDF
+                    </span>
+                    <span className="mt-2 text-sm leading-snug text-lab-muted">
+                      Upload here—one bureau at a time.
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setUploadPath("need")}
+                    className="group flex min-h-[11rem] flex-col rounded-2xl border-2 border-white/[0.12] bg-lab-surface/35 p-5 text-left shadow-[0_20px_70px_-32px_rgba(0,0,0,0.5)] transition-all hover:border-white/25"
+                  >
+                    <span className="text-[10px] font-bold uppercase tracking-[0.16em] text-lab-subtle">
+                      I need my report
+                    </span>
+                    <span className="mt-2 font-heading text-lg font-semibold text-lab-text sm:text-xl">
+                      Get a bureau file first
+                    </span>
+                    <span className="mt-2 text-sm leading-snug text-lab-muted">
+                      Free options and panels—then return to upload.
+                    </span>
+                  </button>
+                </motion.div>
+                <PresentationDetails
+                  label="Privacy & data handling"
+                  className="mx-auto max-w-lg text-left"
+                >
+                  <ul className="flex flex-wrap gap-x-3 gap-y-2 text-[11px] font-medium text-lab-subtle sm:text-xs">
+                    {TRUST_SIGNALS_BEFORE_UPLOAD.map((t) => (
+                      <li
+                        key={t}
+                        className="inline-flex items-center gap-1.5 rounded-full border border-white/[0.08] bg-white/[0.02] px-2.5 py-1"
+                      >
+                        <span className="h-1 w-1 rounded-full bg-emerald-400/80" aria-hidden />
+                        {t}
+                      </li>
+                    ))}
+                  </ul>
+                </PresentationDetails>
+              </>
+            ) : null}
+
+            {!isAddAnother && showPathUi && uploadPath === "have" ? (
+              <motion.div variants={block} className="w-full max-w-xl sm:mx-auto">
+                <button
+                  type="button"
+                  onClick={() => setUploadPath("choose")}
+                  className="mb-4 text-sm font-medium text-lab-accent/95 hover:text-lab-accent"
+                >
+                  ← Change path
+                </button>
+                <h3 className="text-center font-heading text-lg font-semibold text-lab-text sm:text-xl">
+                  Upload your bureau PDF
+                </h3>
+                <p className="mt-1 text-center text-sm text-lab-muted">
+                  One bureau at a time, or several parts in the dialog. We parse it—then you review.
                 </p>
-                <PresentationDetails label="Privacy & data handling" className="mx-auto mt-4 max-w-lg text-left">
+                <label
+                  className={`mt-5 flex cursor-pointer items-start gap-2.5 rounded-lg border px-3 py-2.5 text-left transition-colors sm:gap-3 sm:px-3.5 sm:py-3 ${
+                    privacyAgreed
+                      ? "border-zinc-600/40 bg-white/[0.03]"
+                      : "border-white/[0.08] bg-black/15 hover:border-white/[0.12]"
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    className="mt-0.5 h-4 w-4 shrink-0 rounded border-white/25 bg-lab-surface text-lab-accent focus:ring-lab-accent/50"
+                    checked={privacyAgreed}
+                    onChange={(e) => setPrivacyAgreed(e.target.checked)}
+                  />
+                  <span className="text-xs font-medium leading-snug text-lab-muted sm:text-sm">
+                    I agree to secure handling of my credit report (850 Lab terms).
+                  </span>
+                </label>
+                <div className="mt-4">
+                  <UploadDropzoneCard
+                    key={dropzoneResetKey}
+                    disabled={!allowUpload || parseBusy}
+                    onUploadPdfs={onUploadPdfs}
+                  />
+                </div>
+                <PresentationDetails
+                  label="Why we ask for this"
+                  className="mx-auto mt-5 text-left"
+                >
                   <ul className="flex flex-wrap gap-x-3 gap-y-2 text-[11px] font-medium text-lab-subtle sm:text-xs">
                     {TRUST_SIGNALS_BEFORE_UPLOAD.map((t) => (
                       <li
@@ -280,7 +385,45 @@ export function UploadStep() {
                   </ul>
                 </PresentationDetails>
               </motion.div>
-            ) : (
+            ) : null}
+
+            {!isAddAnother && showPathUi && uploadPath === "need" ? (
+              <motion.div
+                variants={block}
+                className="w-full max-w-md rounded-2xl border border-white/[0.1] bg-lab-surface/40 p-5 shadow-[0_20px_70px_-32px_rgba(0,0,0,0.55)] sm:mx-auto sm:p-6"
+              >
+                <button
+                  type="button"
+                  onClick={() => setUploadPath("choose")}
+                  className="mb-4 text-sm font-medium text-lab-accent/95 hover:text-lab-accent"
+                >
+                  ← Change path
+                </button>
+                <h3 className="font-heading text-lg font-semibold text-lab-text sm:text-xl">
+                  Get a bureau file first
+                </h3>
+                <p className="mt-2 text-sm leading-relaxed text-lab-muted">
+                  When you have a PDF, return here and pick “I have my report.”
+                </p>
+                <div className="mt-5 flex flex-col gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setGetReportOpen(true)}
+                    className="w-full rounded-xl border border-lab-accent/35 bg-lab-accent/10 py-3.5 text-sm font-semibold text-lab-text transition-colors hover:border-lab-accent/50"
+                  >
+                    Open get-report help
+                  </button>
+                  <Link
+                    to="/get-report"
+                    className="w-full rounded-xl border border-white/[0.1] py-3 text-center text-sm font-medium text-lab-muted transition-colors hover:border-white/[0.2] hover:text-lab-text"
+                  >
+                    All get-report options →
+                  </Link>
+                </div>
+              </motion.div>
+            ) : null}
+
+            {isAddAnother ? (
               <motion.div variants={block} className="text-center">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-lab-subtle">
                   Add a bureau
@@ -294,82 +437,9 @@ export function UploadStep() {
                   <span className="font-semibold text-lab-text">Begin review</span> when you&apos;re ready.
                 </p>
               </motion.div>
-            )}
+            ) : null}
 
-            {!isAddAnother ? (
-              <motion.div
-                variants={block}
-                className="grid w-full grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-5"
-              >
-                <div className="flex min-h-0 flex-col rounded-2xl border border-lab-accent/25 bg-lab-surface/50 p-4 shadow-[0_20px_70px_-32px_rgba(0,0,0,0.55)] backdrop-blur-md sm:p-5">
-                  <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-lab-subtle">
-                    I already have my report
-                  </p>
-                  <h3 className="mt-1.5 text-left text-base font-semibold text-lab-text sm:text-lg">
-                    Upload my PDF
-                  </h3>
-                  <p className="mt-1.5 text-left text-sm leading-relaxed text-lab-muted">
-                    One bureau at a time (or pick several files in the dialog). We parse it here — you
-                    approve the next step.
-                  </p>
-                  <label
-                    className={`mt-4 flex cursor-pointer items-start gap-2.5 rounded-lg border px-3 py-2.5 text-left transition-colors sm:gap-3 sm:px-3.5 sm:py-3 ${
-                      guestExplore
-                        ? "cursor-not-allowed border-white/[0.05] opacity-50"
-                        : privacyAgreed
-                          ? "border-zinc-600/40 bg-white/[0.03]"
-                          : "border-white/[0.08] bg-black/15 hover:border-white/[0.12]"
-                    }`}
-                  >
-                    <input
-                      type="checkbox"
-                      disabled={guestExplore}
-                      className="mt-0.5 h-4 w-4 shrink-0 rounded border-white/25 bg-lab-surface text-lab-accent focus:ring-lab-accent/50 disabled:opacity-50"
-                      checked={privacyAgreed}
-                      onChange={(e) => setPrivacyAgreed(e.target.checked)}
-                    />
-                    <span className="text-xs font-medium leading-snug text-lab-muted sm:text-sm">
-                      I agree to secure handling of my credit report (850 Lab terms).
-                    </span>
-                  </label>
-                  <div className="mt-4 min-h-0 flex-1">
-                    <UploadDropzoneCard
-                      key={dropzoneResetKey}
-                      disabled={!allowUpload || parseBusy}
-                      onUploadPdfs={onUploadPdfs}
-                    />
-                  </div>
-                </div>
-
-                <div className="flex flex-col rounded-2xl border border-white/[0.1] bg-lab-surface/35 p-4 shadow-[0_20px_70px_-32px_rgba(0,0,0,0.55)] backdrop-blur-md sm:p-5">
-                  <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-lab-subtle">
-                    I need my report first
-                  </p>
-                  <h3 className="mt-1.5 text-left text-base font-semibold text-lab-text sm:text-lg">
-                    Get a bureau report
-                  </h3>
-                  <p className="mt-1.5 text-left text-sm leading-relaxed text-lab-muted">
-                    Free annual reports or bureau panels — we&apos;ll bring you back here when you have
-                    a PDF to upload.
-                  </p>
-                  <div className="mt-5 flex flex-1 flex-col justify-center gap-3 sm:mt-6">
-                    <button
-                      type="button"
-                      onClick={() => setGetReportOpen(true)}
-                      className="w-full rounded-xl border border-white/[0.12] bg-white/[0.06] py-3 text-sm font-semibold text-lab-text transition-colors hover:border-lab-accent/35 hover:bg-white/[0.1]"
-                    >
-                      Open get-report help
-                    </button>
-                    <Link
-                      to="/get-report"
-                      className="w-full rounded-xl border border-white/[0.08] py-3 text-center text-sm font-medium text-lab-muted transition-colors hover:border-white/[0.12] hover:text-lab-text"
-                    >
-                      All get-report options →
-                    </Link>
-                  </div>
-                </div>
-              </motion.div>
-            ) : (
+            {isAddAnother ? (
               <motion.div
                 variants={block}
                 className="w-full rounded-2xl border border-white/[0.1] bg-lab-surface/45 p-4 shadow-[0_28px_90px_-36px_rgba(0,0,0,0.65)] backdrop-blur-md sm:p-6"
@@ -403,7 +473,7 @@ export function UploadStep() {
                   />
                 </div>
               </motion.div>
-            )}
+            ) : null}
           </div>
         </motion.div>
       </StepMainColumn>

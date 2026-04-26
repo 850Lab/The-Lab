@@ -7,7 +7,7 @@ import { TopBarMinimal } from "@/components/TopBarMinimal";
 import { LandingAmbientLayer } from "@/components/landing/LandingAmbientLayer";
 import { LandingAuthorityStrip } from "@/components/landing/LandingAuthorityStrip";
 import { LandingEarlyAccessModal } from "@/components/landing/LandingEarlyAccessModal";
-import { LandingFourPillars } from "@/components/landing/LandingFourPillars";
+import { LandingFlowStrip } from "@/components/landing/LandingFlowStrip";
 import { LandingGuidedDemoFlow } from "@/components/landing/LandingGuidedDemoFlow";
 import { LandingPremiumHero } from "@/components/landing/LandingPremiumHero";
 import { buildProgramSignupHref, writeDemoProgramBridge } from "@/lib/demoProgramBridge";
@@ -75,10 +75,11 @@ export function LandingFirstTime() {
 
       <main className="relative z-10 mx-auto max-w-5xl px-4 pb-28 pt-8 sm:px-6 sm:pt-12">
         <LandingPremiumHero
-          onTryDemo={scrollWatch}
-          onRunReport={() => setAccessOpen(true)}
+          startReportTo={buildProgramSignupHref({ next: "/upload" })}
+          onSeeDemo={scrollWatch}
+          onEarlyAccess={() => setAccessOpen(true)}
         />
-        <LandingFourPillars />
+        <LandingFlowStrip />
         <LandingGuidedDemoFlow onScrollToLiveDemo={scrollLive} />
         <LandingAuthorityStrip />
 

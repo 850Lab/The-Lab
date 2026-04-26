@@ -30,6 +30,7 @@ export function ProgramShellFrame({ children }: Props) {
   return (
     <div
       className="mx-auto flex min-h-0 w-full max-w-6xl flex-1 flex-col gap-0 px-4 pb-6 pt-14 sm:px-5"
+      data-app-mode="program"
       data-program-shell={peripheral ? "peripheral" : "core"}
     >
       <header className="shrink-0 space-y-2 border-b border-white/[0.06] pb-3">
@@ -66,7 +67,12 @@ export function ProgramShellFrame({ children }: Props) {
         ) : null}
         <ProgramTimeline programState={programState} />
       </header>
-      <div className="min-h-0 flex-1 pt-1 sm:pt-2">{children}</div>
+      <div
+        className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain pt-1 sm:pt-2 [scrollbar-gutter:stable]"
+        data-app-main-stage
+      >
+        {children}
+      </div>
       <footer className="shrink-0" data-program-next-region>
         <ProgramNextActionBar />
       </footer>

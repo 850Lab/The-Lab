@@ -55,6 +55,34 @@ function flattenStrategyItems(payload: DisputeStrategyPayload | null): FlatItem[
 
 const pageMotion = stepPageVariants;
 
+const REPORT_NAV = [
+  { href: "#report-at-a-glance", label: "At a glance" },
+  { href: "#report-snapshot", label: "Program" },
+  { href: "#report-findings", label: "Findings" },
+  { href: "#report-disputes", label: "Disputes" },
+  { href: "#report-letters", label: "Letters" },
+  { href: "#report-responses", label: "Responses" },
+] as const;
+
+function ReportSectionJumpNav() {
+  return (
+    <nav
+      className="sticky top-14 z-20 -mx-1 mb-4 flex flex-wrap gap-1 border-b border-white/[0.08] bg-lab-bg/92 py-2.5 backdrop-blur-md sm:-mx-0"
+      aria-label="Jump to report section"
+    >
+      {REPORT_NAV.map((l) => (
+        <a
+          key={l.href}
+          href={l.href}
+          className="rounded-md px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-lab-muted transition-colors hover:bg-white/[0.06] hover:text-lab-text"
+        >
+          {l.label}
+        </a>
+      ))}
+    </nav>
+  );
+}
+
 /**
  * Read-only customer report composed from existing workflow APIs. Does not post or advance steps.
  */
@@ -217,8 +245,12 @@ export function StructuredReportPage() {
             </p>
           </div>
 
+          {!loadError && !loading ? <ReportSectionJumpNav /> : null}
+
           {!loadError && !loading ? (
-            <NarrativeSummaryCard input={narrativeInput} className="mt-4" />
+            <div id="report-at-a-glance" className="scroll-mt-28">
+              <NarrativeSummaryCard input={narrativeInput} className="mt-0" />
+            </div>
           ) : null}
 
           {!loadError && !loading ? (
@@ -248,6 +280,7 @@ export function StructuredReportPage() {
           )}
 
           <ReportSectionCard
+            id="report-snapshot"
             title="Program snapshot"
             description="From your current program state—same as the top of this screen."
           >
@@ -294,6 +327,7 @@ export function StructuredReportPage() {
 
           {canShowFindings && findingGroups.length > 0 && (
             <ReportSectionCard
+              id="report-findings"
               title="Credit findings summary"
               description="What we found, organized by type. This is a reference view, not a dispute list on its own."
             >
@@ -332,6 +366,7 @@ export function StructuredReportPage() {
           {strategyPayload && (
             <>
               <ReportSectionCard
+                id="report-disputes"
                 title="Suggested for this round"
                 description="Items the program is prioritizing. Confidence reflects how clear the match is, not a legal outcome."
               >
@@ -400,6 +435,7 @@ export function StructuredReportPage() {
           )}
 
           <ReportSectionCard
+            id="report-letters"
             title="Letters & execution"
             description="Status only—generate or pay on the main Letters and Payment steps."
           >
@@ -496,6 +532,7 @@ export function StructuredReportPage() {
           </ReportSectionCard>
 
           <ReportSectionCard
+            id="report-responses"
             title="Responses & escalation"
             description="Log responses on the main Responses and Escalation pages—this is a summary only."
           >
