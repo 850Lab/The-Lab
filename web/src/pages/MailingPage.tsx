@@ -19,6 +19,7 @@ import {
   customerPathFromEnvelope,
   isAuthoritativeStepBefore,
 } from "@/lib/workflowStepRoutes";
+import { stepMainColumnTopClass } from "@/lib/stepPageLayout";
 import { useCustomerWorkflow } from "@/providers/CustomerWorkflowContext";
 import {
   mailingTrackPrimaryButtonClass,
@@ -204,6 +205,9 @@ export function MailingPage() {
     return mail.onMailStep && mail.pendingSendCount > 0;
   }, [mail]);
 
+  /** Integrity hints mirror Lob gate used by the top banner (`mailBlocked`). */
+  const serverMailBlocked = integrityHints?.mailBlocked === true;
+
   const mailingCompleteForStrip = useMemo(() => {
     if (!mail) return false;
     return mail.pendingSendCount === 0;
@@ -259,13 +263,18 @@ export function MailingPage() {
   };
 
   const handleTrack = async () => {
-    if (!token || !workflowId || trackBlocked) return;
+    if (!token || !workflowId) return;
+    if (trackBlocked && !serverMailBlocked) return;
     setTrackBusy(true);
     setLoadError(null);
     try {
       const env = await fetchWorkflowResume(token, workflowId);
       applyWorkflowEnvelope(env);
-      navigate(customerPathFromEnvelope(env), { replace: true });
+      if (serverMailBlocked) {
+        navigate("/tracking", { replace: true });
+      } else {
+        navigate(customerPathFromEnvelope(env), { replace: true });
+      }
     } catch (e) {
       setLoadError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -284,7 +293,9 @@ export function MailingPage() {
 
       <TopBarMinimal />
 
-      <StepMainColumn className="relative z-10 mx-auto max-w-xl px-4 pb-24 pt-24 sm:px-6 sm:pb-28 sm:pt-28">
+      <StepMainColumn
+        className={`relative z-10 mx-auto max-w-xl px-4 pb-24 sm:px-6 sm:pb-28 ${stepMainColumnTopClass(!!workflowId)}`}
+      >
         {pageLoading ? (
           <motion.p
             initial={{ opacity: 0 }}
@@ -313,18 +324,12 @@ export function MailingPage() {
             animate="show"
             className="pb-4"
           >
-            <motion.p
-              variants={headerVariants}
-              className="step-eyebrow"
-            >
-              STEP 7 • CONFIRM YOUR MAILING
-            </motion.p>
-            <motion.h1
+            <motion.h2
               variants={headerVariants}
               className="step-title"
             >
               {mailHero.title}
-            </motion.h1>
+            </motion.h2>
             <motion.p
               variants={headerVariants}
               className="step-support"
@@ -593,7 +598,7 @@ export function MailingPage() {
 
             <MailingCTASection
               onTrack={handleTrack}
-              disabled={trackBlocked}
+              disabled={trackBlocked && !serverMailBlocked}
               busy={trackBusy}
               trackButtonClassName={mailingTrackPrimaryButtonClass(mailHero.ctaEmphasis)}
               headline={

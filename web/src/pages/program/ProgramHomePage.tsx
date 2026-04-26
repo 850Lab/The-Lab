@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { Link, useLocation } from "react-router-dom";
 import { getMeOrgProgram, getMeProgress } from "@/lib/orgProgramApi";
 import {
   primaryProgramPath,
@@ -12,13 +12,16 @@ import type {
 } from "@/lib/orgProgramTypes";
 import { PROGRAM_STAGE_ORDER } from "@/lib/orgProgramTypes";
 import { useAuth } from "@/providers/AuthContext";
+import { ORION_BEHAVIOR } from "@/lib/orion/orionBehavior";
+import { caseStripContextFromProgramProgress } from "@/lib/orion/orionCaseStrip";
+import { useOrionSystem } from "@/providers/OrionSystemContext";
 
 function stepLabel(step: string): string {
   const m: Record<string, string> = {
     enrollment: "Enrolled",
     upload: "Upload report",
     findings_ready: "Findings ready",
-    selections_saved: "Disputes selected",
+    selections_saved: "Strategy carried forward",
     letters_generated: "Letters generated",
     paused: "Room held by guide",
   };
@@ -27,10 +30,21 @@ function stepLabel(step: string): string {
 
 export function ProgramHomePage() {
   const { token } = useAuth();
+  const location = useLocation();
+  const { setSurface, buildStrip } = useOrionSystem();
   const [org, setOrg] = useState<OrgProgramResponse | null>(null);
   const [progress, setProgress] = useState<ProgressResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
+
+  /** Stable across referential churn; bumps only on meaningful program movement. */
+  const hubOrionSignature = useMemo(() => {
+    if (!progress) return `none|${primaryProgramPath(null)}`;
+    const step = progress.effectiveState?.currentStep ?? progress.currentStep;
+    const done = [...(progress.completedSteps ?? [])].sort().join(",");
+    const gate = progress.gates?.mayUseDisputeFlow ? "1" : "0";
+    return [step, done, gate, primaryProgramPath(progress)].join("\u0001");
+  }, [progress]);
 
   useEffect(() => {
     if (!token) {
@@ -69,6 +83,26 @@ export function ProgramHomePage() {
       cancelled = true;
     };
   }, [token]);
+
+  useEffect(() => {
+    if (location.pathname !== "/program") return;
+    if (loading || err || !org?.enrollment) {
+      setSurface(null);
+      return;
+    }
+    const next = primaryProgramPath(progress);
+    const nextActionOverride =
+      next === "/program/findings" || next.startsWith("/program/findings")
+        ? "Resume case review"
+        : "Continue program";
+    setSurface({
+      stateKey: `PROGRAM_IDLE-${hubOrionSignature}`,
+      behavior: ORION_BEHAVIOR.PROGRAM_IDLE,
+      caseStrip: buildStrip(caseStripContextFromProgramProgress(progress)),
+      nextActionOverride,
+    });
+    return () => setSurface(null);
+  }, [location.pathname, loading, err, org?.enrollment, hubOrionSignature, buildStrip, setSurface]);
 
   if (loading) {
     return (

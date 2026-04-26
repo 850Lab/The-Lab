@@ -8,6 +8,7 @@ Uses isolated workflow SQLite + targeted mocks for main-DB-only org enrollment r
 from __future__ import annotations
 
 import io
+import os
 from typing import Any, Dict, List
 
 import pytest
@@ -22,6 +23,7 @@ def isolated_workflow_sqlite(monkeypatch, tmp_path):
     monkeypatch.setenv("DB_BACKEND", "sqlite")
     monkeypatch.setenv("WORKFLOW_SQLITE_PATH", str(dbfile))
     monkeypatch.setenv("WORKFLOW_JOB_WORKER_ENABLED", "0")
+    monkeypatch.setenv("REPORT_INTAKE_ARTIFACT_DIR", str(tmp_path / "intake_artifacts"))
     monkeypatch.setenv("ENVIRONMENT", "development")
     monkeypatch.delenv("REPLIT_DEPLOYMENT", raising=False)
 
@@ -98,6 +100,11 @@ def test_me_report_enqueues_parse_job_no_inline_parse(isolated_workflow_sqlite, 
         "services.report_pipeline.process_uploaded_reports",
         fake_process_uploaded_reports,
     )
+    # Worker imports a bound reference — patch where the job executes.
+    monkeypatch.setattr(
+        "services.workflow.jobs.report_upload_parse.process_uploaded_reports",
+        fake_process_uploaded_reports,
+    )
     monkeypatch.setattr(
         "services.me_org_report_service.build_findings_payload",
         lambda user_id, report_id=None: {"processingStatus": "complete"},
@@ -170,6 +177,7 @@ def test_me_report_enqueues_parse_job_no_inline_parse(isolated_workflow_sqlite, 
     assert body.get("ok") is True
     assert body.get("processing") is True
     assert body.get("jobId")
+    assert body.get("intakeStatus", {}).get("phase") == "parse_worker_unavailable"
     assert body.get("programWorkflowId") == wid
     assert body.get("processingStatus") == "queued"
     assert parse_calls == [], (
@@ -182,6 +190,11 @@ def test_me_report_enqueues_parse_job_no_inline_parse(isolated_workflow_sqlite, 
     assert row is not None
     assert str(row.get("job_type")) == JOB_TYPE_REPORT_UPLOAD_PARSE
     assert str(row.get("status")) == "pending"
+    pl = row.get("payload") or {}
+    assert pl.get("staging") == "durable_parts_v1"
+    paths = pl.get("intakePartPaths") or []
+    assert isinstance(paths, list) and len(paths) == 1
+    assert os.path.isfile(paths[0])
 
     job = claim_job()
     assert job is not None
@@ -213,6 +226,7 @@ def test_me_report_enqueues_parse_job_no_inline_parse(isolated_workflow_sqlite, 
     assert http_job.status_code == 200
     http_body = http_job.json()
     assert http_body.get("ok") is True
+    assert (http_body.get("intakeStatus") or {}).get("phase") == "parse_completed"
     hj = http_body.get("job") or {}
     assert hj.get("status") == "completed"
     assert (hj.get("result") or {}).get("reportIds") == [9001]

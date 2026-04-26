@@ -10,6 +10,8 @@ type Props = {
   /** Framing above the primary action — trust and next-step clarity. */
   headline?: string;
   supportText?: string;
+  /** Free vs paid clarity (e.g. download yourself vs we send). */
+  freeValueLine?: string;
   /** Calm note under secondary action (e.g. mailing is later). */
   helperText?: string;
   /** ORION-driven visual emphasis on continue; default keeps `btn-primary-step`. */
@@ -25,6 +27,7 @@ export function LettersActionSection({
   continueLabel = "Continue to proof",
   headline = "Ready to continue preparing this round?",
   supportText = "Your letters are ready for review. The next step is to add proof documents and continue toward mailing.",
+  freeValueLine,
   helperText = "Mailing happens later, after the next verification step.",
   continueButtonClassName,
 }: Props) {
@@ -33,6 +36,11 @@ export function LettersActionSection({
       <div className="space-y-1 text-center">
         <p className="text-sm font-semibold text-lab-text">{headline}</p>
         <p className="text-sm leading-relaxed text-lab-muted">{supportText}</p>
+        {freeValueLine ? (
+          <p className="mx-auto mt-2 max-w-md text-xs leading-relaxed text-lab-subtle/95 sm:text-sm">
+            {freeValueLine}
+          </p>
+        ) : null}
       </div>
       <motion.button
         type="button"

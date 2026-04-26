@@ -11,6 +11,8 @@ import {
   PROGRAM_NAV,
 } from "@/lib/orgProgramRoutes";
 import { useAuth } from "@/providers/AuthContext";
+import { OrionSystemProvider } from "@/providers/OrionSystemContext";
+import { OrionProgramRail } from "@/components/program/OrionProgramRail";
 
 export function ProgramShell() {
   const loc = useLocation();
@@ -107,13 +109,14 @@ export function ProgramShell() {
   }
 
   return (
-    <div className="min-h-full bg-lab-bg">
-      <TopBarMinimal />
-      <nav
-        className="fixed left-0 right-0 top-14 z-30 border-b border-white/[0.06] bg-lab-surface/90 backdrop-blur-sm"
-        aria-label="Program sections"
-      >
-        <div className="mx-auto flex max-w-3xl flex-wrap items-center gap-1 px-4 py-2 sm:px-6">
+    <OrionSystemProvider>
+      <div className="min-h-full bg-lab-bg">
+        <TopBarMinimal />
+        <nav
+          className="fixed left-0 right-0 top-14 z-30 border-b border-white/[0.06] bg-lab-surface/90 backdrop-blur-sm"
+          aria-label="Program sections"
+        >
+          <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-1 px-4 py-2 sm:px-6">
           {PROGRAM_NAV.map(({ to, label }) => (
             <NavLink
               key={to}
@@ -176,11 +179,19 @@ export function ProgramShell() {
               {NAV_ORG_OVERVIEW}
             </NavLink>
           )}
+          </div>
+        </nav>
+        <div className="mx-auto max-w-6xl px-4 pb-16 pt-28 sm:px-6 sm:pt-32">
+          <div className="flex flex-col gap-8 lg:flex-row lg:items-start lg:gap-10">
+            <main className="min-w-0 flex-1 lg:max-w-3xl">
+              <Outlet key={loc.pathname} />
+            </main>
+            <div className="w-full shrink-0 lg:w-[min(100%,20rem)]">
+              <OrionProgramRail />
+            </div>
+          </div>
         </div>
-      </nav>
-      <main className="mx-auto max-w-3xl px-4 pb-16 pt-28 sm:px-6 sm:pt-32">
-        <Outlet key={loc.pathname} />
-      </main>
-    </div>
+      </div>
+    </OrionSystemProvider>
   );
 }

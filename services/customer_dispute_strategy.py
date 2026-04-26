@@ -17,6 +17,7 @@ import database as db
 from claims import extract_claims
 from dispute_strategy import build_deterministic_strategy
 from review_claims import ReviewClaim, ReviewType, compress_claims
+from services.recommendation_presentation import build_recommendation_item
 from services.law_bank.resolve import resolve_law_units
 from services.law_bank.schema import LAW_RESOLUTION_CONTEXT_SCHEMA_VERSION
 from services.workflow.dispute_round_execution import (
@@ -358,15 +359,30 @@ def build_dispute_strategy_payload(
     else:
         default_selected = [rc.review_claim_id for rc in eligible]
 
+    det_why: Dict[str, str] = {}
+    if det and getattr(det, "per_claim_rationale", None):
+        det_why = {str(k): v for k, v in (det.per_claim_rationale or {}).items()}
+    suggested_set = set(suggested_ids)
+
     groups: List[Dict[str, Any]] = []
     for rt in _TYPE_ORDER:
         items = [rc for rc in eligible if rc.review_type == rt]
         if not items:
             continue
+        out_items: List[Dict[str, Any]] = []
+        for rc in items:
+            rid = str(rc.review_claim_id)
+            base = rc.to_dict()
+            base["recommendation"] = build_recommendation_item(
+                rc,
+                suggested_set,
+                det_why,
+            )
+            out_items.append(base)
         groups.append(
             {
                 "reviewType": rt.value,
-                "items": [rc.to_dict() for rc in items],
+                "items": out_items,
             }
         )
 

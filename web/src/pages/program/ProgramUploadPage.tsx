@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
   getMeProgress,
@@ -9,6 +9,10 @@ import {
 } from "@/lib/orgProgramApi";
 import { PROGRAM_EYEBROW } from "@/lib/orgProgramRoutes";
 import { useAuth } from "@/providers/AuthContext";
+import { useOrionProgramAdvancement } from "@/hooks/useOrionProgramAdvancement";
+import { ORION_BEHAVIOR } from "@/lib/orion/orionBehavior";
+import type { OrionBehaviorStateId } from "@/lib/orion/orionBehavior";
+import { useOrionSystem } from "@/providers/OrionSystemContext";
 
 export function ProgramUploadPage() {
   const { token } = useAuth();
@@ -30,6 +34,50 @@ export function ProgramUploadPage() {
   const parseBusy = parseJob != null;
   /** Bumps each time a parse-poll effect run starts; ignores stale async completions (Strict Mode + navigation). */
   const parsePollGenerationRef = useRef(0);
+  const { setSurface, buildStrip } = useOrionSystem();
+
+  const intakeFlowKey = useMemo(() => {
+    if (parseBusy) return "INTAKE_PARSE_IN_PROGRESS" as const;
+    if (reportId != null) return "INTAKE_AWAIT_ANALYZE" as const;
+    return "INTAKE_OPEN" as const;
+  }, [parseBusy, reportId]);
+
+  const intakeAdvancement = useOrionProgramAdvancement({
+    stateKey: intakeFlowKey,
+    enabled: Boolean(intakeFlowKey) && !accessLocked && !accessLoading,
+  });
+
+  useEffect(() => {
+    if (!accessLoading && accessLocked) {
+      setSurface(null);
+      return;
+    }
+    if (accessLoading) {
+      setSurface(null);
+      return;
+    }
+
+    let behaviorId: OrionBehaviorStateId = "INTAKE_OPEN";
+    if (parseBusy) behaviorId = "INTAKE_PARSE_IN_PROGRESS";
+    else if (reportId != null) behaviorId = "INTAKE_AWAIT_ANALYZE";
+
+    const reportReceived = parseBusy || reportId != null;
+    setSurface({
+      stateKey: `intake-${behaviorId}`,
+      behavior: ORION_BEHAVIOR[behaviorId],
+      caseStrip: buildStrip({
+        enrolled: true,
+        reportAnalyzed: false,
+        reviewSetPrepared: false,
+        strategyStepActive: false,
+      }),
+      accentLine: reportReceived
+        ? "Your file is held in this cohort until you start Case Review."
+        : null,
+    });
+
+    return () => setSurface(null);
+  }, [accessLoading, accessLocked, parseBusy, reportId, buildStrip, setSurface]);
 
   useEffect(() => {
     if (!token) {
@@ -151,16 +199,6 @@ export function ProgramUploadPage() {
           {err}
         </div>
       )}
-      {parseBusy && (
-        <div
-          className="rounded-md border border-zinc-600/40 bg-zinc-500/10 p-3 text-sm text-zinc-200"
-          role="status"
-          aria-live="polite"
-        >
-          Reading your PDF… This can take a minute for large files. You can stay on this page.
-        </div>
-      )}
-
       {msg && (
         <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-100">
           {msg}
@@ -240,16 +278,12 @@ export function ProgramUploadPage() {
       </div>
 
       {reportId != null && (
-        <div className="rounded-lg border border-white/10 bg-lab-surface p-4">
-          <p className="text-sm text-lab-muted">
-            We&apos;re holding your file safely. Have us read it now so &quot;What we found&quot; is
-            ready for you and your cohort.
-          </p>
+        <div className="space-y-4 rounded-lg border border-white/10 bg-lab-surface p-4">
           <button
             type="button"
-            disabled={analyzeBusy}
+            disabled={analyzeBusy || !intakeAdvancement.primaryActionEnabled}
             onClick={() => void onAnalyze()}
-            className="mt-3 rounded-md bg-lab-accent px-5 py-2 text-sm font-semibold text-zinc-950 disabled:opacity-40"
+            className="rounded-md bg-lab-accent px-5 py-2 text-sm font-semibold text-zinc-950 transition-opacity duration-200 disabled:pointer-events-none disabled:opacity-35"
           >
             {analyzeBusy ? "Reading your report…" : "Read my report"}
           </button>

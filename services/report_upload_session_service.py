@@ -29,10 +29,7 @@ from services.report_upload_object_storage import (
     report_upload_bucket,
 )
 from services.report_upload_staging import MAX_SINGLE_REPORT_UPLOAD_MB
-from services.workflow.workflow_job_service import (
-    JOB_TYPE_REPORT_UPLOAD_PARSE,
-    create_job,
-)
+from services.workflow.report_intake_enqueue import enqueue_durable_report_upload_parse_job
 
 _log = logging.getLogger(__name__)
 
@@ -394,34 +391,26 @@ def finalize_direct_storage_report_upload(
 
         part_name = "upload.pdf"
         if want_kind == "org_program":
-            jid = create_job(
+            jid = enqueue_durable_report_upload_parse_job(
                 wf,
-                JOB_TYPE_REPORT_UPLOAD_PARSE,
-                {
-                    "userId": int(user_id),
-                    "staging": "parts_v1",
-                    "tempPartPaths": [temp_path],
-                    "partFilenames": [part_name],
-                    "partByteSizes": [bs],
-                    "partSha256Hex": [hx],
-                    "orgProgramFollowup": True,
-                    "organizationId": int(organization_id),
-                    "organizationProgramEnrollmentId": int(organization_program_enrollment_id),
-                },
+                int(user_id),
+                [temp_path],
+                [part_name],
+                [bs],
+                [hx],
+                org_program_followup=True,
+                organization_id=int(organization_id),
+                organization_program_enrollment_id=int(organization_program_enrollment_id),
                 dedupe_pending=False,
             )
         else:
-            jid = create_job(
+            jid = enqueue_durable_report_upload_parse_job(
                 wf,
-                JOB_TYPE_REPORT_UPLOAD_PARSE,
-                {
-                    "userId": int(user_id),
-                    "staging": "parts_v1",
-                    "tempPartPaths": [temp_path],
-                    "partFilenames": [part_name],
-                    "partByteSizes": [bs],
-                    "partSha256Hex": [hx],
-                },
+                int(user_id),
+                [temp_path],
+                [part_name],
+                [bs],
+                [hx],
                 dedupe_pending=False,
             )
         temp_path = None
@@ -444,6 +433,12 @@ def finalize_direct_storage_report_upload(
             )
             conn.commit()
 
+        _log.info(
+            "intake.upload_finalize_completed upload_id=%s workflow_id=%s job_id=%s",
+            uid,
+            wf,
+            jid,
+        )
         return jid, False
     except ReportUploadFinalizeError:
         _reset_session_to_pending(uid)

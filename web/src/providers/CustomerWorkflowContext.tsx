@@ -8,11 +8,8 @@ import {
   type ReactNode,
 } from "react";
 import type { WorkflowIntegrityHints } from "@/lib/integrityHintsTypes";
+import type { ProgramState } from "@/lib/programStateTypes";
 import * as api from "@/lib/workflowApi";
-import {
-  computeAuthoritativeStep,
-  customerRouteForBackendStep,
-} from "@/lib/workflowStepRoutes";
 import { buildOrionViewModel, type OrionViewModel } from "@/lib/orion/orionViewModel";
 import type { WorkflowEnvelope } from "@/lib/workflowTypes";
 import { useAuth } from "@/providers/AuthContext";
@@ -23,6 +20,8 @@ export type CustomerWorkflowContextValue = {
   error: string | null;
   workflowId: string | null;
   envelope: WorkflowEnvelope | null;
+  /** Server-built program brain — sole source of step, routes, and CTA. */
+  programState: ProgramState | null;
   /** Normalized ORION consumption (V1.6); use instead of ad hoc envelope field reads. */
   orionViewModel: OrionViewModel;
   canonicalCustomerPath: string;
@@ -47,6 +46,7 @@ export function CustomerWorkflowProvider({ children }: { children: ReactNode }) 
   const [error, setError] = useState<string | null>(null);
   const [workflowId, setWorkflowId] = useState<string | null>(null);
   const [envelope, setEnvelope] = useState<WorkflowEnvelope | null>(null);
+  const [programState, setProgramState] = useState<ProgramState | null>(null);
   const [integrityHints, setIntegrityHints] =
     useState<WorkflowIntegrityHints | null>(null);
 
@@ -56,6 +56,7 @@ export function CustomerWorkflowProvider({ children }: { children: ReactNode }) 
     if (!t || !emailVerified) {
       setWorkflowId(null);
       setEnvelope(null);
+      setProgramState(null);
       setIntegrityHints(null);
       setError(null);
       setLoading(false);
@@ -67,20 +68,24 @@ export function CustomerWorkflowProvider({ children }: { children: ReactNode }) 
       const wid = await api.fetchActiveWorkflowId(t);
       setWorkflowId(wid);
       if (wid) {
-        const [env, hints] = await Promise.all([
+        const [env, hints, pstate] = await Promise.all([
           api.fetchWorkflowResume(t, wid),
           api.fetchWorkflowIntegrityHints(t, wid),
+          api.fetchProgramState(t, wid),
         ]);
         setEnvelope(env);
         setIntegrityHints(hints);
+        setProgramState(pstate);
       } else {
         setEnvelope(null);
+        setProgramState(null);
         setIntegrityHints(null);
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       setWorkflowId(null);
       setEnvelope(null);
+      setProgramState(null);
       setIntegrityHints(null);
     } finally {
       setLoading(false);
@@ -92,20 +97,19 @@ export function CustomerWorkflowProvider({ children }: { children: ReactNode }) 
   }, [load]);
 
   const { authoritativeStepId, phase, canonicalCustomerPath } = useMemo(() => {
-    if (!envelope?.stepStatus?.length) {
+    if (programState) {
       return {
-        authoritativeStepId: null as string | null,
-        phase: "done" as const,
-        canonicalCustomerPath: "/tracking",
+        authoritativeStepId: programState.currentStep,
+        phase: programState.isComplete ? ("done" as const) : ("active" as const),
+        canonicalCustomerPath: programState.canonicalRoute,
       };
     }
-    const a = computeAuthoritativeStep(envelope.stepStatus);
     return {
-      authoritativeStepId: a.stepId,
-      phase: a.phase,
-      canonicalCustomerPath: customerRouteForBackendStep(a.stepId, a.phase),
+      authoritativeStepId: null as string | null,
+      phase: "done" as const,
+      canonicalCustomerPath: "/tracking",
     };
-  }, [envelope]);
+  }, [programState]);
 
   const nextRequiredAction = integrityHints?.nextRequiredAction ?? null;
 
@@ -127,8 +131,12 @@ export function CustomerWorkflowProvider({ children }: { children: ReactNode }) 
     setEnvelope(env);
     setError(null);
     try {
-      const hints = await api.fetchWorkflowIntegrityHints(t, wid);
+      const [hints, pstate] = await Promise.all([
+        api.fetchWorkflowIntegrityHints(t, wid),
+        api.fetchProgramState(t, wid),
+      ]);
       setIntegrityHints(hints);
+      setProgramState(pstate);
     } catch {
       setIntegrityHints(null);
     }
@@ -137,12 +145,14 @@ export function CustomerWorkflowProvider({ children }: { children: ReactNode }) 
   const refresh = useCallback(async () => {
     const t = authToken;
     if (!t || !workflowId) return;
-    const [env, hints] = await Promise.all([
+    const [env, hints, pstate] = await Promise.all([
       api.fetchWorkflowResume(t, workflowId),
       api.fetchWorkflowIntegrityHints(t, workflowId),
+      api.fetchProgramState(t, workflowId),
     ]);
     setEnvelope(env);
     setIntegrityHints(hints);
+    setProgramState(pstate);
   }, [authToken, workflowId]);
 
   const startStep = useCallback(
@@ -152,8 +162,12 @@ export function CustomerWorkflowProvider({ children }: { children: ReactNode }) 
       const env = await api.postStepStart(t, workflowId, stepId);
       setEnvelope(env);
       try {
-        const hints = await api.fetchWorkflowIntegrityHints(t, workflowId);
+        const [hints, pstate] = await Promise.all([
+          api.fetchWorkflowIntegrityHints(t, workflowId),
+          api.fetchProgramState(t, workflowId),
+        ]);
         setIntegrityHints(hints);
+        setProgramState(pstate);
       } catch {
         setIntegrityHints(null);
       }
@@ -170,10 +184,18 @@ export function CustomerWorkflowProvider({ children }: { children: ReactNode }) 
           ? env.workflowState.workflowId
           : null) ?? workflowId;
       if (t && wid) {
-        void api
-          .fetchWorkflowIntegrityHints(t, wid)
-          .then(setIntegrityHints)
-          .catch(() => setIntegrityHints(null));
+        void Promise.all([
+          api
+            .fetchWorkflowIntegrityHints(t, wid)
+            .then(setIntegrityHints)
+            .catch(() => setIntegrityHints(null)),
+          api
+            .fetchProgramState(t, wid)
+            .then(setProgramState)
+            .catch(() => {
+              /* keep prior programState; next full refresh will reconcile */
+            }),
+        ]);
       }
     },
     [authToken, workflowId],
@@ -185,6 +207,7 @@ export function CustomerWorkflowProvider({ children }: { children: ReactNode }) 
     error,
     workflowId,
     envelope,
+    programState,
     orionViewModel,
     canonicalCustomerPath,
     authoritativeStepId,

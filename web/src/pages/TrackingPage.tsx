@@ -33,6 +33,7 @@ import {
   customerPathFromEnvelope,
   isAuthoritativeStepBefore,
 } from "@/lib/workflowStepRoutes";
+import { stepMainColumnTopClass } from "@/lib/stepPageLayout";
 import { useCustomerWorkflow } from "@/providers/CustomerWorkflowContext";
 import {
   orionNarrativeCoherent,
@@ -299,10 +300,19 @@ export function TrackingPage() {
     if (pageLoading || loadError) return;
     if (!envelope) return;
     if (!authoritativeStepId) return;
+    /** Allow tracking UI when mail is server-blocked; step may still be `mail` authoritatively. */
+    if (integrityHints?.mailBlocked) return;
     if (isAuthoritativeStepBefore(authoritativeStepId, "track")) {
       navigate(customerPathFromEnvelope(envelope), { replace: true });
     }
-  }, [pageLoading, loadError, envelope, authoritativeStepId, navigate]);
+  }, [
+    pageLoading,
+    loadError,
+    envelope,
+    authoritativeStepId,
+    navigate,
+    integrityHints?.mailBlocked,
+  ]);
 
   const guidanceLines = useMemo(() => homeGuidanceLines(tracking), [tracking]);
 
@@ -363,7 +373,9 @@ export function TrackingPage() {
 
       <TopBarMinimal />
 
-      <StepMainColumn className="relative z-10 mx-auto max-w-xl px-4 pb-28 pt-24 sm:px-6 sm:pb-32 sm:pt-28">
+      <StepMainColumn
+        className={`relative z-10 mx-auto max-w-xl px-4 pb-28 sm:px-6 sm:pb-32 ${stepMainColumnTopClass(!!workflowId)}`}
+      >
         {ctxLoading ? (
           <motion.div
             initial={{ opacity: 0 }}
@@ -433,18 +445,12 @@ export function TrackingPage() {
               </button>
             </div>
 
-            <motion.p
-              variants={headerVariants}
-              className="step-eyebrow"
-            >
-              STEP 8 • TRACK YOUR ROUND
-            </motion.p>
-            <motion.h1
+            <motion.h2
               variants={headerVariants}
               className="step-title"
             >
               {trackingHero.title}
-            </motion.h1>
+            </motion.h2>
             <motion.p
               variants={headerVariants}
               className="step-support"

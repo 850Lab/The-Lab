@@ -24,6 +24,7 @@ import {
   customerPathFromEnvelope,
   isAuthoritativeStepBefore,
 } from "@/lib/workflowStepRoutes";
+import { stepMainColumnTopClass } from "@/lib/stepPageLayout";
 import { useCustomerWorkflow } from "@/providers/CustomerWorkflowContext";
 import {
   easeStep,
@@ -458,7 +459,9 @@ export function ProofVerificationPage() {
 
       <TopBarMinimal />
 
-      <StepMainColumn className="relative z-10 mx-auto max-w-xl px-4 pb-28 pt-24 sm:px-6 sm:pb-32 sm:pt-28">
+      <StepMainColumn
+        className={`relative z-10 mx-auto max-w-xl px-4 pb-28 sm:px-6 sm:pb-32 ${stepMainColumnTopClass(!!workflowId)}`}
+      >
         {pageLoading ? (
           <motion.p
             initial={{ opacity: 0 }}
@@ -487,18 +490,12 @@ export function ProofVerificationPage() {
             animate="show"
             className="pb-4"
           >
-            <motion.p
-              variants={headerVariants}
-              className="step-eyebrow"
-            >
-              STEP 6 • VERIFY YOUR MAILING PACKAGE
-            </motion.p>
-            <motion.h1
+            <motion.h2
               variants={headerVariants}
               className="step-title"
             >
               {proofHero.title}
-            </motion.h1>
+            </motion.h2>
             <motion.p
               variants={headerVariants}
               className="step-support"

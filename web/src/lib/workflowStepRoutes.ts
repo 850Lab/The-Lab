@@ -69,6 +69,23 @@ export function computeAuthoritativeStep(
   return { stepId: null, phase: "done" };
 }
 
+/**
+ * Linear workflow is not the only product surface: these routes do not use program-state redirects.
+ * Keep isolated from the guided path so they never fight `allowedNavRoutes`.
+ */
+export const PROGRAM_PERIPHERAL_PATHS = new Set<string>([
+  "/responses",
+  "/execute",
+  "/escalation",
+  "/escalation-action",
+]);
+
+export function isProgramPeripheralPath(pathname: string): boolean {
+  if (PROGRAM_PERIPHERAL_PATHS.has(pathname)) return true;
+  if (pathname.startsWith("/escalation/")) return true;
+  return false;
+}
+
 export function isEscalationPath(pathname: string): boolean {
   return (
     pathname === "/escalation" ||

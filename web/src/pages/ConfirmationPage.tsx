@@ -2,6 +2,7 @@ import { LayoutGroup, motion } from "framer-motion";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { ContinueCTA } from "@/components/ContinueCTA";
+import { NarrativeSummaryCard } from "@/components/NarrativeSummaryCard";
 import { ProgramFlowBridge } from "@/components/ProgramFlowBridge";
 import {
   ReviewPhaseProgressStrip,
@@ -13,6 +14,8 @@ import { StepPageAmbientBackground } from "@/components/StepPageAmbientBackgroun
 import { StepMainColumn } from "@/components/StepMainColumn";
 import { TopBarMinimal } from "@/components/TopBarMinimal";
 import { useIntakeSummary } from "@/hooks/useIntakeSummary";
+import { buildNarrativeInputForConfirmation } from "@/lib/narrativeBuilder";
+import { stepMainColumnTopClass } from "@/lib/stepPageLayout";
 import { postAcknowledgeReview } from "@/lib/workflowApi";
 import { customerPathFromEnvelope } from "@/lib/workflowStepRoutes";
 import {
@@ -52,6 +55,7 @@ export function ConfirmationPage() {
     applyWorkflowEnvelope,
     orionViewModel,
     integrityHints,
+    programState,
   } = useCustomerWorkflow();
   const { bundle, loading, error } = useIntakeSummary();
   const [groups, setGroups] = useState<DisputeGroupModel[]>([]);
@@ -95,6 +99,25 @@ export function ConfirmationPage() {
   }, [lastRemoved]);
 
   const visibleCount = groups.reduce((n, g) => n + g.items.length, 0);
+  const analysisPending = useMemo(
+    () =>
+      Boolean(
+        programState &&
+          programState.currentStep === "parse_analyze" &&
+          !programState.progress.completedSteps.includes("parse_analyze"),
+      ),
+    [programState],
+  );
+  const confirmationNarrativeInput = useMemo(
+    () =>
+      buildNarrativeInputForConfirmation(
+        programState,
+        visibleCount,
+        bundle?.intake.aggregates?.totalAccountsExtracted ?? null,
+        analysisPending,
+      ),
+    [programState, visibleCount, bundle?.intake.aggregates?.totalAccountsExtracted, analysisPending],
+  );
   const canContinue =
     !!token &&
     !!workflowId &&
@@ -141,22 +164,17 @@ export function ConfirmationPage() {
 
       <TopBarMinimal />
 
-      <StepMainColumn className="relative z-10 mx-auto max-w-xl px-4 pb-24 pt-24 sm:px-6 sm:pb-28 sm:pt-28">
+      <StepMainColumn
+        className={`relative z-10 mx-auto max-w-xl px-4 pb-24 sm:px-6 sm:pb-28 ${stepMainColumnTopClass(!!workflowId)}`}
+      >
         <LayoutGroup>
           <motion.div variants={pageVariants} initial="hidden" animate="show">
-            <motion.p
-              variants={headerVariants}
-              className="step-eyebrow"
-            >
-              STEP 2 • CONFIRM YOUR REVIEW
-            </motion.p>
-
-            <motion.h1
+            <motion.h2
               variants={headerVariants}
               className="step-title"
             >
               {confirmationHero.title}
-            </motion.h1>
+            </motion.h2>
 
             {authoritativeStepId === "review_claims" ? (
               <motion.div
@@ -186,6 +204,12 @@ export function ConfirmationPage() {
             >
               {confirmationHero.subtitle}
             </motion.p>
+
+            {bundle && authoritativeStepId === "review_claims" && !loading && !error ? (
+              <motion.div variants={headerVariants} className="mx-auto mt-5 max-w-2xl">
+                <NarrativeSummaryCard input={confirmationNarrativeInput} />
+              </motion.div>
+            ) : null}
 
             <motion.div variants={headerVariants} className="mx-auto max-w-2xl">
               <ReviewPhaseProgressStrip phase="prepare" />

@@ -1,6 +1,7 @@
 import { motion } from "framer-motion";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { NarrativeSummaryCard } from "@/components/NarrativeSummaryCard";
 import { EscalationProgramSection } from "@/components/EscalationProgramSection";
 import { ProgramFlowBridge } from "@/components/ProgramFlowBridge";
 import { StrategyCTASection } from "@/components/StrategyCTASection";
@@ -8,9 +9,12 @@ import { StrategyNarrativeCard } from "@/components/StrategyNarrativeCard";
 import { StepPageAmbientBackground } from "@/components/StepPageAmbientBackground";
 import { StepMainColumn } from "@/components/StepMainColumn";
 import { TopBarMinimal } from "@/components/TopBarMinimal";
-import type { ReviewClaimJson } from "@/lib/intakeTypes";
 import { labelForReviewType } from "@/lib/reviewClaimsDisplay";
-import type { DisputeStrategyPayload } from "@/lib/strategyTypes";
+import type { DisputeStrategyPayload, ReviewClaimWithRecommendation } from "@/lib/strategyTypes";
+import {
+  strategyConfidencePillClass,
+  strategyConfidenceUserLabel,
+} from "@/lib/strategyRecommendationUi";
 import {
   fetchDisputeStrategy,
   postDisputeSelectionConfirm,
@@ -27,6 +31,8 @@ import {
   stepChildVariants as headerVariants,
   stepPageVariants as pageVariants,
 } from "@/lib/motionStep";
+import { buildNarrativeInputForStrategyPage } from "@/lib/narrativeBuilder";
+import { stepMainColumnTopClass } from "@/lib/stepPageLayout";
 
 const DRAFT_DEBOUNCE_MS = 650;
 
@@ -42,7 +48,7 @@ const CAUTION_REVIEW_TYPES = new Set([
   "accuracy_verification",
 ]);
 
-function claimLine(c: ReviewClaimJson): string {
+function claimLine(c: ReviewClaimWithRecommendation): string {
   const s = c.summary?.trim() || c.question?.trim() || c.review_claim_id;
   const b = c.entities?.bureau;
   return b ? `${s} (${b})` : s;
@@ -103,6 +109,7 @@ export function StrategyPage() {
     applyWorkflowEnvelope,
     orionViewModel,
     integrityHints,
+    programState,
   } = useCustomerWorkflow();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -179,11 +186,28 @@ export function StrategyPage() {
     [],
   );
 
-  const toggleId = (id: string) => {
+  const tryToggle = (it: ReviewClaimWithRecommendation) => {
+    const id = it.review_claim_id;
     setSelected((prev) => {
+      const was = prev.has(id);
+      if (was) {
+        const r = it.recommendation;
+        if (
+          r?.recommended &&
+          r.confidence.level === "high" &&
+          !window.confirm(
+            "This is one of your strongest dispute picks for this round. Are you sure you want to remove it?",
+          )
+        ) {
+          return prev;
+        }
+        const next = new Set(prev);
+        next.delete(id);
+        scheduleDraftSave(next);
+        return next;
+      }
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+      next.add(id);
       scheduleDraftSave(next);
       return next;
     });
@@ -191,9 +215,9 @@ export function StrategyPage() {
 
   const strategy = bundle?.disputeStrategy;
 
-  const recommendedIds = useMemo(
-    () => new Set(strategy?.defaultSelectedReviewClaimIds ?? []),
-    [strategy?.defaultSelectedReviewClaimIds],
+  const systemRecommendedIds = useMemo(
+    () => new Set(strategy?.suggestedReviewClaimIds ?? []),
+    [strategy?.suggestedReviewClaimIds],
   );
 
   const themesText = useMemo(() => {
@@ -203,8 +227,13 @@ export function StrategyPage() {
   }, [strategy?.groups]);
 
   const startHere = useMemo(
-    () => (strategy ? buildStartHereSummary(strategy, recommendedIds) : null),
-    [strategy, recommendedIds],
+    () => (strategy ? buildStartHereSummary(strategy, systemRecommendedIds) : null),
+    [strategy, systemRecommendedIds],
+  );
+
+  const strategyNarrativeInput = useMemo(
+    () => (bundle ? buildNarrativeInputForStrategyPage(programState, bundle) : null),
+    [programState, bundle],
   );
 
   const selectedCount = selected.size;
@@ -252,21 +281,16 @@ export function StrategyPage() {
 
       <TopBarMinimal />
 
-      <StepMainColumn className="relative z-10 mx-auto max-w-xl px-4 pb-24 pt-24 sm:max-w-2xl sm:px-6 sm:pb-28 sm:pt-28">
+      <StepMainColumn
+        className={`relative z-10 mx-auto max-w-xl px-4 pb-24 sm:max-w-2xl sm:px-6 sm:pb-28 ${stepMainColumnTopClass(!!workflowId)}`}
+      >
         <motion.div variants={pageVariants} initial="hidden" animate="show">
-          <motion.p
-            variants={headerVariants}
-            className="step-eyebrow"
-          >
-            STEP 3 • BUILD YOUR DISPUTE ROUND
-          </motion.p>
-
-          <motion.h1
+          <motion.h2
             variants={headerVariants}
             className="step-title"
           >
             {strategyHero.title}
-          </motion.h1>
+          </motion.h2>
 
           {!loading && strategy && strategy.roundNumber > 1 ? (
             <motion.p
@@ -395,57 +419,65 @@ export function StrategyPage() {
 
           {!loading && bundle?.selectionAllowed && strategy && strategy.eligibleCount > 0 ? (
             <>
-              {startHere ? (
-                <motion.div
-                  variants={headerVariants}
-                  className="mt-8 rounded-xl border border-zinc-700/50 bg-gradient-to-b from-white/[0.04] to-lab-surface/60 px-4 py-4 sm:px-5 sm:py-5"
-                >
-                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-lab-subtle">
-                    Start here
-                  </p>
-                  <div className="mt-3 space-y-3 text-sm leading-relaxed text-lab-muted sm:text-[15px]">
-                    <p>
-                      <span className="font-semibold text-lab-text">Best first-round items: </span>
-                      {startHere.recommendedCount} item
-                      {startHere.recommendedCount === 1 ? "" : "s"} already lined up for you
-                      {startHere.themesShort ? (
-                        <>
-                          {" "}
-                          — themes include {startHere.themesShort}.
-                        </>
-                      ) : (
-                        "."
-                      )}{" "}
-                      Not every box has to stay checked — focused rounds are often stronger.
-                    </p>
-                    <p>
-                      <span className="font-semibold text-lab-text">Items that may need more caution: </span>
-                      {startHere.cautionAmongRecommended > 0 ? (
-                        <>
-                          {startHere.cautionAmongRecommended} of your recommended picks sit in
-                          higher-impact categories — worth a careful read before you continue.
-                        </>
-                      ) : (
-                        <>Fewer high-tension categories in this starting set — still read each line.</>
-                      )}
-                    </p>
-                    <p>
-                      <span className="font-semibold text-lab-text">Fine to leave for later: </span>
-                      {startHere.optionalCount} optional add-on
-                      {startHere.optionalCount === 1 ? "" : "s"} you can skip for now — add only if
-                      they fit this round.
-                    </p>
-                  </div>
-                </motion.div>
-              ) : null}
+              <div className="mt-5 space-y-4 sm:mt-6 sm:space-y-5">
+                {strategyNarrativeInput ? (
+                  <motion.div variants={headerVariants}>
+                    <NarrativeSummaryCard input={strategyNarrativeInput} variant="compact" />
+                  </motion.div>
+                ) : null}
 
-              <motion.div variants={headerVariants} className="mt-8">
-                <StrategyNarrativeCard strategy={strategy} themesText={themesText} />
-              </motion.div>
+                {startHere ? (
+                  <motion.div
+                    variants={headerVariants}
+                    className="rounded-xl border border-zinc-700/40 bg-gradient-to-b from-white/[0.03] to-lab-surface/50 px-4 py-3.5 sm:px-5 sm:py-4"
+                  >
+                    <p className="text-xs font-semibold uppercase tracking-[0.14em] text-lab-subtle">
+                      Start here
+                    </p>
+                    <div className="mt-2.5 space-y-2.5 text-sm leading-relaxed text-lab-muted sm:space-y-3 sm:text-[15px]">
+                      <p>
+                        <span className="font-semibold text-lab-text">Best first-round items: </span>
+                        {startHere.recommendedCount} item
+                        {startHere.recommendedCount === 1 ? "" : "s"} already lined up for you
+                        {startHere.themesShort ? (
+                          <>
+                            {" "}
+                            — themes include {startHere.themesShort}.
+                          </>
+                        ) : (
+                          "."
+                        )}{" "}
+                        Not every box has to stay checked — focused rounds are often stronger.
+                      </p>
+                      <p>
+                        <span className="font-semibold text-lab-text">Items that may need more caution: </span>
+                        {startHere.cautionAmongRecommended > 0 ? (
+                          <>
+                            {startHere.cautionAmongRecommended} of your recommended picks sit in
+                            higher-impact categories — worth a careful read before you continue.
+                          </>
+                        ) : (
+                          <>Fewer high-tension categories in this starting set — still read each line.</>
+                        )}
+                      </p>
+                      <p>
+                        <span className="font-semibold text-lab-text">Fine to leave for later: </span>
+                        {startHere.optionalCount} optional add-on
+                        {startHere.optionalCount === 1 ? "" : "s"} you can skip for now — add only if
+                        they fit this round.
+                      </p>
+                    </div>
+                  </motion.div>
+                ) : null}
+
+                <motion.div variants={headerVariants}>
+                  <StrategyNarrativeCard strategy={strategy} themesText={themesText} />
+                </motion.div>
+              </div>
 
               {bundle.escalationGuide?.programEscalation &&
               bundle.escalationGuide.programEscalation.groups.length > 0 ? (
-                <motion.div variants={headerVariants} className="mt-8">
+                <motion.div variants={headerVariants} className="mt-6 sm:mt-7">
                   <EscalationProgramSection
                     program={bundle.escalationGuide.programEscalation}
                     token={token!}
@@ -501,49 +533,113 @@ export function StrategyPage() {
                     </div>
                     <ul className="mt-3 space-y-3">
                       {g.items.map((it) => {
-                        const rec = recommendedIds.has(it.review_claim_id);
-                        const impact = selectionImpactForReviewType(g.reviewType, rec);
+                        const systemRec = systemRecommendedIds.has(it.review_claim_id);
+                        const rec = it.recommendation;
+                        const impact = selectionImpactForReviewType(
+                          g.reviewType,
+                          systemRec,
+                        );
+                        const headline = rec?.summary?.trim() || claimLine(it);
+                        const oneLine = rec?.why?.short;
+                        const forThisRound = rec ? rec.recommended : systemRec;
                         return (
                           <li key={it.review_claim_id}>
                             <label className="flex cursor-pointer gap-3 rounded-lg px-1 py-2 transition-colors hover:bg-white/[0.04]">
                               <input
                                 type="checkbox"
-                                className="mt-1 h-4 w-4 shrink-0 rounded border-white/20 bg-lab-bg text-lab-accent focus:ring-lab-accent/40"
+                                className="mt-1.5 h-4 w-4 shrink-0 rounded border-white/20 bg-lab-bg text-lab-accent focus:ring-lab-accent/40"
                                 checked={selected.has(it.review_claim_id)}
-                                onChange={() => toggleId(it.review_claim_id)}
+                                onChange={() => tryToggle(it)}
                               />
-                              <span className="flex min-w-0 flex-1 flex-col gap-2">
-                                <span className="flex flex-col gap-1.5 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
-                                  <span className="text-sm leading-relaxed text-lab-text/90">
-                                    {claimLine(it)}
-                                  </span>
-                                  {rec ? (
-                                    <span className="shrink-0 self-start rounded-md bg-emerald-500/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-200/90">
-                                      Recommended pick
-                                    </span>
-                                  ) : (
-                                    <span className="shrink-0 self-start rounded-md bg-white/[0.06] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-lab-muted">
-                                      Optional add-on
-                                    </span>
-                                  )}
-                                </span>
-                                <details className="details-calm group rounded-md border border-white/[0.05] bg-black/15">
-                                  <summary className="cursor-pointer list-none px-2 py-1.5 text-[11px] font-medium text-lab-muted marker:content-none [&::-webkit-details-marker]:hidden hover:text-lab-text">
-                                    <span className="underline decoration-white/10 underline-offset-2 group-open:text-lab-accent">
-                                      How this affects your selection
-                                    </span>
-                                  </summary>
-                                  <div className="border-t border-white/[0.06] px-2 py-2 text-[11px] leading-relaxed text-lab-subtle sm:text-xs">
-                                    <p>
-                                      <span className="font-medium text-lab-muted">If checked: </span>
-                                      {impact.ifSelected}
+                              <span className="flex min-w-0 flex-1 flex-col gap-1.5">
+                                {rec ? (
+                                  <p className="text-[10px] font-medium uppercase tracking-wide text-lab-subtle">
+                                    {rec.accountName}
+                                    {rec.issueType ? (
+                                      <span className="text-lab-subtle/80">
+                                        {" "}
+                                        · {rec.issueType}
+                                      </span>
+                                    ) : null}
+                                  </p>
+                                ) : null}
+                                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
+                                  <div className="min-w-0">
+                                    <p className="text-sm font-medium leading-snug text-lab-text">
+                                      {headline}
                                     </p>
-                                    <p className="mt-1.5">
-                                      <span className="font-medium text-lab-muted">If unchecked: </span>
-                                      {impact.ifOmitted}
-                                    </p>
+                                    {oneLine ? (
+                                      <p className="mt-1 text-sm leading-relaxed text-lab-muted">
+                                        {oneLine}
+                                      </p>
+                                    ) : null}
                                   </div>
-                                </details>
+                                  <div className="flex shrink-0 flex-col items-start gap-1.5 sm:items-end">
+                                    {rec ? (
+                                      <span
+                                        className={`rounded-md px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${strategyConfidencePillClass(
+                                          rec.confidence.level,
+                                        )}`}
+                                        title={
+                                          rec.confidence.score != null
+                                            ? `Strength score ${(rec.confidence.score * 100).toFixed(0)}%`
+                                            : undefined
+                                        }
+                                      >
+                                        {strategyConfidenceUserLabel(rec.confidence.level)}
+                                      </span>
+                                    ) : null}
+                                    {forThisRound ? (
+                                      <span className="rounded-md bg-emerald-500/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-200/90">
+                                        For this round
+                                      </span>
+                                    ) : (
+                                      <span className="rounded-md bg-white/[0.06] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-lab-muted">
+                                        Optional add-on
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                                {rec ? (
+                                  <details className="details-calm group mt-0.5 rounded-md border border-white/[0.05] bg-black/15">
+                                    <summary className="cursor-pointer list-none px-2 py-1.5 text-[11px] font-medium text-lab-muted marker:content-none [&::-webkit-details-marker]:hidden hover:text-lab-text">
+                                      <span className="underline decoration-white/10 underline-offset-2 group-open:text-lab-accent">
+                                        More context (optional)
+                                      </span>
+                                    </summary>
+                                    <div className="space-y-2 border-t border-white/[0.06] px-2 py-2 text-[11px] leading-relaxed text-lab-subtle sm:text-xs">
+                                      {rec.why?.detailed && rec.why.detailed !== oneLine ? (
+                                        <p>{rec.why.detailed}</p>
+                                      ) : null}
+                                      <p>
+                                        <span className="font-medium text-lab-muted">If checked: </span>
+                                        {impact.ifSelected}
+                                      </p>
+                                      <p>
+                                        <span className="font-medium text-lab-muted">If unchecked: </span>
+                                        {impact.ifOmitted}
+                                      </p>
+                                    </div>
+                                  </details>
+                                ) : (
+                                  <details className="details-calm group mt-0.5 rounded-md border border-white/[0.05] bg-black/15">
+                                    <summary className="cursor-pointer list-none px-2 py-1.5 text-[11px] font-medium text-lab-muted marker:content-none [&::-webkit-details-marker]:hidden hover:text-lab-text">
+                                      <span className="underline decoration-white/10 underline-offset-2 group-open:text-lab-accent">
+                                        How this affects your selection
+                                      </span>
+                                    </summary>
+                                    <div className="border-t border-white/[0.06] px-2 py-2 text-[11px] leading-relaxed text-lab-subtle sm:text-xs">
+                                      <p>
+                                        <span className="font-medium text-lab-muted">If checked: </span>
+                                        {impact.ifSelected}
+                                      </p>
+                                      <p className="mt-1.5">
+                                        <span className="font-medium text-lab-muted">If unchecked: </span>
+                                        {impact.ifOmitted}
+                                      </p>
+                                    </div>
+                                  </details>
+                                )}
                               </span>
                             </label>
                           </li>

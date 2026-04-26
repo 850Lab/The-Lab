@@ -85,12 +85,16 @@ def create_job(
     max_attempts: int = 3,
     run_at: Optional[datetime] = None,
     dedupe_pending: bool = True,
+    job_id: Optional[str] = None,
 ) -> str:
     """
     Insert a pending job and emit ``job.created``. Returns job id.
 
     If ``dedupe_pending`` and a pending job of the same type exists for this workflow,
     returns that job id (no duplicate row).
+
+    Optional ``job_id`` (UUID string) is used when durable resources were allocated
+    before insert (e.g. report intake staging directory keyed by job id).
     """
     wf = (workflow_id or "").strip()
     jt = (job_type or "").strip()[:64]
@@ -115,7 +119,13 @@ def create_job(
                 conn.commit()
                 return jid
 
-        jid = str(uuid.uuid4())
+        if job_id is not None:
+            try:
+                jid = str(uuid.UUID(str(job_id).strip()))
+            except ValueError as e:
+                raise ValueError("job_id must be a valid UUID") from e
+        else:
+            jid = str(uuid.uuid4())
         run_param: Any = None
         if isinstance(run_at, datetime):
             run_param = run_at.isoformat() if should_use_workflow_sqlite() else run_at
@@ -537,7 +547,11 @@ def public_job_view(d: Dict[str, Any]) -> Dict[str, Any]:
     payload = d.get("payload") if isinstance(d.get("payload"), dict) else {}
     jt = str(d.get("job_type") or "")
     if jt == JOB_TYPE_REPORT_UPLOAD_PARSE:
-        payload = {k: v for k, v in payload.items() if k != "tempPdfPath"}
+        payload = {
+            k: v
+            for k, v in payload.items()
+            if k not in ("tempPdfPath", "tempPartPaths", "intakePartPaths")
+        }
 
     res_raw = d.get("result")
     res_dict = res_raw if isinstance(res_raw, dict) else {}

@@ -101,6 +101,7 @@ from services.workflow import admin_override_service as admin_svc
 from services.workflow import recovery_execution_service as rec_exec
 from services.workflow.engine import WorkflowEngine
 from services.workflow.home_summary_service import build_home_summary
+from services.workflow.program_state_service import build_program_state
 from services import architect_access_service as architect_access_svc
 from services.workflow import mission_control_service as mcc_svc
 from services.workflow import reminder_service as rem_svc
@@ -134,6 +135,8 @@ from services.customer_letter_service import (
     run_letter_generation,
     selected_review_claim_ids_from_workflow,
 )
+from services.workflow.report_intake_enqueue import enqueue_durable_report_upload_parse_job
+from services.workflow.report_intake_status import build_report_parse_intake_status
 from services.workflow.workflow_job_service import (
     JOB_TYPE_LETTER_GENERATION,
     JOB_TYPE_REPORT_UPLOAD_PARSE,
@@ -422,6 +425,7 @@ async def _workflow_api_lifespan(_app: FastAPI):
         except Exception:
             _logger.exception(
                 "workflow_api lifespan: database init failed — see logs; "
+                "background workflow job worker will not start; parse jobs cannot run; "
                 "GET /health still works; DB-backed routes will error until fixed."
             )
             return
@@ -446,6 +450,12 @@ async def _workflow_api_lifespan(_app: FastAPI):
             from services.workflow.workflow_job_worker import start_job_worker
 
             start_job_worker()
+        else:
+            _logger.warning(
+                "workflow_api lifespan: WORKFLOW_JOB_WORKER_ENABLED is off — "
+                "in-process job worker not started; report_upload_parse (and other) jobs "
+                "will stay pending unless an external worker processes them."
+            )
 
     threading.Thread(
         target=_blocking_db_and_worker_startup,
@@ -1070,6 +1080,22 @@ def get_home_summary(
     except FlowEnforcementError as e:
         _raise_flow_violation(e)
     return build_home_summary(workflow_id)
+
+
+@app.get("/api/workflows/{workflow_id}/program-state")
+def get_program_state(
+    workflow_id: str,
+    session: Dict[str, Any] = Depends(get_owned_workflow),
+) -> Dict[str, Any]:
+    """
+    Authoritative program brain: current step, allowed routes, next CTA, progress, blocking.
+    Supersedes client-side step inference; same flow gate as home-summary.
+    """
+    try:
+        enforce_customer_action(workflow_id, ACTION_HOME_SUMMARY_VIEW)
+    except FlowEnforcementError as e:
+        _raise_flow_violation(e)
+    return build_program_state(int(session["user_id"]), str(workflow_id).strip())
 
 
 @app.get("/api/workflows/{workflow_id}/intake/summary")
@@ -2398,22 +2424,25 @@ async def post_me_report(
     if not wid:
         wid = ensure_org_program_workflow(uid, oid, eid)
     total_bytes = sum(part_sizes)
+    _logger.info(
+        "intake.upload_staged workflow_id=%s user_id=%s bytes=%s parts=%s source=me_report",
+        wid,
+        uid,
+        total_bytes,
+        len(part_paths),
+    )
 
     try:
-        jid = create_job(
+        jid = enqueue_durable_report_upload_parse_job(
             wid,
-            JOB_TYPE_REPORT_UPLOAD_PARSE,
-            {
-                "userId": uid,
-                "staging": "parts_v1",
-                "tempPartPaths": part_paths,
-                "partFilenames": part_names,
-                "partByteSizes": part_sizes,
-                "partSha256Hex": part_sha256,
-                "orgProgramFollowup": True,
-                "organizationId": oid,
-                "organizationProgramEnrollmentId": eid,
-            },
+            uid,
+            part_paths,
+            part_names,
+            part_sizes,
+            part_sha256,
+            org_program_followup=True,
+            organization_id=oid,
+            organization_program_enrollment_id=eid,
             dedupe_pending=False,
         )
     except Exception:
@@ -2441,6 +2470,7 @@ async def post_me_report(
         "reportsProcessed": 0,
         "reportIds": [],
         "fileSkips": [],
+        "intakeStatus": build_report_parse_intake_status(wid, jid),
     }
     bundle = _me_org_engine_bundle(ctx, uid)
     if bundle:
@@ -2507,6 +2537,12 @@ def post_me_report_upload_finalize(
     if not wid:
         wid = ensure_org_program_workflow(uid, oid, eid)
 
+    _logger.info(
+        "intake.upload_finalize_started workflow_id=%s user_id=%s upload_id=%s source=me_report",
+        wid,
+        uid,
+        (body.upload_id or "").strip()[:36],
+    )
     try:
         jid, idem = finalize_direct_storage_report_upload(
             upload_id=body.upload_id,
@@ -2539,6 +2575,7 @@ def post_me_report_upload_finalize(
         "reportsProcessed": 0,
         "reportIds": [],
         "fileSkips": [],
+        "intakeStatus": build_report_parse_intake_status(wid, jid),
     }
     bundle = _me_org_engine_bundle(ctx, uid)
     if bundle:
@@ -3748,7 +3785,15 @@ def get_workflow_job_single(
             status_code=404,
             detail=_http_detail("JOB_NOT_FOUND", "Job not found for this workflow."),
         )
-    return {"ok": True, "job": wf_public_job_view(row)}
+    view = wf_public_job_view(row)
+    out: Dict[str, Any] = {"ok": True, "job": view}
+    if str(row.get("job_type") or "") == JOB_TYPE_REPORT_UPLOAD_PARSE:
+        out["intakeStatus"] = build_report_parse_intake_status(
+            workflow_id,
+            job_id,
+            job_row=row,
+        )
+    return out
 
 
 @app.get("/api/workflows/{workflow_id}/letters/{letter_id}/content")
@@ -4343,7 +4388,7 @@ async def post_workflow_report_upload(
     uid = int(session["user_id"])
     total_bytes = sum(part_sizes)
     _logger.info(
-        "workflow_report_upload_begin workflow_id=%s user_id=%s bytes=%s parts=%s",
+        "intake.upload_staged workflow_id=%s user_id=%s bytes=%s parts=%s source=workflow_multipart",
         workflow_id,
         uid,
         total_bytes,
@@ -4351,17 +4396,13 @@ async def post_workflow_report_upload(
     )
 
     try:
-        jid = create_job(
+        jid = enqueue_durable_report_upload_parse_job(
             workflow_id,
-            JOB_TYPE_REPORT_UPLOAD_PARSE,
-            {
-                "userId": uid,
-                "staging": "parts_v1",
-                "tempPartPaths": part_paths,
-                "partFilenames": part_names,
-                "partByteSizes": part_sizes,
-                "partSha256Hex": part_sha256,
-            },
+            uid,
+            part_paths,
+            part_names,
+            part_sizes,
+            part_sha256,
             dedupe_pending=False,
         )
     except Exception:
@@ -4372,10 +4413,9 @@ async def post_workflow_report_upload(
                 pass
         raise
 
-    # Opt-in (tests / isolated integration): run parse immediately while staged temp paths exist.
+    # Opt-in (tests / isolated integration): run parse immediately after enqueue (durable inputs).
     # With ``WORKFLOW_JOB_WORKER_ENABLED=0`` and no in-process worker, jobs would otherwise sit
-    # pending until an external worker runs — which often loses the race after request teardown
-    # (temp files gone → ``TEMP_FILE_MISSING``).
+    # pending until an external worker runs.
     if (os.environ.get("WORKFLOW_E2E_SYNCHRONOUS_PARSE") or "").strip().lower() in (
         "1",
         "true",
@@ -4402,6 +4442,7 @@ async def post_workflow_report_upload(
         "jobId": jid,
         "reportsProcessed": 0,
         "fileSkips": [],
+        "intakeStatus": build_report_parse_intake_status(workflow_id, jid),
         **_workflow_payload_with_progression(workflow_id),
     }
 
@@ -4456,6 +4497,12 @@ def post_workflow_report_upload_finalize(
         _raise_flow_violation(e)
 
     uid = int(session["user_id"])
+    _logger.info(
+        "intake.upload_finalize_started workflow_id=%s user_id=%s upload_id=%s",
+        workflow_id,
+        uid,
+        (body.upload_id or "").strip()[:36],
+    )
     try:
         jid, idem = finalize_direct_storage_report_upload(
             upload_id=body.upload_id,
@@ -4483,6 +4530,7 @@ def post_workflow_report_upload_finalize(
         "processing": True,
         "reportsProcessed": 0,
         "fileSkips": [],
+        "intakeStatus": build_report_parse_intake_status(workflow_id, jid),
         **_workflow_payload_with_progression(workflow_id),
     }
 

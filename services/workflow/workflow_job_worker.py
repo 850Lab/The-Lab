@@ -151,6 +151,7 @@ def _worker_loop() -> None:
 def start_job_worker() -> None:
     global _worker_thread
     if _worker_thread is not None and _worker_thread.is_alive():
+        _log.info("workflow job worker already running; start skipped")
         return
     _stop_flag.clear()
     _worker_thread = threading.Thread(
@@ -159,6 +160,7 @@ def start_job_worker() -> None:
         daemon=True,
     )
     _worker_thread.start()
+    _log.info("workflow job worker thread spawned (in-process background parse/letter jobs)")
 
 
 def stop_job_worker() -> None:

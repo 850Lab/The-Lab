@@ -24,6 +24,7 @@ import {
   resolveOrionAuthority,
 } from "@/lib/orion/orionAuthority";
 import { customerPathFromEnvelope } from "@/lib/workflowStepRoutes";
+import { stepMainColumnTopClass } from "@/lib/stepPageLayout";
 import { useCustomerWorkflow } from "@/providers/CustomerWorkflowContext";
 import {
   stepChildVariants as headerVariants,
@@ -63,11 +64,11 @@ function PaymentNextStepsStrip() {
         </li>
         <li className="progress-strip-pill flex flex-1 items-center justify-center rounded-lg border border-zinc-500/35 bg-zinc-500/[0.1] px-3 py-2.5 text-center font-semibold text-lab-text">
           <span className="text-lab-accent">2.</span>
-          <span className="ml-1.5">Payment completed</span>
+          <span className="ml-1.5">This step</span>
         </li>
         <li className="progress-strip-pill flex flex-1 items-center justify-center rounded-lg border border-white/[0.08] bg-black/25 px-3 py-2.5 text-center text-lab-muted">
           <span className="text-lab-subtle">3.</span>
-          <span className="ml-1.5">Letters prepared next</span>
+          <span className="ml-1.5">Letters &amp; next prep</span>
         </li>
       </ol>
     </motion.div>
@@ -121,9 +122,9 @@ export function PaymentPage() {
   }, [load]);
 
   const PAYMENT_HERO_FALLBACK = {
-    title: "Unlock letter preparation for this round",
+    title: "We’ll prepare, send, and track for you when you’re ready",
     subtitle:
-      "You're paying for the dispute package based on what you confirmed in Strategy — still before anything is mailed. After payment, you'll move through letters, proof, and send at your own pace.",
+      "This step covers the guided package for your round—mailing, tracking, and structured follow-through—not a separate fee to “get” the letters. You can still download them in the app. Nothing is physically mailed at checkout; you stay in control of the next step.",
   } as const;
 
   const orionAuthority = useMemo(
@@ -229,17 +230,13 @@ export function PaymentPage() {
 
       <TopBarMinimal />
 
-      <StepMainColumn className="relative z-10 mx-auto max-w-xl px-4 pb-24 pt-24 sm:px-6 sm:pb-28 sm:pt-28">
+      <StepMainColumn
+        className={`relative z-10 mx-auto max-w-xl px-4 pb-24 sm:px-6 sm:pb-28 ${stepMainColumnTopClass(!!workflowId)}`}
+      >
         <motion.div variants={pageVariants} initial="hidden" animate="show">
-          <motion.p
-            variants={headerVariants}
-            className="step-eyebrow"
-          >
-            STEP 4 • FUND THIS ROUND
-          </motion.p>
-          <motion.h1 variants={headerVariants} className="step-title">
+          <motion.h2 variants={headerVariants} className="step-title">
             {paymentHero.title}
-          </motion.h1>
+          </motion.h2>
           <motion.p variants={headerVariants} className="step-support">
             {paymentHero.subtitle}
           </motion.p>
@@ -254,19 +251,19 @@ export function PaymentPage() {
                   <span className="mt-0.5 shrink-0 text-emerald-300" aria-hidden>
                     •
                   </span>
-                  <span>This payment applies to the round you just confirmed</span>
+                  <span>Your download and review in the app stay available — you&apos;re not “buying a PDF” as the product</span>
                 </li>
                 <li className="flex gap-2">
                   <span className="mt-0.5 shrink-0 text-emerald-300" aria-hidden>
                     •
                   </span>
-                  <span>You&apos;ll continue through letter and document steps next</span>
+                  <span>Payment is for the guided path: package prep, optional send, and ongoing tracking as you use it</span>
                 </li>
                 <li className="flex gap-2">
                   <span className="mt-0.5 shrink-0 text-emerald-300" aria-hidden>
                     •
                   </span>
-                  <span>Nothing is mailed at this step</span>
+                  <span>Nothing is put in the mail at this step — you confirm each send later</span>
                 </li>
               </ul>
             </motion.div>
@@ -397,7 +394,7 @@ export function PaymentPage() {
                 <PreparedItemsSummary
                   categories={buildCategories(pay)}
                   title="Your current round"
-                  description="This payment covers the package built from the selections you just confirmed."
+                  description="This covers hands-off mailing, delivery tracking, and the structured run — not a fee for the letter files themselves."
                 />
 
                 <div className="my-7 border-t border-white/[0.06] sm:my-8" />
@@ -437,11 +434,12 @@ export function PaymentPage() {
 
                     <div className="mt-5 border-t border-white/[0.06] pt-4">
                       <p className="text-center text-sm font-semibold text-lab-text">
-                        Ready to move this round forward?
+                        Continue and skip the manual busywork
                       </p>
                       <p className="mt-2 text-center text-sm leading-relaxed text-lab-muted">
-                        After checkout, you&apos;ll continue to the next preparation step before anything
-                        is sent.
+                        After checkout you move to letter and proof steps — you avoid packaging, guessing
+                        addresses, and doing follow-up without a paper trail, while keeping download if you
+                        want it.
                       </p>
                       <button
                         type="button"

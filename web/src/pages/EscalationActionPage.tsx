@@ -11,6 +11,7 @@ import type {
 } from "@/lib/escalationLayerTypes";
 import type { ProgramEscalationActionRow } from "@/lib/escalationProgramTypes";
 import { fetchEscalationLayer } from "@/lib/workflowApi";
+import { stepMainColumnTopClass } from "@/lib/stepPageLayout";
 import { useCustomerWorkflow } from "@/providers/CustomerWorkflowContext";
 import {
   easeStep,
@@ -256,7 +257,9 @@ export function EscalationActionPage() {
     <div className="relative min-h-full bg-lab-bg">
       <StepPageAmbientBackground />
       <TopBarMinimal />
-      <StepMainColumn className="relative z-10 mx-auto max-w-xl px-4 pb-24 pt-24 sm:px-6 sm:pb-28 sm:pt-28">
+      <StepMainColumn
+        className={`relative z-10 mx-auto max-w-xl px-4 pb-24 sm:px-6 sm:pb-28 ${stepMainColumnTopClass(!!workflowId)}`}
+      >
         {!ctxLoading && (!token || !workflowId) ? (
           <p className="mt-6 text-sm text-lab-muted">
             Sign in with your program open to load this checklist.
@@ -267,18 +270,12 @@ export function EscalationActionPage() {
           <motion.div variants={pageVariants} initial="hidden" animate="show" className="pb-4">
             {showFullHero ? (
               <>
-                <motion.p
-                  variants={headerVariants}
-                  className="step-eyebrow"
-                >
-                  STEP 10 • NEXT-STEP CHECKLIST
-                </motion.p>
-                <motion.h1
+                <motion.h2
                   variants={headerVariants}
                   className="step-title"
                 >
                   Work through this escalation path for your current round
-                </motion.h1>
+                </motion.h2>
                 <motion.p
                   variants={headerVariants}
                   className="step-support max-w-md"
@@ -336,18 +333,12 @@ export function EscalationActionPage() {
               </>
             ) : (
               <>
-                <motion.p
+                <motion.h2
                   variants={headerVariants}
-                  className="step-eyebrow"
-                >
-                  STEP 10 • NEXT-STEP CHECKLIST
-                </motion.p>
-                <motion.h1
-                  variants={headerVariants}
-                  className="mt-3 text-center font-heading text-xl font-semibold tracking-tighter text-lab-text"
+                  className="step-title mt-3 text-center"
                 >
                   Next-step checklist
-                </motion.h1>
+                </motion.h2>
                 <motion.div variants={headerVariants} className="mt-6">
                   <RoundContinuityModule context={layerContext} />
                 </motion.div>

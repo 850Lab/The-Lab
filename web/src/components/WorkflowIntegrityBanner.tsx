@@ -20,6 +20,7 @@ export function WorkflowIntegrityBanner() {
   const {
     loading,
     workflowId,
+    programState,
     integrityHints,
     canonicalCustomerPath,
     nextRequiredAction,
@@ -37,12 +38,24 @@ export function WorkflowIntegrityBanner() {
   }, [authority.shouldSuppressIntegrityBanner, integrityHints]);
 
   const ctaPath = useMemo(() => {
-    if (!integrityHints || !nextRequiredAction) return canonicalCustomerPath;
+    if (programState?.nextBestAction?.targetRoute) {
+      return programState.nextBestAction.targetRoute;
+    }
+    if (!integrityHints) return canonicalCustomerPath;
+    if (integrityHints.mailBlocked && nextRequiredAction === "mail") {
+      return "/tracking";
+    }
+    if (!nextRequiredAction) return canonicalCustomerPath;
     return customerPathForNextRequiredAction(
       nextRequiredAction,
       canonicalCustomerPath,
     );
-  }, [integrityHints, nextRequiredAction, canonicalCustomerPath]);
+  }, [
+    programState,
+    integrityHints,
+    nextRequiredAction,
+    canonicalCustomerPath,
+  ]);
 
   if (loading || !workflowId || !spec) return null;
   if (isEscalationPath(loc.pathname)) return null;

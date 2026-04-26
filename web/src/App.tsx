@@ -24,6 +24,7 @@ import { EscalationPage } from "@/pages/EscalationPage";
 import { TrackingPage } from "@/pages/TrackingPage";
 import { ExecutionPage } from "@/pages/ExecutionPage";
 import { ResponseIntakePage } from "@/pages/ResponseIntakePage";
+import { StructuredReportPage } from "@/pages/StructuredReportPage";
 import { ReportAcquisitionPage } from "@/pages/ReportAcquisitionPage";
 import { ReportAcquisitionIdiqBridgePage } from "@/pages/ReportAcquisitionIdiqBridgePage";
 import { MissionControlLayout } from "@/pages/mission-control/MissionControlLayout";
@@ -125,6 +126,7 @@ export default function App() {
           <Route path="proof" element={<ProofVerificationPage />} />
           <Route path="send" element={<MailingPage />} />
           <Route path="tracking" element={<TrackingPage />} />
+          <Route path="report" element={<StructuredReportPage />} />
           <Route path="responses" element={<ResponseIntakePage />} />
           <Route path="escalation" element={<EscalationPage />} />
           <Route path="escalation-action" element={<EscalationActionPage />} />

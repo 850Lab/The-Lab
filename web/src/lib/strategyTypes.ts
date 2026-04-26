@@ -2,6 +2,29 @@ import type { ReviewClaimJson } from "@/lib/intakeTypes";
 import type { ProgramEscalationPayload } from "@/lib/escalationProgramTypes";
 import type { WorkflowEnvelope } from "@/lib/workflowTypes";
 
+/** Per-item program recommendation — mirrors `review_claim` + `recommendation` from strategy API. */
+export type StrategyRecommendationItem = {
+  id: string;
+  accountName: string;
+  issueType: string;
+  summary: string;
+  why: {
+    short: string;
+    detailed: string;
+  };
+  confidence: {
+    level: "high" | "medium" | "low";
+    score: number;
+  };
+  impactLevel: "high" | "medium" | "low";
+  recommended: boolean;
+  optional: boolean;
+};
+
+export type ReviewClaimWithRecommendation = ReviewClaimJson & {
+  recommendation?: StrategyRecommendationItem;
+};
+
 /** Slim escalation summary from engine (``escalation_public_view``). */
 export type EscalationEngineView = {
   status: string;
@@ -32,7 +55,7 @@ export type DisputeStrategyConstraints = {
 
 export type DisputeStrategyGroup = {
   reviewType: string;
-  items: ReviewClaimJson[];
+  items: ReviewClaimWithRecommendation[];
 };
 
 export type DisputeStrategyPayload = {

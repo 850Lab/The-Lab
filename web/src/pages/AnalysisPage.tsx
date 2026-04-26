@@ -12,6 +12,8 @@ import { useIntakeSummary } from "@/hooks/useIntakeSummary";
 import { useCustomerWorkflow } from "@/providers/CustomerWorkflowContext";
 import { buildFindingGroupsFromClaims } from "@/lib/reviewClaimsDisplay";
 import { stepChildVariants as headerBlock, stepPageVariants as pageVariants } from "@/lib/motionStep";
+import { FREE_VALUE_LINE } from "@/lib/flowMicrocopy";
+import { stepMainColumnTopClass } from "@/lib/stepPageLayout";
 
 type AnalyzeLocationState = {
   uploadedReportFileName?: string;
@@ -21,7 +23,7 @@ const SLOW_ANALYSIS_MS = 120_000;
 
 export function AnalysisPage() {
   const location = useLocation();
-  const { envelope, authoritativeStepId, canonicalCustomerPath, orionViewModel } =
+  const { envelope, authoritativeStepId, canonicalCustomerPath, orionViewModel, workflowId } =
     useCustomerWorkflow();
   const { bundle, loading, error } = useIntakeSummary();
 
@@ -87,7 +89,9 @@ export function AnalysisPage() {
 
       <TopBarMinimal />
 
-      <StepMainColumn className="relative z-10 mx-auto max-w-2xl px-4 pb-16 pt-24 sm:px-6 sm:pb-20 sm:pt-28">
+      <StepMainColumn
+        className={`relative z-10 mx-auto max-w-2xl px-4 pb-16 sm:px-6 sm:pb-20 ${stepMainColumnTopClass(!!workflowId, "analysis")}`}
+      >
         <motion.div variants={pageVariants} initial="hidden" animate="show">
           {parseInFlight ? (
             <>
@@ -100,8 +104,7 @@ export function AnalysisPage() {
                 </motion.p>
               ) : null}
               <motion.div variants={headerBlock} className="mx-auto max-w-md text-center">
-                <p className="step-eyebrow">STEP 2 • REVIEW YOUR FINDINGS</p>
-                <p className="mt-2 text-sm leading-relaxed text-lab-muted">
+                <p className="mt-0 text-sm leading-relaxed text-lab-muted">
                   We&apos;re organizing your report into a review list…
                 </p>
                 <ReviewPhaseProgressStrip phase="analyze" />
@@ -150,13 +153,16 @@ export function AnalysisPage() {
               {!parseFailed && bundle ? (
                 <>
                   {showLightFindings && intake?.reviewClaims ? (
-                    <motion.div variants={headerBlock}>
+                    <motion.div variants={headerBlock} className="space-y-4">
                       <AnalysisResultsExperience
                         claims={intake.reviewClaims}
                         findingGroups={findingGroups}
                         authoritativeStepId={authoritativeStepId ?? undefined}
                         findingsContinueHref={findingsContinueHref}
                       />
+                      <p className="mx-auto max-w-prose text-center text-xs leading-relaxed text-neutral-600 sm:text-sm">
+                        {FREE_VALUE_LINE}
+                      </p>
                     </motion.div>
                   ) : null}
 
@@ -165,12 +171,9 @@ export function AnalysisPage() {
                       variants={headerBlock}
                       className="rounded-2xl border border-neutral-200/90 bg-white px-6 py-10 text-center shadow-sm shadow-neutral-900/5"
                     >
-                      <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-neutral-500">
-                        Step 2 of 3
-                      </p>
-                      <h1 className="mx-auto mt-3 max-w-md text-balance font-heading text-xl font-semibold text-neutral-950 sm:text-2xl">
+                      <h2 className="mx-auto mt-0 max-w-md text-balance font-heading text-xl font-semibold text-neutral-950 sm:text-2xl">
                         Your report is saved
-                      </h1>
+                      </h2>
                       <p className="mx-auto mt-3 max-w-md text-sm leading-relaxed text-neutral-600">
                         We didn&apos;t surface review items from this file yet. Nothing is mailed to the
                         bureaus from here.

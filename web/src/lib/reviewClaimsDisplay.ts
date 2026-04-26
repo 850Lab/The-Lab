@@ -13,7 +13,7 @@ const FINDINGS_GROUP_PRIORITY: string[] = [
   "unverifiable_information",
 ];
 
-function findingsPriorityRank(reviewType: string): number {
+export function findingsPriorityRank(reviewType: string): number {
   const i = FINDINGS_GROUP_PRIORITY.indexOf(reviewType);
   return i === -1 ? FINDINGS_GROUP_PRIORITY.length + 1 : i;
 }

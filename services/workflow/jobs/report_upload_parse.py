@@ -73,10 +73,14 @@ def execute_report_upload_parse_job(job: Dict[str, Any]) -> None:
     else:
         opts["workflow_id"] = wf
 
-    part_paths = payload.get("tempPartPaths")
+    part_paths = payload.get("intakePartPaths")
+    if not isinstance(part_paths, list) or len(part_paths) == 0:
+        part_paths = payload.get("tempPartPaths")
     part_names = payload.get("partFilenames")
     raw: bytes
     fname: str
+
+    _log.info("intake.parse_started workflow_id=%s job_id=%s", wf, jid)
 
     if (
         isinstance(part_paths, list)
@@ -106,7 +110,11 @@ def execute_report_upload_parse_job(job: Dict[str, Any]) -> None:
             ):
                 if not pth or not os.path.isfile(pth):
                     _unlink_temp_paths(paths_to_clean)
-                    fail_job(jid, "Report parse job missing temp file", error_code="TEMP_FILE_MISSING")
+                    fail_job(
+                        jid,
+                        "Report parse job missing staged file (intake artifact).",
+                        error_code="PARSE_FAILED_INTAKE_ARTIFACT_MISSING",
+                    )
                     return
                 try:
                     want = int(exp_sz)
@@ -152,7 +160,11 @@ def execute_report_upload_parse_job(job: Dict[str, Any]) -> None:
         path = (payload.get("tempPdfPath") or "").strip()
         fname = (payload.get("filename") or "report.pdf").strip() or "report.pdf"
         if not path or not os.path.isfile(path):
-            fail_job(jid, "Report parse job missing temp file", error_code="TEMP_FILE_MISSING")
+            fail_job(
+                jid,
+                "Report parse job missing staged file.",
+                error_code="PARSE_FAILED_INTAKE_ARTIFACT_MISSING",
+            )
             return
         try:
             with open(path, "rb") as f:
@@ -213,4 +225,11 @@ def execute_report_upload_parse_job(job: Dict[str, Any]) -> None:
     if not ok:
         out_result["errorCode"] = "PARSE_SKIPPED_OR_EMPTY"
 
+    _log.info(
+        "intake.parse_job_completing workflow_id=%s job_id=%s pipeline_ok=%s reports=%s",
+        wf,
+        jid,
+        ok,
+        processed,
+    )
     complete_job(jid, out_result)

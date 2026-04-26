@@ -2,9 +2,9 @@ import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useState, type ReactNode } from "react";
 
 const TEASE_LINES = [
-  "Scanning trade lines…",
-  "Checking for violations…",
-  "Building your plan…",
+  "Finding what to fix first…",
+  "Choosing your dispute set…",
+  "Drafting bureau-ready letters…",
 ] as const;
 
 const GHOST_LABELS = ["Late payment", "Collection", "Charge-off"] as const;
@@ -119,7 +119,7 @@ export function LandingDemoTease() {
           className={`mt-2 select-none text-center text-[11px] font-medium text-neutral-600 transition-[filter] duration-200 ease-out ${blurSub}`}
           aria-hidden
         >
-          Letters · plan draft
+          Dispute letters · your next step
         </p>
       </motion.div>
       <p

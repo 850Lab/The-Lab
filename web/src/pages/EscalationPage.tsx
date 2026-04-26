@@ -17,6 +17,7 @@ import {
   type EscalationOptionId,
 } from "@/lib/escalationOptions";
 import { fetchEscalationLayer } from "@/lib/workflowApi";
+import { stepMainColumnTopClass } from "@/lib/stepPageLayout";
 import { useCustomerWorkflow } from "@/providers/CustomerWorkflowContext";
 import {
   stepChildVariants as headerVariants,
@@ -244,7 +245,9 @@ export function EscalationPage() {
 
       <TopBarMinimal />
 
-      <StepMainColumn className="relative z-10 mx-auto max-w-xl px-4 pb-28 pt-24 sm:px-6 sm:pb-32 sm:pt-28">
+      <StepMainColumn
+        className={`relative z-10 mx-auto max-w-xl px-4 pb-28 sm:px-6 sm:pb-32 ${stepMainColumnTopClass(!!workflowId)}`}
+      >
         {!ctxLoading && (!token || !workflowId) ? (
           <p className="mt-10 text-center text-sm text-lab-muted">
             Sign in and open your program to load next-step options tied to your mail and responses.
@@ -252,18 +255,12 @@ export function EscalationPage() {
         ) : null}
         {ctxLoading || (token && workflowId) ? (
           <motion.div variants={pageVariants} initial="hidden" animate="show" className="pb-4">
-            <motion.p
-              variants={headerVariants}
-              className="step-eyebrow"
-            >
-              STEP 10 • REVIEW NEXT-STEP OPTIONS
-            </motion.p>
-            <motion.h1
+            <motion.h2
               variants={headerVariants}
               className="step-title"
             >
               Review escalation paths for this round
-            </motion.h1>
+            </motion.h2>
             <motion.p
               variants={headerVariants}
               className="step-support max-w-md"

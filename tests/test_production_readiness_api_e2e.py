@@ -388,8 +388,8 @@ def test_full_user_flow_upload_to_letters_e2e(monkeypatch):
     )
 
     monkeypatch.setenv("WORKFLOW_JOB_WORKER_ENABLED", "0")
-    # Run real parse in-request (see ``api.workflow_app.post_workflow_report_upload``) so temp
-    # part paths survive until ``execute_report_upload_parse_job`` runs — matches worker dispatch.
+    # Run real parse in-request (``WORKFLOW_E2E_SYNCHRONOUS_PARSE``) so the same _dispatch path
+    # as the worker runs immediately; inputs are durable under lab_truth/report_intake (or REPORT_INTAKE_ARTIFACT_DIR).
     monkeypatch.setenv("WORKFLOW_E2E_SYNCHRONOUS_PARSE", "1")
     monkeypatch.setenv("ENVIRONMENT", "development")
     monkeypatch.delenv("REPLIT_DEPLOYMENT", raising=False)

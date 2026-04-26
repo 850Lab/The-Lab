@@ -160,7 +160,7 @@ export function ProgramProgressPage() {
             <ul className="mt-2 space-y-1 text-xs text-lab-muted">
               <li>Share report: {p.gates.mayUploadReport ? "Open" : "Not yet"}</li>
               <li>Understand report: {p.gates.mayAnalyzeReport ? "Open" : "Not yet"}</li>
-              <li>Choose focus: {p.gates.mayUseDisputeFlow ? "Open" : "Not yet"}</li>
+              <li>Strategy workspace: {p.gates.mayUseDisputeFlow ? "Open" : "Not yet"}</li>
               <li>Letters: {p.gates.mayGenerateLetters ? "Open" : "Not yet"}</li>
             </ul>
           </div>

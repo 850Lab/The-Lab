@@ -31,6 +31,7 @@ import {
 import { formatReportUploadErrorMessage } from "@/lib/uploadHttpError";
 import type { EscalationLayerResponse } from "@/lib/escalationLayerTypes";
 import type { WorkflowIntegrityHints } from "@/lib/integrityHintsTypes";
+import type { ProgramState } from "@/lib/programStateTypes";
 import type {
   ExecutionOutcomeResponse,
   ExecutionOutcomeSubmitBody,
@@ -118,6 +119,26 @@ export async function fetchWorkflowIntegrityHints(
     `/api/workflows/${encodeURIComponent(workflowId)}/integrity-hints`,
     token,
   );
+}
+
+/** Authoritative program brain: step, allowed routes, next CTA, progress, blocking. */
+export async function fetchProgramState(
+  token: string,
+  workflowId: string,
+): Promise<ProgramState> {
+  const r = await workflowFetchJson<Record<string, unknown>>(
+    `/api/workflows/${encodeURIComponent(workflowId)}/program-state`,
+    token,
+  );
+  if (!r || (r as { ok?: boolean }).ok !== true) {
+    const err = (r as { error?: { messageSafe?: string } } | null)?.error;
+    throw new Error(
+      err && typeof err.messageSafe === "string"
+        ? err.messageSafe
+        : "Program state is unavailable. Try again shortly.",
+    );
+  }
+  return r as ProgramState;
 }
 
 export async function fetchWorkflowState(
@@ -577,6 +598,17 @@ export async function postStepStart(
   );
 }
 
+export type ReportParseIntakeStatus = {
+  phase: string;
+  parseJobId: string;
+  parseJobStatus?: string | null;
+  userSafeSummary?: string;
+  nextAction?: string;
+  backgroundWorkerEnabled?: boolean;
+  parseErrorCode?: string;
+  pendingSecondsApprox?: number;
+};
+
 export type ReportUploadResponse = {
   ok: boolean;
   reportsProcessed: number;
@@ -587,6 +619,8 @@ export type ReportUploadResponse = {
   /** Server queued a background parse; client should poll ``/jobs/{jobId}`` until terminal. */
   processing?: boolean;
   jobId?: string;
+  /** Authoritative parse-queue state from the API (upload accepted vs worker blocked vs running). */
+  intakeStatus?: ReportParseIntakeStatus;
 };
 
 export type WorkflowJobPublic = {
@@ -608,6 +642,22 @@ export type WorkflowJobPublic = {
 
 const REPORT_PARSE_POLL_MS = 1500;
 const REPORT_PARSE_TIMEOUT_MS = 45 * 60 * 1000;
+
+/** User-facing text when ``report_upload_parse`` job fails (codes from worker / staging). */
+function formatReportParseJobFailure(message: string, code: string): string {
+  const c = (code || "").trim();
+  const m = (message || "").trim();
+  if (c === "TEMP_FILE_MISSING" || c === "PARSE_FAILED_INTAKE_ARTIFACT_MISSING") {
+    return "Your PDF was received but processing could not read the saved file. This usually means the background job worker was off, the server restarted before parse ran, or storage was misconfigured. Enable WORKFLOW_JOB_WORKER_ENABLED=1 on the API, wait for DB init to finish, then try uploading again; if it repeats, check API logs.";
+  }
+  if (c === "FLOW_GATE") {
+    return m || "This upload does not match your current program step. Refresh the page or continue from the step the app shows.";
+  }
+  if (c === "MISSING_STAGING_INTEGRITY" || c === "INVALID_STAGING_PAYLOAD") {
+    return "Upload payload was incomplete. Try the upload again with the same file(s).";
+  }
+  return c ? `${m || "Report processing failed."} (${c})` : m || "Report processing failed.";
+}
 
 function _reportParseSleepMs(ms: number, signal?: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -646,7 +696,11 @@ export async function pollReportUploadParseJob(
     if (signal?.aborted) {
       throw new DOMException("Aborted", "AbortError");
     }
-    const j = await workflowFetchJson<{ ok: boolean; job: WorkflowJobPublic }>(
+    const j = await workflowFetchJson<{
+      ok: boolean;
+      job: WorkflowJobPublic;
+      intakeStatus?: ReportParseIntakeStatus;
+    }>(
       `/api/workflows/${encodeURIComponent(workflowId)}/jobs/${encodeURIComponent(jobId)}`,
       token,
       { signal },
@@ -664,7 +718,7 @@ export async function pollReportUploadParseJob(
             ? String((resFail as { errorCode?: string }).errorCode ?? "").trim()
             : "";
         const code = (j.job.errorCode && String(j.job.errorCode).trim()) || codeFromResult;
-        throw new Error(code ? `${msg} (${code})` : msg);
+        throw new Error(formatReportParseJobFailure(msg, code));
       }
       const res = j.job.result;
       const ok = Boolean(res && typeof res === "object" && (res as { ok?: boolean }).ok);
@@ -676,12 +730,18 @@ export async function pollReportUploadParseJob(
         ? (rawSkips as Array<{ filename: string; reason: string }>)
         : [];
       const workflow = await fetchWorkflowResume(token, workflowId, { signal });
-      return { ok, reportsProcessed, fileSkips, workflow };
+      return {
+        ok,
+        reportsProcessed,
+        fileSkips,
+        workflow,
+        intakeStatus: j.intakeStatus,
+      };
     }
     await _reportParseSleepMs(REPORT_PARSE_POLL_MS, signal);
   }
   throw new Error(
-    "Report processing is taking longer than expected. Try again or use a smaller PDF.",
+    "Report processing is taking longer than expected. Try a smaller PDF or upload again. If uploads never finish, the API background worker may be disabled — set WORKFLOW_JOB_WORKER_ENABLED=1 (default) and confirm the service logs show database init completed.",
   );
 }
 

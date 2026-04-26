@@ -23,6 +23,12 @@ import {
   customerPathFromEnvelope,
   isAuthoritativeStepBefore,
 } from "@/lib/workflowStepRoutes";
+import {
+  FREE_VALUE_LINE,
+  POST_DOWNLOAD_NEXT_STEPS,
+  POST_DOWNLOAD_UPGRADE_LINE,
+} from "@/lib/flowMicrocopy";
+import { stepMainColumnTopClass } from "@/lib/stepPageLayout";
 import { useCustomerWorkflow } from "@/providers/CustomerWorkflowContext";
 import { lettersPurposeBlock, postLettersWhatHappensNext } from "@/lib/intelligenceExpression";
 import {
@@ -132,6 +138,7 @@ export function LettersReadyPage() {
   const [generating, setGenerating] = useState(false);
   const [genError, setGenError] = useState<string | null>(null);
   const [bundleBusy, setBundleBusy] = useState(false);
+  const [postDownloadOpen, setPostDownloadOpen] = useState(false);
   const [previewLetter, setPreviewLetter] = useState<LetterRow | null>(null);
   const [previewBody, setPreviewBody] = useState("");
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -286,6 +293,7 @@ export function LettersReadyPage() {
       a.click();
       a.remove();
       URL.revokeObjectURL(url);
+      setPostDownloadOpen(true);
     } catch (e) {
       setLoadError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -369,17 +377,23 @@ export function LettersReadyPage() {
   );
 
   const lettersActionProps = useMemo(() => {
-    if (!lettersCoherent) return {};
+    if (!lettersCoherent) {
+      return {
+        freeValueLine: FREE_VALUE_LINE,
+      };
+    }
     if (lettersHero.ctaEmphasis === "muted") {
       return {
         headline: "No rush — drafts are on this page when you want them",
         supportText: "Preview or download, then continue; proof comes next in the same program.",
+        freeValueLine: FREE_VALUE_LINE,
         helperText: "Mailing stays later — nothing goes out from this step.",
       };
     }
     return {
       headline: "Review on this page",
       supportText: "Preview or download drafts, then continue when you’re ready.",
+      freeValueLine: FREE_VALUE_LINE,
       helperText: "Proof is next; mailing stays later in the program.",
     };
   }, [lettersCoherent, lettersHero.ctaEmphasis]);
@@ -396,7 +410,9 @@ export function LettersReadyPage() {
 
       <TopBarMinimal />
 
-      <StepMainColumn className="relative z-10 mx-auto max-w-xl px-4 pb-24 pt-24 sm:px-6 sm:pb-28 sm:pt-28">
+      <StepMainColumn
+        className={`relative z-10 mx-auto max-w-xl px-4 pb-24 sm:px-6 sm:pb-28 ${stepMainColumnTopClass(!!workflowId)}`}
+      >
         {pageLoading ? (
           <motion.p
             initial={{ opacity: 0 }}
@@ -426,18 +442,12 @@ export function LettersReadyPage() {
             animate="show"
             className="pb-2"
           >
-            <motion.p
-              variants={headerVariants}
-              className="step-eyebrow"
-            >
-              STEP 5 • PREPARE YOUR LETTERS
-            </motion.p>
-            <motion.h1
+            <motion.h2
               variants={headerVariants}
               className="step-title"
             >
               {lettersHero.title}
-            </motion.h1>
+            </motion.h2>
             <motion.p
               variants={headerVariants}
               className="step-support"
@@ -580,8 +590,8 @@ export function LettersReadyPage() {
                   {lettersCoherent ? (
                     <>
                       <span className="font-medium text-lab-text">Drafts from your round are below.</span>{" "}
-                      Preview or download, then continue — proof and mailing stay in the same program when
-                      you choose.
+                      You can download and send these yourself, or continue in the program and use guided
+                      mailing and tracking when you reach those steps — your choice, no pressure.
                     </>
                   ) : (
                     <>
@@ -639,6 +649,25 @@ export function LettersReadyPage() {
                   {...lettersActionProps}
                 />
               </motion.div>
+
+              {postDownloadOpen ? (
+                <motion.div
+                  variants={headerVariants}
+                  className="mx-auto mt-6 max-w-lg rounded-xl border border-white/[0.1] bg-lab-bg/40 px-4 py-4 sm:px-5"
+                >
+                  <p className="text-center text-[10px] font-semibold uppercase tracking-[0.14em] text-lab-subtle">
+                    What to do next
+                  </p>
+                  <ol className="mt-3 list-decimal space-y-2 pl-5 text-sm leading-relaxed text-lab-muted sm:text-[15px]">
+                    {POST_DOWNLOAD_NEXT_STEPS.map((s) => (
+                      <li key={s.slice(0, 24)}>{s}</li>
+                    ))}
+                  </ol>
+                  <p className="mt-4 text-center text-xs leading-relaxed text-lab-subtle sm:text-sm">
+                    {POST_DOWNLOAD_UPGRADE_LINE}
+                  </p>
+                </motion.div>
+              ) : null}
             </motion.div>
           ) : null}
         </AnimatePresence>

@@ -23,11 +23,10 @@ import type {
 } from "@/lib/publicDemoTypes";
 
 const LOADING_PHASES = [
-  "Reading the scenario through the live parser…",
-  "Spotting items worth a closer look…",
-  "Choosing the strongest items to act on first…",
-  "Drafting bureau-ready dispute letters…",
-  "Building your 72-hour gameplan…",
+  "Pulling your sample report into the same engine members use…",
+  "Flagging what to look at first…",
+  "Matching dispute letters to your plan…",
+  "Getting your next steps ready to view…",
 ] as const;
 
 const SCENARIO_CATEGORY_ORDER: Record<string, number> = {
@@ -414,7 +413,7 @@ export function PublicDemoInteractiveSection({
         <div className={embeddedOnHome ? "mt-0 md:mt-1" : "mt-8 md:mt-10"}>
           <div data-testid="demo-slide-deck" className={`${shellClass} ${slideBodyMax}`}>
             <h3 className={`shrink-0 text-center text-lg font-semibold sm:text-xl ${fg}`}>
-              Start the demo
+              Run a quick sample
             </h3>
 
             <div className="relative mt-4 min-h-0 flex-1 overflow-hidden">
@@ -631,7 +630,7 @@ export function PublicDemoInteractiveSection({
                       </motion.p>
                     </AnimatePresence>
                     <p className={`mt-4 max-w-sm px-4 text-center text-xs ${subtle}`}>
-                      Your results and gameplan will appear on the next step — usually under a minute.
+                      Usually under a minute — you&apos;ll see sample findings and letter previews next.
                     </p>
                   </motion.div>
                 ) : null}
@@ -848,8 +847,18 @@ export function PublicDemoInteractiveSection({
                             Next: 72-hour gameplan
                           </button>
                           <p className={`mt-4 text-center text-xs leading-relaxed ${muted}`}>
-                            When you&apos;re ready,{" "}
-                            <strong className={`font-medium ${fg}`}>tell us who you are below</strong>.
+                            {embeddedOnHome ? (
+                              <>
+                                On your file, the same flow applies — use{" "}
+                                <strong className={`font-medium ${fg}`}>Start my report</strong> on the
+                                home page when you&apos;re ready.
+                              </>
+                            ) : (
+                              <>
+                                Your own report uses the same steps — continue with your account when
+                                you&apos;re ready; nothing uploads until you do.
+                              </>
+                            )}
                           </p>
                         </div>
                       ) : (

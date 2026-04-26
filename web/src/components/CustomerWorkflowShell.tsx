@@ -1,12 +1,9 @@
 import { useLayoutEffect } from "react";
 import { Navigate, Outlet, useLocation } from "react-router-dom";
+import { ProgramShellFrame } from "@/components/ProgramShellFrame";
 import { OrionCustomerStrip } from "@/components/OrionCustomerStrip";
 import { WorkflowIntegrityBanner } from "@/components/WorkflowIntegrityBanner";
-import {
-  CUSTOMER_WORKFLOW_GUARD_PATHS,
-  isEscalationPath,
-  isOrgProgramPath,
-} from "@/lib/workflowStepRoutes";
+import { CUSTOMER_WORKFLOW_GUARD_PATHS, isOrgProgramPath } from "@/lib/workflowStepRoutes";
 import {
   publicUnauthPaths,
   signedOutAuthEntryPath,
@@ -75,7 +72,8 @@ export function CustomerWorkflowShell() {
       (WAITLIST_MODE && path === "/waitlist"))
   ) {
     if (ctx.workflowId) {
-      return <Navigate to={ctx.canonicalCustomerPath} replace />;
+      const dest = ctx.programState?.canonicalRoute ?? ctx.canonicalCustomerPath;
+      return <Navigate to={dest} replace />;
     }
     return <Navigate to="/" replace />;
   }
@@ -104,10 +102,6 @@ export function CustomerWorkflowShell() {
     return <Outlet />;
   }
 
-  if (isEscalationPath(path)) {
-    return <Outlet />;
-  }
-
   if (isOrgProgramPath(path)) {
     return (
       <>
@@ -118,30 +112,35 @@ export function CustomerWorkflowShell() {
   }
 
   const intakeHubPaths = new Set(["/analyze", "/upload"]);
-  const onReviewStep = ctx.authoritativeStepId === "review_claims";
-  const allowIntakeHub =
-    onReviewStep && intakeHubPaths.has(path);
+  const onReviewStep = ctx.programState?.currentStep === "review_claims";
+  const allowIntakeHub = Boolean(onReviewStep && intakeHubPaths.has(path));
+
+  const allowList = ctx.programState?.allowedNavRoutes ?? [ctx.canonicalCustomerPath];
+  const pathAllowed = allowList.includes(path);
 
   /** Integrity hints: user may proceed to tracking while authoritative step is still `mail`. */
   const allowTrackingWhileMailBlocked =
     ctx.integrityHints?.mailBlocked === true &&
     path === "/tracking" &&
-    ctx.canonicalCustomerPath === "/send";
+    (ctx.programState?.canonicalRoute === "/send" || ctx.canonicalCustomerPath === "/send");
 
   if (
     CUSTOMER_WORKFLOW_GUARD_PATHS.has(path) &&
-    path !== ctx.canonicalCustomerPath &&
+    !pathAllowed &&
     !allowIntakeHub &&
     !allowTrackingWhileMailBlocked
   ) {
-    return <Navigate to={ctx.canonicalCustomerPath} replace />;
+    const dest = ctx.programState?.canonicalRoute ?? ctx.canonicalCustomerPath;
+    return <Navigate to={dest} replace />;
   }
 
   return (
     <>
       <WorkflowIntegrityBanner />
       <OrionCustomerStrip />
-      <Outlet />
+      <ProgramShellFrame>
+        <Outlet />
+      </ProgramShellFrame>
     </>
   );
 }

@@ -16,6 +16,7 @@ import {
   startExecutionSession,
   submitExecutionOutcome,
 } from "@/lib/workflowApi";
+import { stepMainColumnTopClass } from "@/lib/stepPageLayout";
 import { useCustomerWorkflow } from "@/providers/CustomerWorkflowContext";
 
 const SESSION_RUN_KEY_PREFIX = "850lab.executionRun.v1:";
@@ -284,16 +285,10 @@ export function ExecutionPage() {
       <StepPageAmbientBackground />
       <TopBarMinimal />
 
-      <StepMainColumn className="relative z-10 mx-auto max-w-xl px-4 pb-28 pt-24 sm:px-6 sm:pb-32 sm:pt-28">
+      <StepMainColumn
+        className={`relative z-10 mx-auto max-w-xl px-4 pb-28 sm:px-6 sm:pb-32 ${stepMainColumnTopClass(!!workflowId)}`}
+      >
         <motion.div variants={pageVariants} initial="hidden" animate="show" className="space-y-8">
-          <motion.header variants={headerBlock} className="text-center">
-            <p className="step-eyebrow">Guided execution</p>
-            <h1 className="step-title">Your step</h1>
-            <p className="step-support">
-              One action at a time. When you&apos;re done, log what happened so your plan can adapt.
-            </p>
-          </motion.header>
-
           {!token || !workflowId ? (
             <motion.p variants={headerBlock} className="text-center text-sm text-lab-muted">
               Sign in with an active workflow to use guided execution.
